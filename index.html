@@ -549,6 +549,7 @@ const API_URL = 'https://serv-production-765e.up.railway.app';
 // State
 let userData = null;
 let currentLang = localStorage.getItem('language') || 'ru';
+let isRegistered = false;
 
 // Translations
 const translations = {
@@ -594,33 +595,51 @@ async function apiCall(endpoint, options = {}) {
       ...options.headers
     }
   });
+  
+  if (response.status === 401 && !isRegistered) {
+    await registerUser();
+    return apiCall(endpoint, options);
+  }
+  
   return response.json();
 }
 
 async function registerUser() {
-  if (!tg?.initDataUnsafe?.user) return;
+  if (!tg?.initDataUnsafe?.user) {
+    console.log('No Telegram user data - демо режим');
+    return;
+  }
   
   const u = tg.initDataUnsafe.user;
   const urlParams = new URLSearchParams(window.location.search);
   const referredBy = urlParams.get('ref');
   
-  const result = await apiCall('/auth/register', {
-    method: 'POST',
-    body: JSON.stringify({
-      telegramId: String(u.id),
-      firstName: u.first_name,
-      lastName: u.last_name || '',
-      username: u.username || '',
-      referredBy: referredBy
-    })
-  });
-  
-  if (result.success) {
-    localStorage.setItem('telegramId', String(u.id));
-    userData = result.user;
-    updateUI();
-    loadRanking();
-    loadReferrals();
+  try {
+    const response = await fetch(`${API_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        telegramId: String(u.id),
+        firstName: u.first_name,
+        lastName: u.last_name || '',
+        username: u.username || '',
+        referredBy: referredBy
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      localStorage.setItem('telegramId', String(u.id));
+      userData = result.user;
+      isRegistered = true;
+      updateUI();
+      loadRanking();
+      loadReferrals();
+      console.log('User registered successfully');
+    }
+  } catch (error) {
+    console.error('Registration error:', error);
   }
 }
 
@@ -652,12 +671,17 @@ function updateUI() {
   const t = translations[currentLang];
   document.getElementById('adLimit').innerHTML = `${t.remaining} ${remaining} / 45`;
   
-  const botUsername = tg?.initDataUnsafe?.user?.username || 'adearn_bot';
+  const botUsername = 'adearn_pro_bot';
   document.getElementById('refLink').textContent = `https://t.me/${botUsername}?start=ref_${userData.referralCode}`;
 }
 
 async function watchAd() {
   const t = translations[currentLang];
+  
+  if (!userData) {
+    await registerUser();
+    if (!userData) return;
+  }
   
   const result = await apiCall('/ads/watch', { method: 'POST' });
   
@@ -681,40 +705,54 @@ async function watchAd() {
 }
 
 async function loadRanking() {
-  const result = await apiCall('/ranking');
-  if (result.success) {
-    const container = document.getElementById('rankingList');
-    const currentId = localStorage.getItem('telegramId');
-    
-    container.innerHTML = result.ranking.slice(0, 20).map((user, idx) => {
-      const isCurrent = user.telegramId === currentId;
-      let medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '';
-      return `
-        <div class="ranking-item ${isCurrent ? 'is-current-user' : ''}">
-          <div class="ranking-position">${idx+1}</div>
-          <div class="ranking-avatar">${user.firstName?.[0] || 'U'}</div>
-          <div class="ranking-info"><div class="ranking-name">${user.firstName} ${user.lastName || ''} ${medal}</div></div>
-          <div class="ranking-amount">${formatMoney(user.totalEarned)}$</div>
-        </div>
-      `;
-    }).join('');
+  try {
+    const response = await fetch(`${API_URL}/api/ranking`);
+    const result = await response.json();
+    if (result.success && result.ranking) {
+      const container = document.getElementById('rankingList');
+      const currentId = localStorage.getItem('telegramId');
+      
+      if (result.ranking.length === 0) {
+        container.innerHTML = '<div class="ranking-item" style="justify-content:center">Пока никого нет</div>';
+        return;
+      }
+      
+      container.innerHTML = result.ranking.slice(0, 20).map((user, idx) => {
+        const isCurrent = user.telegramId === currentId;
+        let medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '';
+        return `
+          <div class="ranking-item ${isCurrent ? 'is-current-user' : ''}">
+            <div class="ranking-position">${idx+1}</div>
+            <div class="ranking-avatar">${user.firstName?.[0] || 'U'}</div>
+            <div class="ranking-info"><div class="ranking-name">${user.firstName} ${user.lastName || ''} ${medal}</div></div>
+            <div class="ranking-amount">${formatMoney(user.totalEarned)}$</div>
+          </div>
+        `;
+      }).join('');
+    }
+  } catch (error) {
+    console.error('Error loading ranking:', error);
   }
 }
 
 async function loadReferrals() {
-  const result = await apiCall('/referrals/stats');
-  if (result.success) {
-    const container = document.getElementById('referralsList');
-    if (result.count === 0) {
-      container.innerHTML = 'Пока никого нет. Пригласите первого друга!';
-    } else {
-      container.innerHTML = `
-        <div style="padding:16px">
-          <div style="margin-bottom:12px">👥 Приглашено: ${result.count}</div>
-          <div>💰 Заработано с рефералов: ${formatMoney(result.earnings)}$</div>
-        </div>
-      `;
+  try {
+    const result = await apiCall('/referrals/stats');
+    if (result.success) {
+      const container = document.getElementById('referralsList');
+      if (result.count === 0) {
+        container.innerHTML = 'Пока никого нет. Пригласите первого друга!';
+      } else {
+        container.innerHTML = `
+          <div style="padding:16px">
+            <div style="margin-bottom:12px">👥 Приглашено: ${result.count}</div>
+            <div>💰 Заработано с рефералов: ${formatMoney(result.earnings)}$</div>
+          </div>
+        `;
+      }
     }
+  } catch (error) {
+    console.error('Error loading referrals:', error);
   }
 }
 
@@ -806,6 +844,7 @@ document.querySelectorAll('.lang-btn').forEach(btn => {
 // Initialize
 registerUser();
 setLanguage(currentLang);
+setInterval(loadRanking, 30000);
 </script>
 </body>
 </html>
