@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>AdEarn Pro</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+
+:root{
+  --bg-primary:#0d0f14;
+  --bg-secondary:#13161d;
+  --bg-tertiary:#1a1e27;
+  --bg-card:#161a23;
+  --border:rgba(255,255,255,0.06);
+  --border-active:rgba(255,255,255,0.12);
+  --text-primary:#e7e9ee;
+  --text-secondary:#8b92a5;
+  --text-muted:#5a6275;
+  --accent:#3b82f6;
+  --accent-dim:#1e3a8a;
+  --success:#10b981;
+  --warning:#f59e0b;
+  --danger:#ef4444;
+  --gold:#d4a853;
+}
+
+html,body{background:var(--bg-primary);color:var(--text-primary);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+
+body{padding-bottom:90px;overflow-x:hidden}
+
+body::before{
+  content:'';
+  position:fixed;
+  inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.015) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,0.015) 1px,transparent 1px);
+  background-size:32px 32px;
+  pointer-events:none;
+  z-index:0;
+}
+
+body::after{
+  content:'';
+  position:fixed;
+  top:-200px;left:50%;
+  transform:translateX(-50%);
+  width:600px;height:400px;
+  background:radial-gradient(ellipse at center,rgba(59,130,246,0.08) 0%,transparent 70%);
+  pointer-events:none;
+  z-index:0;
+}
+
+.container{position:relative;z-index:1}
+
+/* ===== HEADER ===== */
+.header{
+  padding:20px 20px 16px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  border-bottom:1px solid var(--border);
+  background:rgba(13,15,20,0.85);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  position:sticky;
+  top:0;
+  z-index:50;
+}
+
+.brand{display:flex;align-items:center;gap:10px}
+.brand-logo{
+  width:36px;height:36px;
+  border-radius:10px;
+  background:linear-gradient(135deg,#1e3a8a,#3b82f6);
+  display:flex;align-items:center;justify-content:center;
+  font-weight:700;
+  font-size:16px;
+  border:1px solid rgba(59,130,246,0.3);
+  box-shadow:0 4px 12px rgba(59,130,246,0.2);
+}
+.brand-info{display:flex;flex-direction:column;gap:1px}
+.brand-name{font-size:14px;font-weight:600;letter-spacing:-0.2px}
+.brand-status{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:5px}
+.status-dot{width:5px;height:5px;border-radius:50%;background:var(--success);box-shadow:0 0 8px var(--success)}
+
+.lang-switcher{
+  display:flex;
+  gap:4px;
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:4px;
+}
+.lang-btn{
+  padding:6px 12px;
+  border-radius:8px;
+  font-size:12px;
+  font-weight:600;
+  cursor:pointer;
+  transition:all 0.2s;
+  background:transparent;
+  border:none;
+  color:var(--text-muted);
+}
+.lang-btn.active{
+  background:var(--accent);
+  color:#fff;
+  box-shadow:0 2px 8px rgba(59,130,246,0.3);
+}
+.lang-btn:active{transform:scale(0.95)}
+
+/* ===== BALANCE CARD ===== */
+.balance-section{padding:24px 20px 20px}
+
+.balance-card{
+  background:linear-gradient(135deg,var(--bg-card) 0%,var(--bg-secondary) 100%);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:24px 20px;
+  position:relative;
+  overflow:hidden;
+}
+
+.balance-card::before{
+  content:'';
+  position:absolute;
+  top:0;right:0;
+  width:200px;height:200px;
+  background:radial-gradient(circle,rgba(59,130,246,0.08) 0%,transparent 60%);
+  pointer-events:none;
+}
+
+.balance-label{
+  font-size:11px;
+  color:var(--text-muted);
+  text-transform:uppercase;
+  letter-spacing:1.5px;
+  margin-bottom:8px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+.balance-amount{
+  font-size:36px;
+  font-weight:700;
+  letter-spacing:-1px;
+  margin-bottom:4px;
+  font-feature-settings:'tnum';
+}
+
+.balance-currency{
+  color:var(--text-muted);
+  font-size:24px;
+  font-weight:500;
+  margin-left:4px;
+}
+
+.balance-meta{
+  display:flex;
+  gap:16px;
+  margin-top:16px;
+  padding-top:16px;
+  border-top:1px solid var(--border);
+}
+
+.balance-meta-item{flex:1}
+.balance-meta-label{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.balance-meta-value{font-size:14px;font-weight:600;color:var(--text-primary)}
+.balance-meta-value.positive{color:var(--success)}
+
+/* ===== LEVEL PROGRESS ===== */
+.level-progress-card{
+  margin:0 20px 20px;
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:16px;
+}
+.level-header{
+  display:flex;
+  justify-content:space-between;
+  margin-bottom:10px;
+  font-size:13px;
+}
+.level-badge{
+  background:rgba(59,130,246,0.15);
+  padding:4px 10px;
+  border-radius:20px;
+  font-weight:600;
+  font-size:12px;
+}
+.level-reward{
+  color:var(--gold);
+  font-weight:600;
+}
+.level-next{
+  font-size:11px;
+  color:var(--text-muted);
+  margin-top:8px;
+  padding-top:8px;
+  border-top:1px solid var(--border);
+  text-align:center;
+}
+.progress-bar-bg{
+  height:8px;
+  background:var(--bg-tertiary);
+  border-radius:4px;
+  overflow:hidden;
+  margin:12px 0 8px;
+}
+.progress-fill{
+  height:100%;
+  background:var(--accent);
+  width:0%;
+  border-radius:4px;
+  transition:width 0.3s;
+}
+.progress-text{
+  font-size:11px;
+  color:var(--text-muted);
+  text-align:right;
+}
+
+/* ===== AD CARD (упрощённый, кнопка выше) ===== */
+.ad-card{
+  margin:8px 20px 20px;
+  background:linear-gradient(135deg,var(--bg-card) 0%,var(--bg-tertiary) 100%);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:20px;
+  position:relative;
+  overflow:hidden;
+}
+.ad-card-bg{
+  position:absolute;
+  top:-50%;left:-50%;
+  width:200%;height:200%;
+  background:conic-gradient(from 0deg,transparent 0deg,rgba(59,130,246,0.05) 90deg,transparent 180deg);
+  animation:rotate 20s linear infinite;
+  pointer-events:none;
+}
+@keyframes rotate{to{transform:rotate(360deg)}}
+.ad-card-inner{position:relative;z-index:1;text-align:center}
+.ad-reward-small{
+  font-size:20px;
+  font-weight:600;
+  color:var(--gold);
+  margin-bottom:4px;
+  font-feature-settings:'tnum';
+}
+.ad-reward-label{
+  font-size:11px;
+  color:var(--text-muted);
+  margin-bottom:16px;
+}
+.ad-limit{
+  font-size:12px;
+  color:var(--text-secondary);
+  margin-bottom:16px;
+  padding:8px;
+  background:var(--bg-secondary);
+  border-radius:10px;
+  display:inline-block;
+  width:100%;
+  text-align:center;
+}
+.btn-primary{
+  width:100%;
+  padding:16px;
+  background:linear-gradient(135deg,#2563eb 0%,#1e40af 100%);
+  border:1px solid rgba(59,130,246,0.3);
+  border-radius:12px;
+  color:#fff;
+  font-size:16px;
+  font-weight:600;
+  cursor:pointer;
+  transition:all 0.2s;
+  box-shadow:0 4px 16px rgba(37,99,235,0.25);
+}
+.btn-primary:active:not(:disabled){transform:scale(0.98)}
+.btn-primary:disabled{
+  background:var(--bg-tertiary);
+  border-color:var(--border);
+  color:var(--text-muted);
+  cursor:not-allowed;
+  box-shadow:none;
+}
+
+/* ===== RANKING ===== */
+.ranking-list{padding:0 20px;display:flex;flex-direction:column;gap:8px;margin-bottom:20px}
+.ranking-item{
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:14px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+.ranking-position{
+  width:32px;
+  font-size:14px;
+  font-weight:700;
+  color:var(--accent);
+}
+.ranking-avatar{
+  width:40px;height:40px;
+  border-radius:10px;
+  background:linear-gradient(135deg,#1e3a8a,#3b82f6);
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;
+  font-weight:600;
+}
+.ranking-info{flex:1}
+.ranking-name{font-size:14px;font-weight:600;margin-bottom:2px}
+.ranking-earned{font-size:11px;color:var(--text-muted)}
+.ranking-amount{
+  font-size:15px;
+  font-weight:700;
+  color:var(--gold);
+}
+.ranking-item.is-current-user{
+  border:1px solid var(--accent);
+  background:rgba(59,130,246,0.05);
+}
+
+/* ===== BOTTOM NAVIGATION ===== */
+.bottom-nav{
+  position:fixed;
+  bottom:0;left:0;right:0;
+  background:rgba(13,15,20,0.92);
+  backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);
+  border-top:1px solid var(--border);
+  padding:8px 0 calc(8px + env(safe-area-inset-bottom));
+  z-index:100;
+  display:flex;
+  justify-content:space-around;
+  align-items:center;
+}
+.nav-item{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:4px;
+  padding:8px 4px;
+  background:none;
+  border:none;
+  color:var(--text-muted);
+  cursor:pointer;
+  position:relative;
+  transition:color 0.2s;
+}
+.nav-item.active{color:var(--accent)}
+.nav-item.active::before{
+  content:'';
+  position:absolute;
+  top:-8px;
+  left:50%;
+  transform:translateX(-50%);
+  width:32px;height:2px;
+  background:var(--accent);
+  border-radius:0 0 2px 2px;
+  box-shadow:0 0 12px var(--accent);
+}
+.nav-icon{
+  width:24px;height:24px;
+  display:flex;align-items:center;justify-content:center;
+}
+.nav-icon svg{
+  width:22px;height:22px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.nav-label{
+  font-size:10px;
+  font-weight:500;
+  letter-spacing:0.2px;
+}
+
+/* ===== PAGES ===== */
+.page{display:none;animation:fadeIn 0.25s ease-out}
+.page.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.page-header{padding:24px 20px 12px}
+.page-title{font-size:24px;font-weight:700;letter-spacing:-0.5px;margin-bottom:4px}
+.page-subtitle{font-size:13px;color:var(--text-secondary)}
+
+/* ===== TASKS ===== */
+.task-list{padding:8px 20px;display:flex;flex-direction:column;gap:10px}
+.task-card{
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:16px;
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
+.task-icon{
+  width:42px;height:42px;
+  border-radius:10px;
+  background:var(--bg-tertiary);
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;
+  flex-shrink:0;
+}
+.task-info{flex:1;min-width:0}
+.task-title{font-size:14px;font-weight:600;margin-bottom:4px}
+.task-desc{font-size:11px;color:var(--text-muted);margin-bottom:8px}
+.task-progress{height:4px;background:var(--bg-tertiary);border-radius:2px;overflow:hidden}
+.task-progress-bar{height:100%;background:var(--accent);border-radius:2px;transition:width 0.4s}
+.task-reward{
+  padding:6px 10px;
+  background:rgba(212,168,83,0.1);
+  border:1px solid rgba(212,168,83,0.2);
+  border-radius:8px;
+  font-size:12px;
+  font-weight:700;
+  color:var(--gold);
+  flex-shrink:0;
+}
+
+/* ===== REFERRAL ===== */
+.referral-card{
+  margin:8px 20px;
+  background:linear-gradient(135deg,var(--bg-card) 0%,var(--bg-tertiary) 100%);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:24px 20px;
+  text-align:center;
+}
+.referral-icon{font-size:42px;margin-bottom:12px}
+.referral-title{font-size:18px;font-weight:700;margin-bottom:6px;letter-spacing:-0.3px}
+.referral-desc{font-size:13px;color:var(--text-secondary);margin-bottom:20px;line-height:1.5}
+.referral-link{
+  background:var(--bg-secondary);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:12px;
+  font-size:12px;
+  color:var(--text-secondary);
+  font-family:'SF Mono','Menlo',monospace;
+  margin-bottom:12px;
+  word-break:break-all;
+}
+
+/* ===== WALLET PAGE ===== */
+.wallet-card{
+  margin:8px 20px;
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:20px;
+}
+.wallet-title{
+  font-size:16px;
+  font-weight:600;
+  margin-bottom:4px;
+}
+.wallet-subtitle{
+  font-size:12px;
+  color:var(--text-muted);
+  margin-bottom:20px;
+}
+.input-group{
+  margin-bottom:16px;
+}
+.input-label{
+  font-size:11px;
+  color:var(--text-muted);
+  text-transform:uppercase;
+  letter-spacing:1px;
+  margin-bottom:8px;
+  display:block;
+}
+.wallet-input{
+  width:100%;
+  background:var(--bg-secondary);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:14px;
+  color:var(--text-primary);
+  font-size:14px;
+  font-family:inherit;
+  outline:none;
+  transition:border-color 0.2s;
+}
+.wallet-input:focus{
+  border-color:var(--accent);
+}
+.withdraw-info{
+  background:rgba(16,185,129,0.1);
+  border:1px solid rgba(16,185,129,0.15);
+  border-radius:12px;
+  padding:12px;
+  margin-bottom:20px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.withdraw-info-label{
+  font-size:12px;
+  color:var(--text-muted);
+}
+.withdraw-info-value{
+  font-size:18px;
+  font-weight:700;
+  color:var(--success);
+}
+.min-withdraw{
+  font-size:11px;
+  color:var(--text-muted);
+  text-align:center;
+  margin-top:12px;
+}
+.btn-success{
+  background:linear-gradient(135deg,#10b981 0%,#059669 100%);
+  box-shadow:0 4px 16px rgba(16,185,129,0.25);
+}
+.divider{
+  height:1px;
+  background:var(--border);
+  margin:20px 20px;
+}
+.support-buttons{
+  display:flex;
+  gap:12px;
+  margin:0 20px 20px;
+}
+.support-btn{
+  flex:1;
+  padding:14px;
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:12px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  cursor:pointer;
+  transition:all 0.2s;
+  color:var(--text-primary);
+  font-weight:500;
+}
+.support-btn:active{transform:scale(0.97);background:var(--bg-tertiary)}
+
+/* ===== MODAL ===== */
+.modal{
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.85);
+  backdrop-filter:blur(8px);
+  z-index:1000;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+}
+.modal.active{display:flex;animation:fadeIn 0.3s}
+.modal-content{
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:32px 24px;
+  text-align:center;
+  width:100%;
+  max-width:340px;
+}
+.ad-timer{position:relative;width:140px;height:140px;margin:0 auto 20px}
+.timer-svg{width:100%;height:100%;transform:rotate(-90deg)}
+.timer-bg{fill:none;stroke:var(--bg-tertiary);stroke-width:5}
+.timer-progress{fill:none;stroke:var(--accent);stroke-width:5;stroke-linecap:round;stroke-dasharray:283;stroke-dashoffset:283;transition:stroke-dashoffset 1s linear}
+.timer-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:42px;font-weight:700;font-feature-settings:'tnum'}
+.modal-title{font-size:16px;font-weight:600;margin-bottom:6px}
+.modal-subtitle{font-size:12px;color:var(--text-muted)}
+
+/* ===== TOAST ===== */
+.toast{
+  position:fixed;
+  top:20px;
+  left:50%;
+  transform:translateX(-50%) translateY(-100px);
+  background:var(--bg-card);
+  border:1px solid var(--success);
+  border-radius:12px;
+  padding:12px 18px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  z-index:2000;
+  transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  box-shadow:0 8px 32px rgba(0,0,0,0.5);
+}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.toast-icon{
+  width:24px;height:24px;
+  border-radius:50%;
+  background:var(--success);
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;
+  color:#fff;
+}
+.toast-text{font-size:13px;font-weight:600}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<header class="header">
+  <div class="brand">
+    <div class="brand-logo">A</div>
+    <div class="brand-info">
+      <span class="brand-name">AdEarn Pro</span>
+      <span class="brand-status"><span class="status-dot"></span>Online</span>
+    </div>
+  </div>
+  <div class="lang-switcher">
+    <button class="lang-btn active" data-lang="ru">RU</button>
+    <button class="lang-btn" data-lang="en">EN</button>
+  </div>
+</header>
+
+<!-- PAGE: HOME -->
+<div class="page active" id="page-home">
+  <section class="balance-section">
+    <div class="balance-card">
+      <div class="balance-label">💎 Доступный баланс</div>
+      <div class="balance-amount"><span id="balance">0.00</span><span class="balance-currency">$</span></div>
+      <div class="balance-meta">
+        <div class="balance-meta-item">
+          <div class="balance-meta-label">Сегодня</div>
+          <div class="balance-meta-value positive">+<span id="todayEarned">0</span>$</div>
+        </div>
+        <div class="balance-meta-item">
+          <div class="balance-meta-label">За неделю</div>
+          <div class="balance-meta-value">0.00$</div>
+        </div>
+        <div class="balance-meta-item">
+          <div class="balance-meta-label">Всего</div>
+          <div class="balance-meta-value"><span id="totalEarned">0</span>$</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="level-progress-card" id="levelCard">
+    <div class="level-header">
+      <span class="level-badge" id="levelDisplay">Уровень 1</span>
+      <span class="level-reward" id="rewardDisplay">$0.0006</span>
+    </div>
+    <div class="progress-bar-bg"><div class="progress-fill" id="levelProgressFill"></div></div>
+    <div class="progress-text" id="progressText">0 / 500 просмотров</div>
+    <div class="level-next" id="nextLevelHint">→ На след. уровне: $0.0012 за просмотр</div>
+  </div>
+
+  <!-- Блок рекламы (без надписи "Доступное задание") -->
+  <section class="ad-card">
+    <div class="ad-card-bg"></div>
+    <div class="ad-card-inner">
+      <div class="ad-reward-small" id="adRewardSmall">$0.0006</div>
+      <div class="ad-reward-label">за просмотр</div>
+      <div class="ad-limit" id="adLimit">Осталось: 45 / 45</div>
+      <button class="btn-primary" id="watchBtn">
+        <span>▶</span>
+        <span id="btnText">Смотреть рекламу</span>
+      </button>
+    </div>
+  </section>
+</div>
+
+<!-- PAGE: TASKS -->
+<div class="page" id="page-tasks">
+  <div class="page-header">
+    <h1 class="page-title">Задания</h1>
+    <p class="page-subtitle">Выполняйте задания и получайте бонусы</p>
+  </div>
+  <div class="task-list">
+    <div class="task-card">
+      <div class="task-icon">🎯</div>
+      <div class="task-info">
+        <div class="task-title">Посмотреть 5 реклам</div>
+        <div class="task-desc">Прогресс: 0/5</div>
+        <div class="task-progress"><div class="task-progress-bar" style="width:0%"></div></div>
+      </div>
+      <div class="task-reward">+25$</div>
+    </div>
+    <div class="task-card">
+      <div class="task-icon">🔥</div>
+      <div class="task-info">
+        <div class="task-title">Серия из 10 дней</div>
+        <div class="task-desc">Заходите каждый день</div>
+        <div class="task-progress"><div class="task-progress-bar" style="width:10%"></div></div>
+      </div>
+      <div class="task-reward">+100$</div>
+    </div>
+    <div class="task-card">
+      <div class="task-icon">👥</div>
+      <div class="task-info">
+        <div class="task-title">Пригласить 3 друзей</div>
+        <div class="task-desc">Прогресс: 0/3</div>
+        <div class="task-progress"><div class="task-progress-bar" style="width:0%"></div></div>
+      </div>
+      <div class="task-reward">+150$</div>
+    </div>
+    <div class="task-card">
+      <div class="task-icon">⭐</div>
+      <div class="task-info">
+        <div class="task-title">Достичь 5 уровня</div>
+        <div class="task-desc">Получайте опыт</div>
+        <div class="task-progress"><div class="task-progress-bar" style="width:20%"></div></div>
+      </div>
+      <div class="task-reward">+200$</div>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE: RANKING -->
+<div class="page" id="page-ranking">
+  <div class="page-header">
+    <h1 class="page-title">🏆 Рейтинг</h1>
+    <p class="page-subtitle">Топ пользователей по заработку</p>
+  </div>
+  <div class="ranking-list" id="rankingList"></div>
+</div>
+
+<!-- PAGE: REFERRAL -->
+<div class="page" id="page-referral">
+  <div class="page-header">
+    <h1 class="page-title">Партнёрская программа</h1>
+    <p class="page-subtitle">Приглашайте друзей — получайте 10% от их дохода</p>
+  </div>
+  <div class="referral-card">
+    <div class="referral-icon">👥</div>
+    <div class="referral-title">Ваша реферальная ссылка</div>
+    <div class="referral-desc">Поделитесь ссылкой с друзьями и получайте бонусы за каждого активного реферала</div>
+    <div class="referral-link" id="refLink">https://t.me/your_bot?start=ref_000</div>
+    <button class="btn-primary" id="copyRefBtn">Скопировать ссылку</button>
+  </div>
+  <div class="section-title"><span class="section-title-text">Ваши рефералы</span></div>
+  <div style="margin:8px 20px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:40px 20px;text-align:center;color:var(--text-muted);font-size:13px">
+    Пока никого нет. Пригласите первого друга!
+  </div>
+</div>
+
+<!-- PAGE: WALLET (без кнопки сохранения кошелька) -->
+<div class="page" id="page-wallet">
+  <div class="page-header">
+    <h1 class="page-title">💰 Кошелёк</h1>
+    <p class="page-subtitle">Вывод средств и поддержка</p>
+  </div>
+  
+  <div class="wallet-card">
+    <div class="wallet-title">Вывод средств</div>
+    <div class="wallet-subtitle">Минимальная сумма: 1$</div>
+    
+    <div class="input-group">
+      <div class="input-label">Криптовалютный кошелёк (USDT TRC20 / BTC)</div>
+      <input type="text" class="wallet-input" id="walletAddress" placeholder="Введите адрес кошелька...">
+    </div>
+    
+    <div class="withdraw-info">
+      <span class="withdraw-info-label">Доступно:</span>
+      <span class="withdraw-info-value" id="withdrawBalance">0.00$</span>
+    </div>
+    
+    <div class="input-group">
+      <div class="input-label">Сумма ($)</div>
+      <input type="number" class="wallet-input" id="withdrawAmount" placeholder="Минимум 1" step="0.01" min="1">
+    </div>
+    
+    <button class="btn-primary btn-success" id="withdrawBtn">💸 Вывести</button>
+    <div class="min-withdraw">Комиссия: 0% | Время: до 24ч</div>
+  </div>
+  
+  <div class="divider"></div>
+  
+  <div class="support-buttons">
+    <div class="support-btn" id="channelBtn">
+      <span>📢</span>
+      <span>Наш канал</span>
+    </div>
+    <div class="support-btn" id="supportBtn">
+      <span>💬</span>
+      <span>Поддержка</span>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<!-- BOTTOM NAVIGATION -->
+<nav class="bottom-nav">
+  <button class="nav-item active" data-page="home"><div class="nav-icon"><svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9"/><path d="M5 10v10a1 1 0 001 1h3v-6h6v6h3a1 1 0 001-1V10"/></svg></div><span class="nav-label">Главная</span></button>
+  <button class="nav-item" data-page="tasks"><div class="nav-icon"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div><span class="nav-label">Задания</span></button>
+  <button class="nav-item" data-page="ranking"><div class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg></div><span class="nav-label">Рейтинг</span></button>
+  <button class="nav-item" data-page="referral"><div class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 00-3-3.8"/></svg></div><span class="nav-label">Друзья</span></button>
+  <button class="nav-item" data-page="wallet"><div class="nav-icon"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="16" rx="2"/><path d="M18 10a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></div><span class="nav-label">Кошелёк</span></button>
+</nav>
+
+<!-- MODAL -->
+<div class="modal" id="adModal">
+  <div class="modal-content">
+    <div class="ad-timer"><svg class="timer-svg" viewBox="0 0 100 100"><circle class="timer-bg" cx="50" cy="50" r="45"></circle><circle class="timer-progress" cx="50" cy="50" r="45" id="timerCircle"></circle></svg><span class="timer-text" id="timerText">15</span></div>
+    <div class="modal-title">Воспроизведение рекламы</div>
+    <div class="modal-subtitle">Не закрывайте окно</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><div class="toast-icon">✓</div><div class="toast-text" id="toastText"></div></div>
+
+<script>
+const tg = window.Telegram?.WebApp;
+if(tg){tg.ready();tg.expand();tg.setHeaderColor('#0d0f14');tg.setBackgroundColor('#0d0f14')}
+
+const BASE_REWARD = 0.0006;
+const ADS_PER_LEVEL = 500;
+const DAILY_LIMIT = 45;
+const MIN_WITHDRAW = 1;
+
+function formatMoney(amount) {
+  let rounded = Math.round(amount * 10000) / 10000;
+  return rounded.toString();
+}
+
+function getLevelByWatched(adsWatched) {
+  return Math.floor(adsWatched / ADS_PER_LEVEL) + 1;
+}
+function getRewardByLevel(level) {
+  return BASE_REWARD * level;
+}
+
+function resetDailyIfNeeded() {
+  const lastDate = localStorage.getItem('lastWatchDate');
+  const today = new Date().toDateString();
+  if (lastDate !== today) {
+    localStorage.setItem('watchedToday', '0');
+    localStorage.setItem('lastWatchDate', today);
+    state.watchedToday = 0;
+  } else {
+    state.watchedToday = parseInt(localStorage.getItem('watchedToday')) || 0;
+  }
+}
+
+const translations = {
+  ru: {
+    brand_name: "AdEarn Pro", brand_status: "Online", balance_label: "Доступный баланс",
+    today: "Сегодня", week: "За неделю", total: "Всего",
+    watch_btn: "Смотреть рекламу",
+    per_view: "за просмотр",
+    remaining: "Осталось:",
+    tasks_title: "Задания", tasks_subtitle: "Выполняйте задания и получайте бонусы",
+    ranking_title: "🏆 Рейтинг", ranking_subtitle: "Топ пользователей по заработку",
+    referral_title: "Партнёрская программа", referral_subtitle: "Приглашайте друзей — получайте 10% от их дохода",
+    your_link: "Ваша реферальная ссылка", referral_desc: "Поделитесь ссылкой с друзьями и получайте бонусы за каждого активного реферала",
+    copy_btn: "Скопировать ссылку", no_refs: "Пока никого нет. Пригласите первого друга!", your_refs: "Ваши рефералы",
+    wallet_title: "💰 Кошелёк", wallet_subtitle: "Вывод средств и поддержка",
+    withdraw_title: "Вывод средств", min_withdraw_text: "Минимальная сумма: 1$",
+    wallet_address_label: "Криптовалютный кошелёк (USDT TRC20 / BTC)",
+    available_for_withdraw: "Доступно:", withdraw_amount_label: "Сумма ($)",
+    withdraw_btn: "💸 Вывести", fee_text: "Комиссия: 0% | Время: до 24ч",
+    channel_btn: "Наш канал", support_btn: "Поддержка",
+    insufficient_balance: "Недостаточно средств!", min_amount_error: "Минимальная сумма: 1$",
+    wallet_empty_error: "Введите адрес кошелька!", withdraw_success: "Заявка на вывод отправлена!",
+    level_prefix: "Уровень", views_to_next: "просмотров",
+    next_level_hint: "→ На след. уровне: ${{reward}} за просмотр",
+    earned: "зачислено", limit_reached: "Лимит на сегодня! Возвращайтесь завтра."
+  },
+  en: {
+    brand_name: "AdEarn Pro", brand_status: "Online", balance_label: "Available Balance",
+    today: "Today", week: "This week", total: "Total",
+    watch_btn: "Watch Ad",
+    per_view: "per view",
+    remaining: "Remaining:",
+    tasks_title: "Tasks", tasks_subtitle: "Complete tasks and get bonuses",
+    ranking_title: "🏆 Ranking", ranking_subtitle: "Top users by earnings",
+    referral_title: "Referral Program", referral_subtitle: "Invite friends — get 10% of their earnings",
+    your_link: "Your referral link", referral_desc: "Share the link with friends and get bonuses for each active referral",
+    copy_btn: "Copy link", no_refs: "No referrals yet. Invite your first friend!", your_refs: "Your referrals",
+    wallet_title: "💰 Wallet", wallet_subtitle: "Withdrawals & Support",
+    withdraw_title: "Withdraw Funds", min_withdraw_text: "Minimum: 1$",
+    wallet_address_label: "Crypto Wallet (USDT TRC20 / BTC)",
+    available_for_withdraw: "Available:", withdraw_amount_label: "Amount ($)",
+    withdraw_btn: "💸 Withdraw", fee_text: "Fee: 0% | Time: up to 24h",
+    channel_btn: "Our Channel", support_btn: "Support",
+    insufficient_balance: "Insufficient balance!", min_amount_error: "Minimum amount: 1$",
+    wallet_empty_error: "Enter wallet address!", withdraw_success: "Withdrawal request sent!",
+    level_prefix: "Level", views_to_next: "views",
+    next_level_hint: "→ Next level: ${{reward}} per view",
+    earned: "credited", limit_reached: "Daily limit reached! Come back tomorrow."
+  }
+};
+
+let currentLang = localStorage.getItem('language') || 'ru';
+let savedWallet = localStorage.getItem('walletAddress') || '';
+
+const state = {
+  balance: parseFloat(localStorage.getItem('balance')) || 0,
+  totalEarned: parseFloat(localStorage.getItem('totalEarned')) || 0,
+  adsWatched: parseInt(localStorage.getItem('adsWatched')) || 0,
+  todayEarned: parseFloat(localStorage.getItem('todayEarned')) || 0,
+  streak: parseInt(localStorage.getItem('streak')) || 0,
+  transactions: JSON.parse(localStorage.getItem('transactions')||'[]'),
+  adDuration: 15,
+  watchedToday: parseInt(localStorage.getItem('watchedToday')) || 0,
+  canWatch: true
+};
+
+function getCurrentReward() {
+  return getRewardByLevel(getLevelByWatched(state.adsWatched));
+}
+
+function save(){
+  localStorage.setItem('balance', state.balance);
+  localStorage.setItem('totalEarned', state.totalEarned);
+  localStorage.setItem('adsWatched', state.adsWatched);
+  localStorage.setItem('todayEarned', state.todayEarned);
+  localStorage.setItem('streak', state.streak);
+  localStorage.setItem('transactions', JSON.stringify(state.transactions));
+  localStorage.setItem('watchedToday', state.watchedToday);
+}
+
+function updateUILocalized() {
+  const t = translations[currentLang];
+  const reward = getCurrentReward();
+  const rewardFormatted = formatMoney(reward);
+  document.getElementById('adRewardSmall').textContent = `$${rewardFormatted}`;
+  document.getElementById('balance').textContent = formatMoney(state.balance);
+  document.getElementById('todayEarned').textContent = formatMoney(state.todayEarned);
+  document.getElementById('totalEarned').textContent = formatMoney(state.totalEarned);
+  document.getElementById('withdrawBalance').textContent = formatMoney(state.balance) + '$';
+  
+  const level = getLevelByWatched(state.adsWatched);
+  document.getElementById('levelDisplay').innerHTML = `${t.level_prefix} ${level}`;
+  document.getElementById('rewardDisplay').textContent = `$${rewardFormatted}`;
+  
+  const nextReward = getRewardByLevel(level + 1);
+  const nextHint = t.next_level_hint.replace('{{reward}}', formatMoney(nextReward));
+  document.getElementById('nextLevelHint').textContent = nextHint;
+  
+  const remaining = DAILY_LIMIT - state.watchedToday;
+  document.getElementById('adLimit').innerHTML = `${t.remaining} ${remaining} / ${DAILY_LIMIT}`;
+  
+  const btn = document.getElementById('watchBtn');
+  if(remaining <= 0) {
+    btn.disabled = true;
+    document.getElementById('btnText').textContent = t.limit_reached;
+  } else {
+    if(state.canWatch) btn.disabled = false;
+    document.getElementById('btnText').textContent = t.watch_btn;
+  }
+}
+
+function updateLevelUI() {
+  const t = translations[currentLang];
+  const ads = state.adsWatched;
+  const level = getLevelByWatched(ads);
+  const watchedInCurrent = ads % ADS_PER_LEVEL;
+  const percent = (watchedInCurrent / ADS_PER_LEVEL) * 100;
+  document.getElementById('levelProgressFill').style.width = `${percent}%`;
+  document.getElementById('progressText').innerHTML = `${watchedInCurrent} / ${ADS_PER_LEVEL} ${t.views_to_next}`;
+  document.getElementById('levelDisplay').innerHTML = `${t.level_prefix} ${level}`;
+  const rewardFormatted = formatMoney(getCurrentReward());
+  document.getElementById('rewardDisplay').textContent = `$${rewardFormatted}`;
+  document.getElementById('adRewardSmall').textContent = `$${rewardFormatted}`;
+  
+  const nextReward = getRewardByLevel(level + 1);
+  const nextHint = t.next_level_hint.replace('{{reward}}', formatMoney(nextReward));
+  document.getElementById('nextLevelHint').textContent = nextHint;
+}
+
+function updateWalletUI() {
+  const walletInput = document.getElementById('walletAddress');
+  if(walletInput) walletInput.value = savedWallet;
+}
+
+function setLanguage(lang) {
+  currentLang = lang;
+  localStorage.setItem('language', lang);
+  document.querySelectorAll('.lang-btn').forEach(btn => {
+    if(btn.dataset.lang === lang) btn.classList.add('active');
+    else btn.classList.remove('active');
+  });
+  const t = translations[lang];
+  document.querySelector('.brand-name').textContent = t.brand_name;
+  document.querySelector('.brand-status').innerHTML = `<span class="status-dot"></span>${t.brand_status}`;
+  document.querySelector('.balance-label').innerHTML = `💎 ${t.balance_label}`;
+  document.querySelectorAll('.balance-meta-label')[0].textContent = t.today;
+  document.querySelectorAll('.balance-meta-label')[1].textContent = t.week;
+  document.querySelectorAll('.balance-meta-label')[2].textContent = t.total;
+  document.querySelector('.ad-reward-label').textContent = t.per_view;
+  document.getElementById('btnText').textContent = t.watch_btn;
+  document.querySelector('#page-tasks .page-title').textContent = t.tasks_title;
+  document.querySelector('#page-tasks .page-subtitle').textContent = t.tasks_subtitle;
+  document.querySelector('#page-ranking .page-title').textContent = t.ranking_title;
+  document.querySelector('#page-ranking .page-subtitle').textContent = t.ranking_subtitle;
+  document.querySelector('#page-referral .page-title').textContent = t.referral_title;
+  document.querySelector('#page-referral .page-subtitle').textContent = t.referral_subtitle;
+  document.querySelector('.referral-title').textContent = t.your_link;
+  document.querySelector('.referral-desc').textContent = t.referral_desc;
+  document.getElementById('copyRefBtn').innerHTML = `📋 ${t.copy_btn}`;
+  document.querySelector('#page-wallet .page-title').textContent = t.wallet_title;
+  document.querySelector('#page-wallet .page-subtitle').textContent = t.wallet_subtitle;
+  document.querySelector('.wallet-title').textContent = t.withdraw_title;
+  document.querySelector('.wallet-subtitle').textContent = t.min_withdraw_text;
+  document.querySelector('.input-label').textContent = t.wallet_address_label;
+  document.querySelector('.withdraw-info-label').textContent = t.available_for_withdraw;
+  const withdrawLabel = document.querySelectorAll('.input-label')[1];
+  if(withdrawLabel) withdrawLabel.textContent = t.withdraw_amount_label;
+  document.getElementById('withdrawBtn').innerHTML = t.withdraw_btn;
+  document.querySelector('.min-withdraw').textContent = t.fee_text;
+  document.querySelector('#channelBtn span:last-child').textContent = t.channel_btn;
+  document.querySelector('#supportBtn span:last-child').textContent = t.support_btn;
+  document.querySelector('.modal-title').textContent = "Воспроизведение рекламы";
+  document.querySelector('.modal-subtitle').textContent = "Не закрывайте окно";
+  const navLabels = document.querySelectorAll('.nav-label');
+  if(navLabels[0]) navLabels[0].textContent = 'Главная';
+  if(navLabels[1]) navLabels[1].textContent = t.tasks_title || 'Задания';
+  if(navLabels[2]) navLabels[2].textContent = 'Рейтинг';
+  if(navLabels[3]) navLabels[3].textContent = 'Друзья';
+  if(navLabels[4]) navLabels[4].textContent = 'Кошелёк';
+  updateUILocalized();
+  updateLevelUI();
+  updateWalletUI();
+  updateRanking();
+}
+
+function initUser(){
+  if(tg?.initDataUnsafe?.user){
+    const u = tg.initDataUnsafe.user;
+    document.getElementById('refLink').textContent = `https://t.me/your_bot?start=ref_${u.id}`;
+  }
+  updateRanking();
+}
+
+function watchAd(){
+  const t = translations[currentLang];
+  resetDailyIfNeeded();
+  
+  if(state.watchedToday >= DAILY_LIMIT) {
+    showToast(t.limit_reached);
+    return;
+  }
+  if(!state.canWatch) return;
+  if(tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+  
+  document.getElementById('adModal').classList.add('active');
+  let time = state.adDuration;
+  document.getElementById('timerText').textContent = time;
+  const c = 283;
+  document.getElementById('timerCircle').style.strokeDashoffset = 0;
+  const interval = setInterval(()=>{
+    time--;
+    document.getElementById('timerText').textContent = time;
+    document.getElementById('timerCircle').style.strokeDashoffset = c * ((state.adDuration - time) / state.adDuration);
+    if(time<=0){
+      clearInterval(interval);
+      completeAd();
+    }
+  },1000);
+}
+
+function completeAd(){
+  document.getElementById('adModal').classList.remove('active');
+  const reward = getCurrentReward();
+  state.balance += reward;
+  state.totalEarned += reward;
+  state.todayEarned += reward;
+  state.adsWatched++;
+  state.streak++;
+  state.watchedToday++;
+  
+  save();
+  updateUILocalized();
+  updateLevelUI();
+  updateRanking();
+  showToast(`+${formatMoney(reward)}$ ${translations[currentLang].earned}`);
+  if(tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+}
+
+function showToast(text){
+  document.getElementById('toastText').textContent = text;
+  const toast = document.getElementById('toast');
+  toast.classList.add('show');
+  setTimeout(()=>toast.classList.remove('show'),2500);
+}
+
+function getDemoUsers() {
+  const tgUser = tg?.initDataUnsafe?.user;
+  const currentUserName = tgUser ? (tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : '')) : 'Вы';
+  const currentUserId = tgUser ? String(tgUser.id) : 'user123';
+  const currentEarned = state.totalEarned;
+  let demo = [
+    { id: '999001', name: 'Алексей', earned: 12580, avatar: 'А' },
+    { id: '999002', name: 'Мария', earned: 9870, avatar: 'М' },
+    { id: '999003', name: 'Дмитрий', earned: 7540, avatar: 'Д' },
+    { id: '999004', name: 'Елена', earned: 6320, avatar: 'Е' },
+    { id: '999005', name: 'Сергей', earned: 5210, avatar: 'С' },
+    { id: '999006', name: 'Анна', earned: 4890, avatar: 'А' },
+    { id: '999007', name: 'Иван', earned: 3450, avatar: 'И' },
+    { id: '999008', name: 'Ольга', earned: 2780, avatar: 'О' },
+    { id: '999009', name: 'Павел', earned: 2340, avatar: 'П' },
+    { id: '999010', name: 'Татьяна', earned: 1890, avatar: 'Т' }
+  ];
+  const existing = demo.find(u => u.id === currentUserId);
+  if (!existing && currentEarned > 0) {
+    demo.push({ id: currentUserId, name: currentUserName, earned: currentEarned, avatar: currentUserName[0]?.toUpperCase() || 'Ю' });
+    demo.sort((a,b) => b.earned - a.earned);
+    demo.splice(10);
+  }
+  const userInDemo = demo.find(u => u.id === currentUserId);
+  if (userInDemo && currentEarned > userInDemo.earned) {
+    userInDemo.earned = currentEarned;
+    demo.sort((a,b) => b.earned - a.earned);
+    demo.splice(10);
+  }
+  return demo;
+}
+
+function updateRanking() {
+  const users = getDemoUsers();
+  const currentUserId = tg?.initDataUnsafe?.user ? String(tg.initDataUnsafe.user.id) : 'user123';
+  const container = document.getElementById('rankingList');
+  if(!container) return;
+  container.innerHTML = users.map((user, idx) => {
+    const isCurrent = user.id === currentUserId;
+    let medal = '';
+    if (idx === 0) medal = '🥇';
+    else if (idx === 1) medal = '🥈';
+    else if (idx === 2) medal = '🥉';
+    return `<div class="ranking-item ${isCurrent ? 'is-current-user' : ''}">
+      <div class="ranking-position">${idx+1}</div>
+      <div class="ranking-avatar">${user.avatar}</div>
+      <div class="ranking-info"><div class="ranking-name">${user.name} ${medal}</div><div class="ranking-earned">Всего: ${formatMoney(user.earned)}$</div></div>
+      <div class="ranking-amount">${formatMoney(user.earned)}$</div>
+    </div>`;
+  }).join('');
+}
+
+// Navigation
+document.querySelectorAll('.nav-item').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('page-'+btn.dataset.page).classList.add('active');
+    if(btn.dataset.page === 'ranking') updateRanking();
+    if(tg?.HapticFeedback) tg.HapticFeedback.selectionChanged();
+    window.scrollTo(0,0);
+  });
+});
+
+// Wallet functions
+function withdraw() {
+  const t = translations[currentLang];
+  const amount = parseFloat(document.getElementById('withdrawAmount').value);
+  const wallet = document.getElementById('walletAddress').value.trim() || savedWallet;
+  
+  if(!wallet) {
+    showToast(t.wallet_empty_error);
+    return;
+  }
+  if(isNaN(amount) || amount < MIN_WITHDRAW) {
+    showToast(t.min_amount_error);
+    return;
+  }
+  if(amount > state.balance) {
+    showToast(t.insufficient_balance);
+    return;
+  }
+  
+  // Сохраняем кошелёк при успешном выводе
+  if(document.getElementById('walletAddress').value.trim() && !savedWallet) {
+    savedWallet = document.getElementById('walletAddress').value.trim();
+    localStorage.setItem('walletAddress', savedWallet);
+    updateWalletUI();
+  }
+  
+  state.balance -= amount;
+  save();
+  updateUILocalized();
+  document.getElementById('withdrawAmount').value = '';
+  showToast(t.withdraw_success);
+  if(tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+}
+
+document.getElementById('watchBtn').addEventListener('click',watchAd);
+document.getElementById('copyRefBtn').addEventListener('click',()=>{
+  const link = document.getElementById('refLink').textContent;
+  if(navigator.clipboard) navigator.clipboard.writeText(link);
+  showToast(translations[currentLang].copy_btn);
+  if(tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+});
+
+document.getElementById('withdrawBtn')?.addEventListener('click', withdraw);
+document.getElementById('channelBtn')?.addEventListener('click', () => {
+  if(tg?.openTelegramLink) tg.openTelegramLink('https://t.me/your_channel');
+  else window.open('https://t.me/your_channel', '_blank');
+  showToast('Открывается канал...');
+});
+document.getElementById('supportBtn')?.addEventListener('click', () => {
+  if(tg?.openTelegramLink) tg.openTelegramLink('https://t.me/your_support');
+  else window.open('https://t.me/your_support', '_blank');
+  showToast('Открывается поддержка...');
+});
+
+document.querySelectorAll('.lang-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{ setLanguage(btn.dataset.lang); });
+});
+
+resetDailyIfNeeded();
+initUser();
+setLanguage(currentLang);
+updateUILocalized();
+updateLevelUI();
+updateRanking();
+</script>
+</body>
+</html>
