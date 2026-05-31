@@ -635,7 +635,6 @@ let pvpActiveMatch = null;
 let matchTimerInterval = null;
 let queueTimerInterval = null;
 
-// Получить PvP статистику
 // Получить PvP статистику
 async function loadPvPStats() {
     // Ждём пока появится токен
@@ -665,9 +664,7 @@ async function loadPvPStats() {
     }
 }
 
-// Рендер PvP вкладки
-// В script.js найдите функцию renderPvP и замените её на эту:
-
+// Рендер PvP вкладки
 async function renderPvP() {
     const container = document.getElementById('tab-pvp');
     if (!container) return;
@@ -792,59 +789,63 @@ async function renderPvP() {
     startPvPPolling();
 }
 
-// Загрузить PvP лидерборд
-async function loadPvPLeaderboard(league) {
-    const res = await apiRequest('GET', `/api/pvp/leaderboard?league=${league}`);
-    if (res && res.success && res.leaders) {
-        const listEl = document.getElementById('pvpLeaderboardList');
-        if (listEl) {
-            if (res.leaders.length === 0) {
-                listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text3)">Нет игроков в лиге</div>';
-            } else {
-                listEl.innerHTML = res.leaders.map(leader => `
-                    <div class="pvp-leaderboard-item">
-                        <div class="lb-rank-icon">${leader.rank === 1 ? '🥇' : leader.rank === 2 ? '🥈' : leader.rank === 3 ? '🥉' : leader.rank}</div>
-                        <div class="lb-player-info">
-                            <div class="lb-player-name">${escapeHtml(leader.username)}</div>
-                            <div class="lb-player-level">Ур. ${leader.level}</div>
-                        </div>
-                        <div class="lb-league">
-                            ${leader.leagueIcon} ${leader.league}
-                        </div>
-                        <div class="lb-points">${leader.points} ⭐</div>
-                    </div>
-                `).join('');
-            }
-        }
-    }
-}
+// Загрузить PvP лидерборд
+async function loadPvPLeaderboard(league) {
+    if (!state.token) return;
+    
+    const res = await apiRequest('GET', `/api/pvp/leaderboard?league=${league}`);
+    if (res && res.success && res.leaders) {
+        const listEl = document.getElementById('pvpLeaderboardList');
+        if (listEl) {
+            if (res.leaders.length === 0) {
+                listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text3)">Нет игроков в лиге</div>';
+            } else {
+                listEl.innerHTML = res.leaders.map(leader => `
+                    <div class="pvp-leaderboard-item">
+                        <div class="lb-rank-icon">${leader.rank === 1 ? '🥇' : leader.rank === 2 ? '🥈' : leader.rank === 3 ? '🥉' : leader.rank}</div>
+                        <div class="lb-player-info">
+                            <div class="lb-player-name">${escapeHtml(leader.username)}</div>
+                            <div class="lb-player-level">Ур. ${leader.level}</div>
+                        </div>
+                        <div class="lb-league">
+                            ${leader.leagueIcon} ${leader.league}
+                        </div>
+                        <div class="lb-points">${leader.points} ⭐</div>
+                    </div>
+                `).join('');
+            }
+        }
+    }
+}
 
-// Загрузить историю боёв
-async function loadPvPHistory() {
-    const res = await apiRequest('GET', '/api/pvp/history');
-    if (res && res.success && res.history) {
-        const listEl = document.getElementById('pvpHistoryList');
-        if (listEl) {
-            if (res.history.length === 0) {
-                listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text3)">Нет боёв</div>';
-            } else {
-                listEl.innerHTML = res.history.map(match => `
-                    <div class="pvp-history-item ${match.isWinner ? 'pvp-history-win' : 'pvp-history-lose'}">
-                        <div>
-                            <div class="history-opponent">${escapeHtml(match.opponentName)}</div>
-                            <div class="history-result ${match.isWinner ? 'history-result-win' : 'history-result-lose'}">
-                                ${match.isWinner ? '🏆 Победа' : '💀 Поражение'}
-                            </div>
-                        </div>
-                        <div class="history-amount">
-                            ${match.isWinner ? `+${match.winnerGets}` : `-${match.betAmount}`} MMO
-                        </div>
-                    </div>
-                `).join('');
-            }
-        }
-    }
-}
+// Загрузить историю боёв
+async function loadPvPHistory() {
+    if (!state.token) return;
+    
+    const res = await apiRequest('GET', '/api/pvp/history');
+    if (res && res.success && res.history) {
+        const listEl = document.getElementById('pvpHistoryList');
+        if (listEl) {
+            if (res.history.length === 0) {
+                listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text3)">Нет боёв</div>';
+            } else {
+                listEl.innerHTML = res.history.map(match => `
+                    <div class="pvp-history-item ${match.isWinner ? 'pvp-history-win' : 'pvp-history-lose'}">
+                        <div>
+                            <div class="history-opponent">${escapeHtml(match.opponentName)}</div>
+                            <div class="history-result ${match.isWinner ? 'history-result-win' : 'history-result-lose'}">
+                                ${match.isWinner ? '🏆 Победа' : '💀 Поражение'}
+                            </div>
+                        </div>
+                        <div class="history-amount">
+                            ${match.isWinner ? `+${match.winnerGets}` : `-${match.betAmount}`} MMO
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+    }
+}
 
 // Переключение очереди PvP
 async function togglePvPQueue() {
@@ -932,16 +933,15 @@ function stopQueueTimer() {
     }
 }
 
-// Polling для проверки статуса
 // Polling для проверки статуса
 function startPvPPolling() {
     if (pvpPollingInterval) clearInterval(pvpPollingInterval);
     
     pvpPollingInterval = setInterval(async () => {
-        // Проверяем, активна ли вкладка PvP
+        // Проверяем, активна ли вкладка PvP и есть ли токен
         const pvpTab = document.getElementById('tab-pvp');
-        if (!pvpTab || !pvpTab.classList.contains('active')) {
-            return; // Не обновляем, если вкладка не активна
+        if (!pvpTab || !pvpTab.classList.contains('active') || !state.token) {
+            return; // Не обновляем, если вкладка не активна или нет токена
         }
         
         const res = await apiRequest('GET', '/api/pvp/queue/status');
@@ -971,21 +971,33 @@ function startPvPPolling() {
     }, 3000);
 }
 
-// Остановить PvP polling
-function stopPvPPolling() {
-    if (pvpPollingInterval) {
-        clearInterval(pvpPollingInterval);
-        pvpPollingInterval = null;
-    }
-    if (matchTimerInterval) {
-        clearInterval(matchTimerInterval);
-        matchTimerInterval = null;
-    }
-    if (queueTimerInterval) {
-        clearInterval(queueTimerInterval);
-        queueTimerInterval = null;
-    }
-}
+function switchTab(tab) {
+    // Останавливаем PvP polling при уходе с вкладки
+    if (tab !== 'pvp') {
+        stopPvPPolling();
+    }
+    
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById(`tab-${tab}`).classList.add('active');
+    document.getElementById(`nav-${tab}`).classList.add('active');
+    document.getElementById('mainContent').scrollTop = 0;
+    
+    isMarketplaceTabActive = (tab === 'shop');
+
+    if (tab === 'leaderboard') {
+        leaderboardCache = { data: null, expiresAt: 0 };
+        renderLeaderboard();
+    }
+    if (tab === 'special') renderSpecialQuests();
+    if (tab === 'wallet') {
+        updateHeader();
+        checkActiveRequests();
+    }
+    if (tab === 'shop') renderMarketplaceBuy();
+    if (tab === 'friends') renderFriendsList();
+    if (tab === 'pvp') renderPvP();
+}
 
 // Показать модальное окно найденного матча
 function showMatchFoundModal(match) {
@@ -2565,7 +2577,7 @@ function openCustomLinkAndComplete(questId, link) {
             saveQuestStatusesToStorage();
             updateQuestButton(questId, 'available');
             
-            showToast(`✅ Квест "${getQuestTitle(questId)}" выполнен! Нажмите "ЗАБРАТЬ" для получения награды.`, '🎁');
+            showToast(`✅ Квест "${getQuestTitle(questId)}" выполнен! Нажмите "ЗАБРАТЬ" для получения награды.`, '??');
         }
     }, 60000);
     
