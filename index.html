@@ -1,850 +1,324 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>AdEarn Pro</title>
+<meta name="type" value="app" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
+<meta name="msapplication-tap-highlight" content="no">
+<title>DNA MMO — Merge & Evolve</title>
+<meta property="og:title" content="DNA MMO — Merge & Evolve">
+<meta property="og:description" content="Open DNA capsules, collect creatures, merge to evolve and earn MMO tokens.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<link rel="stylesheet" href="style.css">
+<!-- Telegram WebApp SDK -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<style>
-*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
-
-:root{
-  --bg-primary:#0d0f14;
-  --bg-secondary:#13161d;
-  --bg-tertiary:#1a1e27;
-  --bg-card:#161a23;
-  --border:rgba(255,255,255,0.06);
-  --border-active:rgba(255,255,255,0.12);
-  --text-primary:#e7e9ee;
-  --text-secondary:#8b92a5;
-  --text-muted:#5a6275;
-  --accent:#3b82f6;
-  --accent-dim:#1e3a8a;
-  --success:#10b981;
-  --warning:#f59e0b;
-  --danger:#ef4444;
-  --gold:#d4a853;
-}
-
-html,body{background:var(--bg-primary);color:var(--text-primary);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
-body{padding-bottom:90px;overflow-x:hidden}
-body::before{
-  content:'';
-  position:fixed;
-  inset:0;
-  background-image:linear-gradient(rgba(255,255,255,0.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.015) 1px,transparent 1px);
-  background-size:32px 32px;
-  pointer-events:none;
-  z-index:0;
-}
-body::after{
-  content:'';
-  position:fixed;
-  top:-200px;left:50%;
-  transform:translateX(-50%);
-  width:600px;height:400px;
-  background:radial-gradient(ellipse at center,rgba(59,130,246,0.08) 0%,transparent 70%);
-  pointer-events:none;
-  z-index:0;
-}
-.container{position:relative;z-index:1}
-
-/* ===== HEADER ===== */
-.header{
-  padding:20px 20px 16px;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  border-bottom:1px solid var(--border);
-  background:rgba(13,15,20,0.85);
-  backdrop-filter:blur(20px);
-  position:sticky;
-  top:0;
-  z-index:50;
-}
-.brand{display:flex;align-items:center;gap:10px}
-.brand-logo{
-  width:36px;height:36px;
-  border-radius:10px;
-  background:linear-gradient(135deg,#1e3a8a,#3b82f6);
-  display:flex;align-items:center;justify-content:center;
-  font-weight:700;
-  font-size:16px;
-  border:1px solid rgba(59,130,246,0.3);
-  box-shadow:0 4px 12px rgba(59,130,246,0.2);
-}
-.brand-info{display:flex;flex-direction:column;gap:1px}
-.brand-name{font-size:14px;font-weight:600;letter-spacing:-0.2px}
-.brand-status{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:5px}
-.status-dot{width:5px;height:5px;border-radius:50%;background:var(--success);box-shadow:0 0 8px var(--success)}
-
-.lang-switcher{
-  display:flex;
-  gap:4px;
-  background:var(--bg-card);
-  border:1px solid var(--border);
-  border-radius:12px;
-  padding:4px;
-}
-.lang-btn{
-  padding:6px 12px;
-  border-radius:8px;
-  font-size:12px;
-  font-weight:600;
-  cursor:pointer;
-  transition:all 0.2s;
-  background:transparent;
-  border:none;
-  color:var(--text-muted);
-}
-.lang-btn.active{background:var(--accent);color:#fff;box-shadow:0 2px 8px rgba(59,130,246,0.3);}
-.lang-btn:active{transform:scale(0.95)}
-
-/* ===== BALANCE CARD ===== */
-.balance-section{padding:24px 20px 20px}
-.balance-card{
-  background:linear-gradient(135deg,var(--bg-card) 0%,var(--bg-secondary) 100%);
-  border:1px solid var(--border);
-  border-radius:16px;
-  padding:24px 20px;
-  position:relative;
-  overflow:hidden;
-}
-.balance-card::before{
-  content:'';
-  position:absolute;
-  top:0;right:0;
-  width:200px;height:200px;
-  background:radial-gradient(circle,rgba(59,130,246,0.08) 0%,transparent 60%);
-  pointer-events:none;
-}
-.balance-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px;}
-.balance-amount{font-size:36px;font-weight:700;letter-spacing:-1px;margin-bottom:4px;font-feature-settings:'tnum';}
-.balance-currency{color:var(--text-muted);font-size:24px;font-weight:500;margin-left:4px;}
-.balance-meta{display:flex;gap:16px;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);}
-.balance-meta-item{flex:1}
-.balance-meta-label{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
-.balance-meta-value{font-size:14px;font-weight:600;color:var(--text-primary)}
-.balance-meta-value.positive{color:var(--success)}
-
-/* ===== LEVEL PROGRESS ===== */
-.level-progress-card{
-  margin:0 20px 20px;
-  background:var(--bg-card);
-  border:1px solid var(--border);
-  border-radius:16px;
-  padding:16px;
-}
-.level-header{display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px;}
-.level-badge{background:rgba(59,130,246,0.15);padding:4px 10px;border-radius:20px;font-weight:600;font-size:12px;}
-.level-reward{color:var(--gold);font-weight:600;}
-.level-next{font-size:11px;color:var(--text-muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);text-align:center;}
-.progress-bar-bg{height:8px;background:var(--bg-tertiary);border-radius:4px;overflow:hidden;margin:12px 0 8px;}
-.progress-fill{height:100%;background:var(--accent);width:0%;border-radius:4px;transition:width 0.3s;}
-.progress-text{font-size:11px;color:var(--text-muted);text-align:right;}
-
-/* ===== AD CARD ===== */
-.ad-card{
-  margin:8px 20px 20px;
-  background:linear-gradient(135deg,var(--bg-card) 0%,var(--bg-tertiary) 100%);
-  border:1px solid var(--border);
-  border-radius:16px;
-  padding:20px;
-  position:relative;
-  overflow:hidden;
-}
-.ad-card-bg{
-  position:absolute;
-  top:-50%;left:-50%;
-  width:200%;height:200%;
-  background:conic-gradient(from 0deg,transparent 0deg,rgba(59,130,246,0.05) 90deg,transparent 180deg);
-  animation:rotate 20s linear infinite;
-  pointer-events:none;
-}
-@keyframes rotate{to{transform:rotate(360deg)}}
-.ad-card-inner{position:relative;z-index:1;text-align:center}
-.ad-reward-small{font-size:20px;font-weight:600;color:var(--gold);margin-bottom:4px;}
-.ad-reward-label{font-size:11px;color:var(--text-muted);margin-bottom:16px;}
-.ad-limit{font-size:12px;color:var(--text-secondary);margin-bottom:16px;padding:8px;background:var(--bg-secondary);border-radius:10px;display:inline-block;width:100%;text-align:center;}
-.btn-primary{
-  width:100%;
-  padding:16px;
-  background:linear-gradient(135deg,#2563eb 0%,#1e40af 100%);
-  border:1px solid rgba(59,130,246,0.3);
-  border-radius:12px;
-  color:#fff;
-  font-size:16px;
-  font-weight:600;
-  cursor:pointer;
-  transition:all 0.2s;
-  box-shadow:0 4px 16px rgba(37,99,235,0.25);
-}
-.btn-primary:active:not(:disabled){transform:scale(0.98)}
-.btn-primary:disabled{background:var(--bg-tertiary);border-color:var(--border);color:var(--text-muted);cursor:not-allowed;box-shadow:none;}
-
-/* ===== RANKING ===== */
-.ranking-list{padding:0 20px;display:flex;flex-direction:column;gap:8px;margin-bottom:20px}
-.ranking-item{
-  background:var(--bg-card);
-  border:1px solid var(--border);
-  border-radius:12px;
-  padding:14px;
-  display:flex;
-  align-items:center;
-  gap:12px;
-}
-.ranking-position{width:32px;font-size:14px;font-weight:700;color:var(--accent);}
-.ranking-avatar{
-  width:40px;height:40px;
-  border-radius:10px;
-  background:linear-gradient(135deg,#1e3a8a,#3b82f6);
-  display:flex;align-items:center;justify-content:center;
-  font-size:16px;
-  font-weight:600;
-}
-.ranking-info{flex:1}
-.ranking-name{font-size:14px;font-weight:600;margin-bottom:2px}
-.ranking-earned{font-size:11px;color:var(--text-muted)}
-.ranking-amount{font-size:15px;font-weight:700;color:var(--gold);}
-.ranking-item.is-current-user{border:1px solid var(--accent);background:rgba(59,130,246,0.05);}
-
-/* ===== BOTTOM NAVIGATION ===== */
-.bottom-nav{
-  position:fixed;
-  bottom:0;left:0;right:0;
-  background:rgba(13,15,20,0.92);
-  backdrop-filter:blur(24px);
-  border-top:1px solid var(--border);
-  padding:8px 0 calc(8px + env(safe-area-inset-bottom));
-  z-index:100;
-  display:flex;
-  justify-content:space-around;
-  align-items:center;
-}
-.nav-item{
-  flex:1;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  gap:4px;
-  padding:8px 4px;
-  background:none;
-  border:none;
-  color:var(--text-muted);
-  cursor:pointer;
-  position:relative;
-  transition:color 0.2s;
-}
-.nav-item.active{color:var(--accent)}
-.nav-item.active::before{
-  content:'';
-  position:absolute;
-  top:-8px;
-  left:50%;
-  transform:translateX(-50%);
-  width:32px;height:2px;
-  background:var(--accent);
-  border-radius:0 0 2px 2px;
-  box-shadow:0 0 12px var(--accent);
-}
-.nav-icon{width:24px;height:24px;display:flex;align-items:center;justify-content:center;}
-.nav-icon svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
-.nav-label{font-size:10px;font-weight:500;letter-spacing:0.2px;}
-
-/* ===== PAGES ===== */
-.page{display:none;animation:fadeIn 0.25s ease-out}
-.page.active{display:block}
-@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-.page-header{padding:24px 20px 12px}
-.page-title{font-size:24px;font-weight:700;letter-spacing:-0.5px;margin-bottom:4px}
-.page-subtitle{font-size:13px;color:var(--text-secondary)}
-
-/* ===== TASKS ===== */
-.task-list{padding:8px 20px;display:flex;flex-direction:column;gap:10px}
-.task-card{
-  background:var(--bg-card);
-  border:1px solid var(--border);
-  border-radius:12px;
-  padding:16px;
-  display:flex;
-  align-items:center;
-  gap:14px;
-}
-.task-icon{width:42px;height:42px;border-radius:10px;background:var(--bg-tertiary);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
-.task-info{flex:1;min-width:0}
-.task-title{font-size:14px;font-weight:600;margin-bottom:4px}
-.task-desc{font-size:11px;color:var(--text-muted);margin-bottom:8px}
-.task-progress{height:4px;background:var(--bg-tertiary);border-radius:2px;overflow:hidden}
-.task-progress-bar{height:100%;background:var(--accent);border-radius:2px;transition:width 0.4s}
-.task-reward{padding:6px 10px;background:rgba(212,168,83,0.1);border:1px solid rgba(212,168,83,0.2);border-radius:8px;font-size:12px;font-weight:700;color:var(--gold);flex-shrink:0;}
-
-/* ===== REFERRAL ===== */
-.referral-card{
-  margin:8px 20px;
-  background:linear-gradient(135deg,var(--bg-card) 0%,var(--bg-tertiary) 100%);
-  border:1px solid var(--border);
-  border-radius:16px;
-  padding:24px 20px;
-  text-align:center;
-}
-.referral-icon{font-size:42px;margin-bottom:12px}
-.referral-title{font-size:18px;font-weight:700;margin-bottom:6px;letter-spacing:-0.3px}
-.referral-desc{font-size:13px;color:var(--text-secondary);margin-bottom:20px;line-height:1.5}
-.referral-link{
-  background:var(--bg-secondary);
-  border:1px solid var(--border);
-  border-radius:10px;
-  padding:12px;
-  font-size:12px;
-  color:var(--text-secondary);
-  font-family:'SF Mono','Menlo',monospace;
-  margin-bottom:12px;
-  word-break:break-all;
-}
-
-/* ===== WALLET PAGE ===== */
-.wallet-card{
-  margin:8px 20px;
-  background:var(--bg-card);
-  border:1px solid var(--border);
-  border-radius:16px;
-  padding:20px;
-}
-.wallet-title{font-size:16px;font-weight:600;margin-bottom:4px;}
-.wallet-subtitle{font-size:12px;color:var(--text-muted);margin-bottom:20px;}
-.input-group{margin-bottom:16px;}
-.input-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;display:block;}
-.wallet-input{
-  width:100%;
-  background:var(--bg-secondary);
-  border:1px solid var(--border);
-  border-radius:12px;
-  padding:14px;
-  color:var(--text-primary);
-  font-size:14px;
-  font-family:inherit;
-  outline:none;
-}
-.wallet-input:focus{border-color:var(--accent);}
-.withdraw-info{
-  background:rgba(16,185,129,0.1);
-  border:1px solid rgba(16,185,129,0.15);
-  border-radius:12px;
-  padding:12px;
-  margin-bottom:20px;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-}
-.withdraw-info-label{font-size:12px;color:var(--text-muted);}
-.withdraw-info-value{font-size:18px;font-weight:700;color:var(--success);}
-.min-withdraw{font-size:11px;color:var(--text-muted);text-align:center;margin-top:12px;}
-.btn-success{background:linear-gradient(135deg,#10b981 0%,#059669 100%);box-shadow:0 4px 16px rgba(16,185,129,0.25);}
-.divider{height:1px;background:var(--border);margin:20px 20px;}
-.support-buttons{display:flex;gap:12px;margin:0 20px 20px;}
-.support-btn{
-  flex:1;
-  padding:14px;
-  background:var(--bg-card);
-  border:1px solid var(--border);
-  border-radius:12px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:8px;
-  cursor:pointer;
-  transition:all 0.2s;
-  color:var(--text-primary);
-  font-weight:500;
-}
-.support-btn:active{transform:scale(0.97);background:var(--bg-tertiary)}
-
-/* ===== MODAL ===== */
-.modal{
-  display:none;
-  position:fixed;
-  inset:0;
-  background:rgba(0,0,0,0.85);
-  backdrop-filter:blur(8px);
-  z-index:1000;
-  align-items:center;
-  justify-content:center;
-  padding:20px;
-}
-.modal.active{display:flex;animation:fadeIn 0.3s}
-.modal-content{
-  background:var(--bg-card);
-  border:1px solid var(--border);
-  border-radius:16px;
-  padding:32px 24px;
-  text-align:center;
-  width:100%;
-  max-width:340px;
-}
-.ad-timer{position:relative;width:140px;height:140px;margin:0 auto 20px}
-.timer-svg{width:100%;height:100%;transform:rotate(-90deg)}
-.timer-bg{fill:none;stroke:var(--bg-tertiary);stroke-width:5}
-.timer-progress{fill:none;stroke:var(--accent);stroke-width:5;stroke-linecap:round;stroke-dasharray:283;stroke-dashoffset:283;transition:stroke-dashoffset 1s linear}
-.timer-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:42px;font-weight:700;}
-.modal-title{font-size:16px;font-weight:600;margin-bottom:6px}
-.modal-subtitle{font-size:12px;color:var(--text-muted)}
-
-/* ===== TOAST ===== */
-.toast{
-  position:fixed;
-  top:20px;
-  left:50%;
-  transform:translateX(-50%) translateY(-100px);
-  background:var(--bg-card);
-  border:1px solid var(--success);
-  border-radius:12px;
-  padding:12px 18px;
-  display:flex;
-  align-items:center;
-  gap:10px;
-  z-index:2000;
-  transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
-  box-shadow:0 8px 32px rgba(0,0,0,0.5);
-}
-.toast.show{transform:translateX(-50%) translateY(0)}
-.toast-icon{width:24px;height:24px;border-radius:50%;background:var(--success);display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;}
-.toast-text{font-size:13px;font-weight:600}
-</style>
-</head>
-<body>
-
-<div class="container">
-
-<header class="header">
-  <div class="brand">
-    <div class="brand-logo">A</div>
-    <div class="brand-info">
-      <span class="brand-name">AdEarn Pro</span>
-      <span class="brand-status"><span class="status-dot"></span>Online</span>
-    </div>
-  </div>
-  <div class="lang-switcher">
-    <button class="lang-btn active" data-lang="ru">RU</button>
-    <button class="lang-btn" data-lang="en">EN</button>
-  </div>
-</header>
-
-<!-- PAGE: HOME -->
-<div class="page active" id="page-home">
-  <section class="balance-section">
-    <div class="balance-card">
-      <div class="balance-label">💎 Доступный баланс</div>
-      <div class="balance-amount"><span id="balance">0.00</span><span class="balance-currency">$</span></div>
-      <div class="balance-meta">
-        <div class="balance-meta-item"><div class="balance-meta-label">Сегодня</div><div class="balance-meta-value positive">+<span id="todayEarned">0</span>$</div></div>
-        <div class="balance-meta-item"><div class="balance-meta-label">За неделю</div><div class="balance-meta-value">0.00$</div></div>
-        <div class="balance-meta-item"><div class="balance-meta-label">Всего</div><div class="balance-meta-value"><span id="totalEarned">0</span>$</div></div>
-      </div>
-    </div>
-  </section>
-
-  <div class="level-progress-card" id="levelCard">
-    <div class="level-header">
-      <span class="level-badge" id="levelDisplay">Уровень 1</span>
-      <span class="level-reward" id="rewardDisplay">$0.0006</span>
-    </div>
-    <div class="progress-bar-bg"><div class="progress-fill" id="levelProgressFill"></div></div>
-    <div class="progress-text" id="progressText">0 / 500 просмотров</div>
-    <div class="level-next" id="nextLevelHint">→ На след. уровне: $0.0012 за просмотр</div>
-  </div>
-
-  <section class="ad-card">
-    <div class="ad-card-bg"></div>
-    <div class="ad-card-inner">
-      <div class="ad-reward-small" id="adRewardSmall">$0.0006</div>
-      <div class="ad-reward-label">за просмотр</div>
-      <div class="ad-limit" id="adLimit">Осталось: 45 / 45</div>
-      <button class="btn-primary" id="watchBtn">
-        <span>▶</span>
-        <span id="btnText">Смотреть рекламу</span>
-      </button>
-    </div>
-  </section>
-</div>
-
-<!-- PAGE: TASKS -->
-<div class="page" id="page-tasks">
-  <div class="page-header"><h1 class="page-title">Задания</h1><p class="page-subtitle">Выполняйте задания и получайте бонусы</p></div>
-  <div class="task-list">
-    <div class="task-card"><div class="task-icon">🎯</div><div class="task-info"><div class="task-title">Посмотреть 5 реклам</div><div class="task-desc">Прогресс: 0/5</div><div class="task-progress"><div class="task-progress-bar" style="width:0%"></div></div></div><div class="task-reward">+25$</div></div>
-    <div class="task-card"><div class="task-icon">🔥</div><div class="task-info"><div class="task-title">Серия из 10 дней</div><div class="task-desc">Заходите каждый день</div><div class="task-progress"><div class="task-progress-bar" style="width:10%"></div></div></div><div class="task-reward">+100$</div></div>
-    <div class="task-card"><div class="task-icon">👥</div><div class="task-info"><div class="task-title">Пригласить 3 друзей</div><div class="task-desc">Прогресс: 0/3</div><div class="task-progress"><div class="task-progress-bar" style="width:0%"></div></div></div><div class="task-reward">+150$</div></div>
-    <div class="task-card"><div class="task-icon">⭐</div><div class="task-info"><div class="task-title">Достичь 5 уровня</div><div class="task-desc">Получайте опыт</div><div class="task-progress"><div class="task-progress-bar" style="width:20%"></div></div></div><div class="task-reward">+200$</div></div>
-  </div>
-</div>
-
-<!-- PAGE: RANKING -->
-<div class="page" id="page-ranking">
-  <div class="page-header"><h1 class="page-title">🏆 Рейтинг</h1><p class="page-subtitle">Топ пользователей по заработку</p></div>
-  <div class="ranking-list" id="rankingList"></div>
-</div>
-
-<!-- PAGE: REFERRAL -->
-<div class="page" id="page-referral">
-  <div class="page-header"><h1 class="page-title">Партнёрская программа</h1><p class="page-subtitle">Приглашайте друзей — получайте 10% от их дохода</p></div>
-  <div class="referral-card">
-    <div class="referral-icon">👥</div>
-    <div class="referral-title">Ваша реферальная ссылка</div>
-    <div class="referral-desc">Поделитесь ссылкой с друзьями и получайте бонусы за каждого активного реферала</div>
-    <div class="referral-link" id="refLink">Загрузка...</div>
-    <button class="btn-primary" id="copyRefBtn">Скопировать ссылку</button>
-  </div>
-  <div class="section-title"><span class="section-title-text">Ваши рефералы</span></div>
-  <div id="referralsList" style="margin:8px 20px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:40px 20px;text-align:center;color:var(--text-muted);font-size:13px">Загрузка...</div>
-</div>
-
-<!-- PAGE: WALLET -->
-<div class="page" id="page-wallet">
-  <div class="page-header"><h1 class="page-title">💰 Кошелёк</h1><p class="page-subtitle">Вывод средств и поддержка</p></div>
-  <div class="wallet-card">
-    <div class="wallet-title">Вывод средств</div>
-    <div class="wallet-subtitle">Минимальная сумма: 1$</div>
-    <div class="input-group"><div class="input-label">Криптовалютный кошелёк (USDT TRC20 / BTC)</div><input type="text" class="wallet-input" id="walletAddress" placeholder="Введите адрес кошелька..."></div>
-    <div class="withdraw-info"><span class="withdraw-info-label">Доступно:</span><span class="withdraw-info-value" id="withdrawBalance">0.00$</span></div>
-    <div class="input-group"><div class="input-label">Сумма ($)</div><input type="number" class="wallet-input" id="withdrawAmount" placeholder="Минимум 1" step="0.01" min="1"></div>
-    <button class="btn-primary btn-success" id="withdrawBtn">💸 Вывести</button>
-    <div class="min-withdraw">Комиссия: 0% | Время: до 24ч</div>
-  </div>
-  <div class="divider"></div>
-  <div class="support-buttons">
-    <div class="support-btn" id="channelBtn"><span>📢</span><span>Наш канал</span></div>
-    <div class="support-btn" id="supportBtn"><span>💬</span><span>Поддержка</span></div>
-  </div>
-</div>
-
-</div>
-
-<!-- BOTTOM NAVIGATION -->
-<nav class="bottom-nav">
-  <button class="nav-item active" data-page="home"><div class="nav-icon"><svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9"/><path d="M5 10v10a1 1 0 001 1h3v-6h6v6h3a1 1 0 001-1V10"/></svg></div><span class="nav-label">Главная</span></button>
-  <button class="nav-item" data-page="tasks"><div class="nav-icon"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div><span class="nav-label">Задания</span></button>
-  <button class="nav-item" data-page="ranking"><div class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg></div><span class="nav-label">Рейтинг</span></button>
-  <button class="nav-item" data-page="referral"><div class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 00-3-3.8"/></svg></div><span class="nav-label">Друзья</span></button>
-  <button class="nav-item" data-page="wallet"><div class="nav-icon"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="16" rx="2"/><path d="M18 10a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></div><span class="nav-label">Кошелёк</span></button>
-</nav>
-
-<!-- MODAL -->
-<div class="modal" id="adModal">
-  <div class="modal-content">
-    <div class="ad-timer"><svg class="timer-svg" viewBox="0 0 100 100"><circle class="timer-bg" cx="50" cy="50" r="45"></circle><circle class="timer-progress" cx="50" cy="50" r="45" id="timerCircle"></circle></svg><span class="timer-text" id="timerText">15</span></div>
-    <div class="modal-title">Воспроизведение рекламы</div>
-    <div class="modal-subtitle">Не закрывайте окно</div>
-  </div>
-</div>
-
-<div class="toast" id="toast"><div class="toast-icon">✓</div><div class="toast-text" id="toastText"></div></div>
-
-<script>
-const tg = window.Telegram?.WebApp;
-if(tg){tg.ready();tg.expand();tg.setHeaderColor('#0d0f14');tg.setBackgroundColor('#0d0f14')}
-
-// API URL - ваш сервер на Railway
-const API_URL = 'https://serv-production-765e.up.railway.app';
-
-// State
-let userData = null;
-let currentLang = localStorage.getItem('language') || 'ru';
-let isRegistered = false;
-
-// Translations
-const translations = {
-  ru: {
-    watch_btn: "Смотреть рекламу", per_view: "за просмотр", remaining: "Осталось:",
-    level_prefix: "Уровень", views_to_next: "просмотров",
-    next_level_hint: "→ На след. уровне: ${{reward}} за просмотр",
-    earned: "зачислено", limit_reached: "Лимит на сегодня! Возвращайтесь завтра.",
-    copy_btn: "Скопировано!", withdraw_success: "Заявка на вывод отправлена!",
-    insufficient_balance: "Недостаточно средств!", min_amount_error: "Минимальная сумма: 1$",
-    wallet_empty_error: "Введите адрес кошелька!"
-  },
-  en: {
-    watch_btn: "Watch Ad", per_view: "per view", remaining: "Remaining:",
-    level_prefix: "Level", views_to_next: "views",
-    next_level_hint: "→ Next level: ${{reward}} per view",
-    earned: "credited", limit_reached: "Daily limit reached! Come back tomorrow.",
-    copy_btn: "Copied!", withdraw_success: "Withdrawal request sent!",
-    insufficient_balance: "Insufficient balance!", min_amount_error: "Minimum amount: 1$",
-    wallet_empty_error: "Enter wallet address!"
-  }
-};
-
-function formatMoney(amount) {
-  let rounded = Math.round(amount * 10000) / 10000;
-  return rounded.toString();
-}
-
-function showToast(text) {
-  const toast = document.getElementById('toast');
-  document.getElementById('toastText').textContent = text;
-  toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 2500);
-}
-
-async function apiCall(endpoint, options = {}) {
-  const telegramId = localStorage.getItem('telegramId');
-  const response = await fetch(`${API_URL}/api${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Telegram-Id': telegramId || '',
-      ...options.headers
+<!-- Giga Pub Enhanced Reliability Script -->
+<script data-project-id="6820">
+  !function(){
+    var s=document.currentScript,p=s.getAttribute('data-project-id')||'default';
+    var d=['https://ad.gigapub.tech','https://ru-ad.gigapub.tech'],i=0,t,sc;
+    function l(){
+      sc=document.createElement('script');
+      sc.async=true;
+      sc.src=d[i]+'/script?id='+p;
+      clearTimeout(t);
+      t=setTimeout(function(){
+        sc.onload=sc.onerror=null;
+        sc.src='';
+        if(++i<d.length)l();
+      },15000);
+      sc.onload=function(){clearTimeout(t)};
+      sc.onerror=function(){clearTimeout(t);if(++i<d.length)l()};
+      document.head.appendChild(sc);
     }
-  });
-  
-  if (response.status === 401 && !isRegistered) {
-    await registerUser();
-    return apiCall(endpoint, options);
-  }
-  
-  return response.json();
-}
-
-async function registerUser() {
-  if (!tg?.initDataUnsafe?.user) {
-    console.log('No Telegram user data - демо режим');
-    return;
-  }
-  
-  const u = tg.initDataUnsafe.user;
-  const urlParams = new URLSearchParams(window.location.search);
-  const referredBy = urlParams.get('ref');
-  
-  try {
-    const response = await fetch(`${API_URL}/api/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        telegramId: String(u.id),
-        firstName: u.first_name,
-        lastName: u.last_name || '',
-        username: u.username || '',
-        referredBy: referredBy
-      })
-    });
-    
-    const result = await response.json();
-    
-    if (result.success) {
-      localStorage.setItem('telegramId', String(u.id));
-      userData = result.user;
-      isRegistered = true;
-      updateUI();
-      loadRanking();
-      loadReferrals();
-      console.log('User registered successfully');
-    }
-  } catch (error) {
-    console.error('Registration error:', error);
-  }
-}
-
-function updateUI() {
-  if (!userData) return;
-  
-  document.getElementById('balance').textContent = formatMoney(userData.balance);
-  document.getElementById('todayEarned').textContent = formatMoney(userData.todayEarned || 0);
-  document.getElementById('totalEarned').textContent = formatMoney(userData.totalEarned);
-  document.getElementById('withdrawBalance').textContent = formatMoney(userData.balance) + '$';
-  document.getElementById('walletAddress').value = userData.walletAddress || '';
-  
-  const level = userData.level || 1;
-  document.getElementById('levelDisplay').innerHTML = `Уровень ${level}`;
-  
-  const reward = 0.0006 * level;
-  document.getElementById('rewardDisplay').textContent = `$${formatMoney(reward)}`;
-  document.getElementById('adRewardSmall').textContent = `$${formatMoney(reward)}`;
-  
-  const nextReward = 0.0006 * (level + 1);
-  document.getElementById('nextLevelHint').innerHTML = `→ На след. уровне: $${formatMoney(nextReward)} за просмотр`;
-  
-  const watchedInCurrent = userData.adsWatched % 500;
-  const percent = (watchedInCurrent / 500) * 100;
-  document.getElementById('levelProgressFill').style.width = `${percent}%`;
-  document.getElementById('progressText').innerHTML = `${watchedInCurrent} / 500 просмотров`;
-  
-  const remaining = 45 - (userData.watchedToday || 0);
-  const t = translations[currentLang];
-  document.getElementById('adLimit').innerHTML = `${t.remaining} ${remaining} / 45`;
-  
-  const botUsername = 'adearn_pro_bot';
-  document.getElementById('refLink').textContent = `https://t.me/${botUsername}?start=ref_${userData.referralCode}`;
-}
-
-async function watchAd() {
-  const t = translations[currentLang];
-  
-  if (!userData) {
-    await registerUser();
-    if (!userData) return;
-  }
-  
-  const result = await apiCall('/ads/watch', { method: 'POST' });
-  
-  if (result.error) {
-    showToast(result.error === 'Daily limit reached' ? t.limit_reached : result.error);
-    return;
-  }
-  
-  if (result.success) {
-    userData.balance = result.balance;
-    userData.adsWatched = result.adsWatched;
-    userData.todayEarned = result.todayEarned;
-    userData.streak = result.streak;
-    userData.watchedToday = 45 - result.remainingToday;
-    userData.level = result.level;
-    
-    updateUI();
-    showToast(`+${formatMoney(result.reward)}$ ${t.earned}`);
-    if(tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-  }
-}
-
-async function loadRanking() {
-  try {
-    const response = await fetch(`${API_URL}/api/ranking`);
-    const result = await response.json();
-    if (result.success && result.ranking) {
-      const container = document.getElementById('rankingList');
-      const currentId = localStorage.getItem('telegramId');
-      
-      if (result.ranking.length === 0) {
-        container.innerHTML = '<div class="ranking-item" style="justify-content:center">Пока никого нет</div>';
-        return;
-      }
-      
-      container.innerHTML = result.ranking.slice(0, 20).map((user, idx) => {
-        const isCurrent = user.telegramId === currentId;
-        let medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '';
-        return `
-          <div class="ranking-item ${isCurrent ? 'is-current-user' : ''}">
-            <div class="ranking-position">${idx+1}</div>
-            <div class="ranking-avatar">${user.firstName?.[0] || 'U'}</div>
-            <div class="ranking-info"><div class="ranking-name">${user.firstName} ${user.lastName || ''} ${medal}</div></div>
-            <div class="ranking-amount">${formatMoney(user.totalEarned)}$</div>
-          </div>
-        `;
-      }).join('');
-    }
-  } catch (error) {
-    console.error('Error loading ranking:', error);
-  }
-}
-
-async function loadReferrals() {
-  try {
-    const result = await apiCall('/referrals/stats');
-    if (result.success) {
-      const container = document.getElementById('referralsList');
-      if (result.count === 0) {
-        container.innerHTML = 'Пока никого нет. Пригласите первого друга!';
-      } else {
-        container.innerHTML = `
-          <div style="padding:16px">
-            <div style="margin-bottom:12px">👥 Приглашено: ${result.count}</div>
-            <div>💰 Заработано с рефералов: ${formatMoney(result.earnings)}$</div>
-          </div>
-        `;
-      }
-    }
-  } catch (error) {
-    console.error('Error loading referrals:', error);
-  }
-}
-
-async function withdraw() {
-  const t = translations[currentLang];
-  const amount = parseFloat(document.getElementById('withdrawAmount').value);
-  const wallet = document.getElementById('walletAddress').value.trim();
-  
-  if (!wallet) {
-    showToast(t.wallet_empty_error);
-    return;
-  }
-  if (isNaN(amount) || amount < 1) {
-    showToast(t.min_amount_error);
-    return;
-  }
-  if (amount > userData.balance) {
-    showToast(t.insufficient_balance);
-    return;
-  }
-  
-  const result = await apiCall('/user/withdraw', {
-    method: 'POST',
-    body: JSON.stringify({ amount, walletAddress: wallet })
-  });
-  
-  if (result.success) {
-    userData.balance = result.balance;
-    updateUI();
-    document.getElementById('withdrawAmount').value = '';
-    showToast(t.withdraw_success);
-    
-    await apiCall('/user/wallet', {
-      method: 'POST',
-      body: JSON.stringify({ walletAddress: wallet })
-    });
-  } else {
-    showToast(result.error);
-  }
-}
-
-function setLanguage(lang) {
-  currentLang = lang;
-  localStorage.setItem('language', lang);
-  document.querySelectorAll('.lang-btn').forEach(btn => {
-    if (btn.dataset.lang === lang) btn.classList.add('active');
-    else btn.classList.remove('active');
-  });
-  
-  const t = translations[lang];
-  document.getElementById('btnText').textContent = t.watch_btn;
-  document.querySelector('.ad-reward-label').textContent = t.per_view;
-  updateUI();
-}
-
-// Navigation
-document.querySelectorAll('.nav-item').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('page-' + btn.dataset.page).classList.add('active');
-    if (btn.dataset.page === 'ranking') loadRanking();
-    if (btn.dataset.page === 'referral') loadReferrals();
-    window.scrollTo(0, 0);
-  });
-});
-
-// Event listeners
-document.getElementById('watchBtn').addEventListener('click', watchAd);
-document.getElementById('withdrawBtn').addEventListener('click', withdraw);
-document.getElementById('copyRefBtn').addEventListener('click', () => {
-  const link = document.getElementById('refLink').textContent;
-  navigator.clipboard.writeText(link);
-  showToast(translations[currentLang].copy_btn);
-});
-document.getElementById('channelBtn').addEventListener('click', () => {
-  if(tg?.openTelegramLink) tg.openTelegramLink('https://t.me/your_channel');
-  else window.open('https://t.me/your_channel', '_blank');
-});
-document.getElementById('supportBtn').addEventListener('click', () => {
-  if(tg?.openTelegramLink) tg.openTelegramLink('https://t.me/your_support');
-  else window.open('https://t.me/your_support', '_blank');
-});
-document.querySelectorAll('.lang-btn').forEach(btn => {
-  btn.addEventListener('click', () => setLanguage(btn.dataset.lang));
-});
-
-// Initialize
-registerUser();
-setLanguage(currentLang);
-setInterval(loadRanking, 30000);
+    l();
+  }();
 </script>
+</head>
+
+<body ondragstart="return false" oncontextmenu="return false" onselectstart="return false">
+<canvas id="particles-canvas"></canvas>
+
+<!-- HEADER -->
+<div class="header">
+    <div class="header-top">
+        <div class="player-info">
+            <div class="avatar" id="playerAvatar">G</div>
+            <div>
+                <div class="player-name">GENOME_X</div>
+                <div class="player-level" id="playerLevelLabel">LVL 1 · Researcher</div>
+            </div>
+        </div>
+        
+        <div style="display:flex;align-items:center;gap:10px">
+            <div class="balance-area">
+                <div class="balance-icon"><i class="fa-solid fa-dna"></i></div>
+                <div>
+                    <div class="balance-amount" id="balanceDisplay">0</div>
+                    <div class="income-inline" id="incomeInline" style="font-size:8px; color:var(--uncommon); margin-top:2px;">+0/hr</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="xp-bar-wrap">
+        <div class="xp-label" id="xpLabel">XP 0/100</div>
+        <div class="xp-bar"><div class="xp-fill" id="xpFill" style="width:0%"></div></div>
+    </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="main-content" id="mainContent">
+
+
+<!-- В main-content добавить -->
+<div class="tab-content" id="tab-pvp"></div>
+<!-- GAME TAB -->
+<div class="tab-content active" id="tab-game">
+    <div class="section-title"><i class="fa-solid fa-flask-vial" style="color:var(--accent3)"></i> <span data-i18n="game.capsules">DNA Capsules</span></div>
+
+    <div class="capsule-area">
+        <div class="capsule-card" id="basicCapsuleCard" onclick="showCapsuleModal('basic')">
+            <div class="capsule-icon">
+                <img src="1.png" alt="DNA Capsule" style="object-fit:contain">
+            </div>
+            <div class="capsule-name" data-i18n="game.dnaCapsule">DNA CAPSULE</div>
+            <div class="capsule-cost"><i class="fa-solid fa-dna" style="font-size:10px"></i> 500 MMO</div>
+            <button class="capsule-btn" onclick="event.stopPropagation();showCapsuleModal('basic')" data-i18n="game.open">OPEN</button>
+        </div>
+        <div class="capsule-card premium" id="premiumCapsuleCard" onclick="showCapsuleModal('premium')">
+            <div class="capsule-icon">
+                <img src="2.png" alt="Premium DNA Capsule" style="object-fit:contain">
+            </div>
+            <div class="capsule-name" data-i18n="game.premiumCapsule">PREMIUM DNA</div>
+            <div class="capsule-cost gold"><i class="fa-solid fa-gem" style="font-size:10px"></i> 2000 MMO</div>
+            <button class="capsule-btn gold-btn" onclick="event.stopPropagation();showCapsuleModal('premium')" data-i18n="game.open">OPEN</button>
+        </div>
+    </div>
+
+    <div style="margin-bottom:16px">
+        <button style="width:100%;background:linear-gradient(135deg,rgba(34,197,94,0.2),rgba(34,197,94,0.05));border:1px solid rgba(34,197,94,0.3);border-radius:14px;padding:12px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:all 0.2s;margin-bottom:12px;font-family:'Orbitron',monospace;font-size:12px;font-weight:700;color:var(--uncommon);text-transform:uppercase;letter-spacing:0.5px" id="adsBtn" onclick="watchAd()">
+            <i class="fa-solid fa-tv" style="font-size:16px"></i>
+            <span style="flex:1;text-align:left" data-i18n="game.watchAd">Watch Ad</span>
+            <span style="color:var(--uncommon);font-size:13px;min-width:50px;text-align:right" id="adsTimer">Ready</span>
+            <span style="color:var(--uncommon);font-weight:700" id="adsReward">+100</span>
+            <span style="color:var(--text3);font-size:9px;margin-left:4px" id="adsRemaining">0/10</span>
+        </button>
+        <div class="encyclopedia-btn" onclick="showEncyclopedia()">
+            <div class="enc-icon"><i class="fa-solid fa-book-open"></i></div>
+            <div class="enc-info">
+                <div class="enc-title" data-i18n="encyclopedia.title">Collection Encyclopedia</div>
+                <div class="enc-sub" data-i18n="encyclopedia.subtitle">Discover all creatures</div>
+            </div>
+            <div class="enc-progress" id="encyclopediaProgress">0/20</div>
+        </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div class="section-title" style="margin-bottom:0"><i class="fa-solid fa-layer-group" style="color:var(--accent3)"></i> <span data-i18n="inventory.myCreatures">My Creatures</span> <span id="inventorySlots" style="font-size:10px;color:var(--text2);font-weight:400;letter-spacing:0">0/10</span></div>
+        <button style="padding:6px 12px;border:none;border-radius:8px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;font-size:10px;font-weight:700;font-family:'Orbitron',monospace;cursor:pointer;transition:all 0.2s;white-space:nowrap" onclick="event.stopPropagation(); upgradeInventory()" id="quickUpgradeBtn">
+            <i class="fa-solid fa-plus"></i> <span id="upgradeSlotCost">100</span> <span data-i18n="game.mmo">MMO</span>
+        </button>
+    </div>
+    <div class="cards-grid" id="cardsGrid">
+        <div class="empty-grid">
+            <i class="fa-solid fa-dna"></i>
+            <span data-i18n="inventory.empty">Open a capsule to get your first creature!</span>
+        </div>
+    </div>
+</div>
+
+<!-- MARKETPLACE TAB -->
+<div class="tab-content" id="tab-shop">
+    <div class="section-title"><i class="fa-solid fa-store" style="color:var(--accent2)"></i> <span data-i18n="marketplace.title">Marketplace</span></div>
+    <div class="marketplace-tabs">
+        <button class="marketplace-tab-btn active" onclick="switchMarketplaceTab('buy')">
+            <i class="fa-solid fa-shopping-bag"></i> <span data-i18n="marketplace.buy">Buy</span>
+        </button>
+        <button class="marketplace-tab-btn" onclick="switchMarketplaceTab('sell')">
+            <i class="fa-solid fa-tag"></i> <span data-i18n="marketplace.sell">Sell</span>
+        </button>
+        <button class="marketplace-tab-btn" onclick="switchMarketplaceTab('mylistings')">
+            <i class="fa-solid fa-list"></i> <span data-i18n="marketplace.myListings">My</span>
+        </button>
+    </div>
+    <div class="marketplace-subtab active" id="marketplace-buy">
+        <div id="marketplaceListings" style="display:flex;flex-direction:column;gap:10px"></div>
+    </div>
+    <div class="marketplace-subtab" id="marketplace-sell">
+        <div class="section-title" style="margin-bottom:12px"><i class="fa-solid fa-hand-holding-heart" style="color:var(--uncommon)"></i> <span data-i18n="marketplace.yourCreatures">Your Creatures</span></div>
+        <div id="marketplaceSellCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"></div>
+    </div>
+    <div class="marketplace-subtab" id="marketplace-mylistings">
+        <div class="section-title" style="margin-bottom:12px"><i class="fa-solid fa-list" style="color:var(--accent2)"></i> <span data-i18n="marketplace.yourListings">Your Listings</span></div>
+        <div id="marketplaceMyListings"></div>
+    </div>
+</div>
+
+<!-- LEADERBOARD TAB -->
+<div class="tab-content" id="tab-leaderboard">
+    <div style="position:relative;border-radius:20px;overflow:hidden;margin-bottom:16px;cursor:pointer" onclick="showToast('🏆 Займи #1 и получи Black Pantera Mythic!', '🏆')">
+        <div style="position:absolute;inset:0;z-index:2;pointer-events:none;border-radius:20px;border:1px solid rgba(255,255,255,0.18);background:linear-gradient(135deg,rgba(255,255,255,0.10) 0%,rgba(168,85,247,0.08) 40%,rgba(0,0,0,0) 100%)"></div>
+        <div style="position:absolute;top:0;left:-10%;width:40%;height:100%;z-index:3;pointer-events:none;background:linear-gradient(105deg,rgba(255,255,255,0) 40%,rgba(255,255,255,0.13) 50%,rgba(255,255,255,0) 60%);border-radius:20px"></div>
+        <div style="position:absolute;top:0;left:12%;width:76%;height:1.5px;z-index:4;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.55),transparent);border-radius:2px"></div>
+        <img src="https://storage.yandexcloud.net/timenote/tmp/824f3177814a9035c2d9d37847e9c169caa97f4123274f5630877aefe899602c.jpg"
+             alt="Season 1 — Black Pantera Mythic"
+             style="width:100%;display:block;border-radius:20px;object-fit:cover;max-height:160px;object-position:center top">
+    </div>
+    <div class="section-title"><i class="fa-solid fa-trophy" style="color:var(--legendary)"></i> <span data-i18n="leaderboard.title">Global Leaderboard</span></div>
+    <div class="leaderboard-list" id="leaderboardList"></div>
+</div>
+
+<!-- FRIENDS TAB -->
+<div class="tab-content" id="tab-friends">
+    <div class="friends-hero">
+        <div class="friends-hero-icon">👥</div>
+        <div class="friends-hero-title" data-i18n="friends.inviteTitle">INVITE FRIENDS</div>
+        <div class="friends-hero-sub" id="friendCountDisplay">0 friends invited</div>
+        <button class="invite-btn" onclick="inviteFriend()">
+            <i class="fa-solid fa-user-plus"></i>
+            <span data-i18n="friends.inviteBtn">INVITE FRIEND</span>
+        </button>
+    </div>
+    
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px">
+        <!-- 10 Friends - Rare Wolf -->
+        <div class="friends-reward-card" id="reward-10" data-reward="10">
+            <div class="reward-icon">
+                <img src="https://ndammo.github.io/Mmodna/wr.png" alt="Rare Wolf" style="width:48px;height:48px;object-fit:contain">
+            </div>
+            <div class="reward-name rare">RARE WOLF</div>
+            <div class="reward-friends"><i class="fa-solid fa-users"></i> 10</div>
+            <div class="reward-income"><i class="fa-solid fa-bolt"></i> 25/hr</div>
+            <button class="reward-btn" id="reward-10-btn">🔒</button>
+        </div>
+        
+        <!-- 50 Friends - Epic Wolf -->
+        <div class="friends-reward-card" id="reward-50" data-reward="50">
+            <div class="reward-icon">
+                <img src="https://ndammo.github.io/Mmodna/we.png" alt="Epic Wolf" style="width:48px;height:48px;object-fit:contain">
+            </div>
+            <div class="reward-name epic">EPIC WOLF</div>
+            <div class="reward-friends"><i class="fa-solid fa-users"></i> 50</div>
+            <div class="reward-income"><i class="fa-solid fa-bolt"></i> 80/hr</div>
+            <button class="reward-btn" id="reward-50-btn">🔒</button>
+        </div>
+        
+        <!-- 150 Friends - Legendary Wolf -->
+        <div class="friends-reward-card" id="reward-150" data-reward="150">
+            <div class="reward-icon">
+                <img src="https://ndammo.github.io/Mmodna/wl.png" alt="Legendary Wolf" style="width:48px;height:48px;object-fit:contain">
+            </div>
+            <div class="reward-name legendary">LEGENDARY WOLF</div>
+            <div class="reward-friends"><i class="fa-solid fa-users"></i> 150</div>
+            <div class="reward-income"><i class="fa-solid fa-bolt"></i> 250/hr</div>
+            <button class="reward-btn" id="reward-150-btn">🔒</button>
+        </div>
+    </div>
+    
+    <div class="section-title"><i class="fa-solid fa-heart" style="color:#f472b6"></i> <span data-i18n="friends.myFriends">My Friends</span></div>
+    <div class="leaderboard-list" id="friendsList"></div>
+</div>
+
+<!-- SPECIAL QUESTS TAB -->
+<div class="tab-content" id="tab-special">
+    <div class="section-title"><i class="fa-solid fa-star" style="color:var(--legendary)"></i> <span data-i18n="specialQuests.title">Special Quests</span></div>
+    <div id="specialQuestsList"></div>
+</div>
+
+<!-- WALLET TAB -->
+<div class="tab-content" id="tab-wallet">
+    <div class="wallet-hero">
+        <div class="wallet-label" data-i18n="wallet.totalBalance">Total Balance</div>
+        <div class="wallet-balance"><span id="walletBalance">0</span> <span style="font-size:16px;color:var(--text2)">MMO</span></div>
+    </div>
+    <div class="lang-switcher">
+        <button class="lang-btn" data-lang="ru" onclick="setLanguage('ru')">RU</button>
+        <button class="lang-btn" data-lang="en" onclick="setLanguage('en')">EN</button>
+    </div>
+    <div class="wallet-stats">
+        <div class="wallet-stat">
+            <div class="wallet-stat-icon">⚡</div>
+            <div class="wallet-stat-val" id="walletIncome">0</div>
+            <div class="wallet-stat-label" data-i18n="wallet.mmoPerHour">MMO / Hour</div>
+        </div>
+        <div class="wallet-stat">
+            <div class="wallet-stat-icon">🧬</div>
+            <div class="wallet-stat-val" id="walletCards">0</div>
+            <div class="wallet-stat-label" data-i18n="wallet.creatures">Creatures</div>
+        </div>
+        <div class="wallet-stat">
+            <div class="wallet-stat-icon">🔀</div>
+            <div class="wallet-stat-val" id="walletMerges">0</div>
+            <div class="wallet-stat-label" data-i18n="wallet.totalMerges">Total Merges</div>
+        </div>
+        <div class="wallet-stat">
+            <div class="wallet-stat-icon">📦</div>
+            <div class="wallet-stat-val" id="walletStorage">0/10</div>
+            <div class="wallet-stat-label" data-i18n="wallet.storage">Storage</div>
+        </div>
+    </div>
+    <div class="wallet-actions">
+        <button class="wallet-action-btn deposit" onclick="showDepositModal()">
+            <i class="fa-solid fa-arrow-down"></i> <span data-i18n="wallet.deposit">DEPOSIT</span>
+        </button>
+        <button class="wallet-action-btn withdraw" onclick="showWithdrawModal()">
+            <i class="fa-solid fa-arrow-up"></i> <span data-i18n="wallet.withdraw">WITHDRAW</span>
+        </button>
+    </div>
+    <div id="pendingRequests"></div>
+</div>
+
+</div>
+
+<!-- BOTTOM NAV -->
+<div class="bottom-nav">
+    <div class="nav-item active" onclick="switchTab('game')" id="nav-game">
+        <i class="fa-solid fa-dna"></i>
+        <span data-i18n="nav.game">Game</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('shop')" id="nav-shop">
+        <i class="fa-solid fa-store"></i>
+        <span data-i18n="nav.market">Market</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('leaderboard')" id="nav-leaderboard">
+        <i class="fa-solid fa-trophy"></i>
+        <span data-i18n="nav.rank">Rank</span>
+    </div>
+    <!-- В bottom-nav добавить -->
+<div class="nav-item" onclick="switchTab('pvp')" id="nav-pvp">
+    <i class="fa-solid fa-sword"></i>
+    <span data-i18n="nav.pvp">Арена</span>
+</div>
+    <div class="nav-item" onclick="switchTab('friends')" id="nav-friends">
+        <i class="fa-solid fa-users"></i>
+        <span data-i18n="nav.friends">Friends</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('special')" id="nav-special">
+        <i class="fa-solid fa-star"></i>
+        <span data-i18n="nav.special">Special</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('wallet')" id="nav-wallet">
+        <i class="fa-solid fa-wallet"></i>
+        <span data-i18n="nav.wallet">Wallet</span>
+    </div>
+</div>
+
+
+<!-- OVERLAYS -->
+<div class="overlay" id="overlay" onclick="closeOverlay(event)">
+    <div class="popup" id="popup"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- SCRIPTS -->
+<script src="script.js"></script>
+<script src="localization.js"></script>
 </body>
 </html>
