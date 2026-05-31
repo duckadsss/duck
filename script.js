@@ -1,5 +1,5 @@
 // ============================================================
-// DNA MMO - ПОЛНАЯ КЛИЕНТСКАЯ ЧАСТЬ (С ЖИВЫМ PVP БОЕМ)
+// DNA MMO - ПОЛНАЯ КЛИЕНТСКАЯ ЧАСТЬ (С ЖИВЫМ PVP БОЕМ - ИСПРАВЛЕНА)
 // ============================================================
 
 // ============================================================
@@ -1019,7 +1019,7 @@ function showMatchFoundModal(match) {
 }
 
 // ============================================================
-// ЖИВОЙ БОЙ - ФУНКЦИИ
+// ЖИВОЙ БОЙ - ФУНКЦИИ (ИСПРАВЛЕНЫ)
 // ============================================================
 
 async function acceptMatch(matchId) {
@@ -1118,7 +1118,7 @@ function showBattleScreen(battleData) {
             
             <div class="battle-log" id="battleLog">
                 <div class="battle-log-title">📜 ХОД БОЯ</div>
-                <div class="battle-log-messages" id="battleLogMessages">
+                <div class="battle-log-messages" id="battleLogMessages" data-last-count="0">
                     <div>⚔️ Бой начался!</div>
                     <div>${isMyTurn ? '🔥 Ваш ход! Нажмите АТАКОВАТЬ' : '⏳ Ожидание хода противника...'}</div>
                 </div>
@@ -1164,10 +1164,13 @@ function startBattlePolling(battleId) {
     }, 2000);
 }
 
+// ИСПРАВЛЕННАЯ ФУНКЦИЯ updateBattleUI
 function updateBattleUI(battleData) {
-    const isMyTurn = battleData.isMyTurn;
     const myPlayerId = state.user._id;
     const isPlayer1 = battleData.player1.id === myPlayerId;
+    
+    // Исправлено: правильное сравнение ID (преобразуем оба к строке)
+    const isMyTurn = battleData.currentTurn?.toString() === myPlayerId?.toString();
     
     const myHp = isPlayer1 ? battleData.player1.hp : battleData.player2.hp;
     const myMaxHp = isPlayer1 ? battleData.player1.maxHp : battleData.player2.maxHp;
@@ -1196,33 +1199,38 @@ function updateBattleUI(battleData) {
         attackBtn.style.opacity = isMyTurn ? '1' : '0.5';
     }
     
+    // Добавляем новые действия в лог (только если они новые)
     if (battleData.lastActions && battleData.lastActions.length > 0) {
         const logContainer = document.getElementById('battleLogMessages');
-        if (logContainer) {
-            const lastAction = battleData.lastActions[battleData.lastActions.length - 1];
-            const isMyAction = lastAction.attackerName === (isPlayer1 ? battleData.player1.name : battleData.player2.name);
-            
-            const actionMessage = getBattleActionMessage(lastAction, isMyAction);
-            
-            const logEntry = document.createElement('div');
-            logEntry.className = `battle-log-entry ${isMyAction ? 'my-action' : 'opponent-action'}`;
-            logEntry.innerHTML = actionMessage;
-            logContainer.appendChild(logEntry);
-            logContainer.scrollTop = logContainer.scrollHeight;
+        if (logContainer && battleData.lastActions.length > (logContainer.dataset.lastCount || 0)) {
+            const newActions = battleData.lastActions.slice(logContainer.dataset.lastCount || 0);
+            for (const action of newActions) {
+                const isMyAction = action.attackerId === myPlayerId;
+                const actionMessage = getBattleActionMessage(action, isMyAction);
+                const logEntry = document.createElement('div');
+                logEntry.className = `battle-log-entry ${isMyAction ? 'my-action' : 'opponent-action'}`;
+                logEntry.innerHTML = actionMessage;
+                logContainer.appendChild(logEntry);
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+            logContainer.dataset.lastCount = battleData.lastActions.length;
         }
     }
 }
 
 function getBattleActionMessage(action, isMyAction) {
+    const attackerName = isMyAction ? 'Вы' : action.attackerName;
+    const verb = isMyAction ? 'нанесли' : 'нанёс';
+    
     switch(action.type) {
         case 'crit':
-            return `🔥 ${isMyAction ? 'ВЫ нанесли' : action.attackerName + ' нанёс'} КРИТИЧЕСКИЙ удар! -${action.damage} HP!`;
+            return `🔥 ${attackerName} ${verb} КРИТИЧЕСКИЙ удар! -${action.damage} HP!`;
         case 'miss':
-            return `😤 ${isMyAction ? 'ВЫ промахнулись!' : action.attackerName + ' промахнулся!'}`;
+            return `😤 ${attackerName} ${isMyAction ? 'промахнулись!' : 'промахнулся!'}`;
         case 'block':
-            return `🛡️ ${isMyAction ? 'ВЫ нанесли заблокированный удар' : action.attackerName + ' нанёс заблокированный удар'}! -${action.damage} HP!`;
+            return `🛡️ ${attackerName} ${verb} заблокированный удар! -${action.damage} HP!`;
         default:
-            return `⚔️ ${isMyAction ? 'ВЫ атаковали' : action.attackerName + ' атаковал'}! -${action.damage} HP!`;
+            return `⚔️ ${attackerName} ${verb} атаку! -${action.damage} HP!`;
     }
 }
 
@@ -1261,16 +1269,39 @@ async function executeAttack() {
     }
 }
 
+// ИСПРАВЛЕННАЯ ФУНКЦИЯ updateBattleAfterAttack
 function updateBattleAfterAttack(action) {
+    if (!currentBattle) return;
+    
+    // Обновляем локальное состояние боя
+    const myPlayerId = state.user._id;
+    const isPlayer1 = currentBattle.player1.id === myPlayerId;
+    
+    if (isPlayer1) {
+        currentBattle.player1.hp = action.yourNewHp;
+        currentBattle.player2.hp = action.opponentNewHp;
+    } else {
+        currentBattle.player1.hp = action.opponentNewHp;
+        currentBattle.player2.hp = action.yourNewHp;
+    }
+    
+    // Обновляем currentTurn для следующего хода
+    currentBattle.currentTurn = action.nextTurn;
+    currentBattle.isMyTurn = action.nextTurn === myPlayerId;
+    
+    // Обновляем UI
     const myHpFill = document.getElementById('myHpFill');
     const myHpText = document.getElementById('myHpText');
     const opponentHpFill = document.getElementById('opponentHpFill');
     const opponentHpText = document.getElementById('opponentHpText');
     
-    if (myHpFill) myHpFill.style.width = `${(action.yourNewHp / currentBattle.player1.maxHp) * 100}%`;
-    if (myHpText) myHpText.textContent = `${action.yourNewHp}/${currentBattle.player1.maxHp} HP`;
-    if (opponentHpFill) opponentHpFill.style.width = `${(action.opponentNewHp / currentBattle.player2.maxHp) * 100}%`;
-    if (opponentHpText) opponentHpText.textContent = `${action.opponentNewHp}/${currentBattle.player2.maxHp} HP`;
+    const myMaxHp = isPlayer1 ? currentBattle.player1.maxHp : currentBattle.player2.maxHp;
+    const opponentMaxHp = isPlayer1 ? currentBattle.player2.maxHp : currentBattle.player1.maxHp;
+    
+    if (myHpFill) myHpFill.style.width = `${(action.yourNewHp / myMaxHp) * 100}%`;
+    if (myHpText) myHpText.textContent = `${action.yourNewHp}/${myMaxHp} HP`;
+    if (opponentHpFill) opponentHpFill.style.width = `${(action.opponentNewHp / opponentMaxHp) * 100}%`;
+    if (opponentHpText) opponentHpText.textContent = `${action.opponentNewHp}/${opponentMaxHp} HP`;
     
     const logContainer = document.getElementById('battleLogMessages');
     if (logContainer && action.message) {
@@ -1288,7 +1319,7 @@ function updateBattleAfterAttack(action) {
         if (turnIndicator) turnIndicator.textContent = '🏆 БОЙ ЗАВЕРШЕН!';
         if (attackBtn) attackBtn.disabled = true;
     } else {
-        const isMyTurn = action.nextTurn === state.user._id;
+        const isMyTurn = action.nextTurn === myPlayerId;
         if (turnIndicator) {
             turnIndicator.textContent = isMyTurn ? '🔥 ВАШ ХОД!' : '⏳ ХОД ПРОТИВНИКА...';
             turnIndicator.style.color = isMyTurn ? '#22c55e' : '#f59e0b';
