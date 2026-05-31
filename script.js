@@ -697,11 +697,11 @@ async function renderPvP() {
         color: stats.leagueColor || '#cd7c3a',
         entryFee: stats.entryFee || 50
     };
-    
     const nextLeaguePoints = stats.nextLeaguePoints || (stats.leaguePoints + 300);
-    const pointsToNext = nextLeaguePoints - stats.leaguePoints;
-    const progressPercent = Math.min(100, (stats.leaguePoints / nextLeaguePoints) * 100);
+const pointsToNext = nextLeaguePoints - stats.leaguePoints;  // <-- ПЕРЕМЕСТИТЕ СЮДА
+const progressPercent = Math.min(100, (stats.leaguePoints / nextLeaguePoints) * 100);
     
+ 
     container.innerHTML = `
         <div class="pvp-container" style="padding:8px;">
             <!-- League Card -->
@@ -2577,7 +2577,7 @@ function openCustomLinkAndComplete(questId, link) {
             saveQuestStatusesToStorage();
             updateQuestButton(questId, 'available');
             
-            showToast(`✅ Квест "${getQuestTitle(questId)}" выполнен! Нажмите "ЗАБРАТЬ" для получения награды.`, '??');
+            showToast(`✅ Квест "${getQuestTitle(questId)}" выполнен! Нажмите "ЗАБРАТЬ" для получения награды.`, '🎁');
         }
     }, 60000);
     
