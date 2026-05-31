@@ -648,123 +648,131 @@ async function loadPvPStats() {
 }
 
 // Рендер PvP вкладки
-async function renderPvP() {
-    const container = document.getElementById('tab-pvp');
-    if (!container) return;
-    
-    // Показываем загрузку
-    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="fa-solid fa-spinner fa-spin"></i> Загрузка PvP данных...</div>';
-    
-    // Ждём пока загрузится токен
-    if (!state.token) {
-        container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">⚠️ Подождите, инициализация...</div>';
-        return;
-    }
-    
-    const stats = await loadPvPStats();
-    if (!stats) {
-        container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="fa-solid fa-exclamation-triangle"></i> Ошибка загрузки PvP данных. Попробуйте позже.</div>';
-        return;
-    }
-    
-    // Рендерим контент
-    const leagueInfo = {
-        name: stats.leagueName || 'Бронзовая',
-        icon: stats.leagueIcon || '🥉',
-        color: stats.leagueColor || '#cd7c3a',
-        entryFee: stats.entryFee || 50
-    };
-    
-    const nextLeaguePoints = stats.nextLeaguePoints || (stats.leaguePoints + 300);
-    const pointsToNext = nextLeaguePoints - stats.leaguePoints;
-    const progressPercent = Math.min(100, (stats.leaguePoints / nextLeaguePoints) * 100);
-    
-    container.innerHTML = `
-        <div class="pvp-container" style="padding:8px;">
-            <!-- League Card -->
-            <div class="pvp-league-card" style="border-color: ${leagueInfo.color}">
-                <div class="league-icon">${leagueInfo.icon}</div>
-                <div class="league-name" style="color: ${leagueInfo.color}">${leagueInfo.name} лига</div>
-                <div class="league-points">
-                    ⭐ <span>${stats.leaguePoints}</span> / ${nextLeaguePoints}
-                </div>
-                <div class="league-progress">
-                    <div class="progress-fill" style="width: ${progressPercent}%; background: ${leagueInfo.color}"></div>
-                </div>
-                <div class="entry-fee">💰 Взнос за бой: ${leagueInfo.entryFee} MMO</div>
-                ${pointsToNext > 0 ? `<div style="font-size: 10px; color: var(--text3); margin-top: 8px;">До следующей лиги: ${pointsToNext} ⭐</div>` : ''}
-            </div>
-            
-            <!-- PvP Button -->
-            <button class="pvp-find-btn" id="pvpFindBtn" onclick="togglePvPQueue()">
-                <i class="fa-solid fa-sword"></i> НАЙТИ ПРОТИВНИКА
-            </button>
-            
-            <!-- Queue Status -->
-            <div class="pvp-queue-status" id="pvpQueueStatus" style="display: none;">
-                <div class="queue-spinner"></div>
-                <div>Поиск соперника...</div>
-                <div class="queue-timer" id="queueTimer">60</div>
-                <button class="queue-leave-btn" onclick="leavePvPQueue()">Отмена</button>
-            </div>
-            
-            <!-- Stats Grid -->
-            <div class="pvp-stats-grid">
-                <div class="pvp-stat-card">
-                    <div class="pvp-stat-value">${stats.wins || 0}</div>
-                    <div class="pvp-stat-label">Побед</div>
-                </div>
-                <div class="pvp-stat-card">
-                    <div class="pvp-stat-value">${stats.losses || 0}</div>
-                    <div class="pvp-stat-label">Поражений</div>
-                </div>
-                <div class="pvp-stat-card">
-                    <div class="pvp-stat-value">${stats.winRate || 0}%</div>
-                    <div class="pvp-stat-label">Винрейт</div>
-                </div>
-                <div class="pvp-stat-card">
-                    <div class="pvp-stat-value">${formatNum(stats.totalWonMMO || 0)}</div>
-                    <div class="pvp-stat-label">Выиграно MMO</div>
-                </div>
-                <div class="pvp-stat-card">
-                    <div class="pvp-stat-value">${stats.currentStreak || 0}</div>
-                    <div class="pvp-stat-label">Текущая серия</div>
-                </div>
-                <div class="pvp-stat-card">
-                    <div class="pvp-stat-value">${stats.bestStreak || 0}</div>
-                    <div class="pvp-stat-label">Лучшая серия</div>
-                </div>
-                <div class="pvp-stat-card">
-                    <div class="pvp-stat-value">${stats.dailyBattles || 0}/${stats.maxDailyBattles || 20}</div>
-                    <div class="pvp-stat-label">Боёв сегодня</div>
-                </div>
-                <div class="pvp-stat-card">
-                    <div class="pvp-stat-value">${formatNum(stats.totalLostMMO || 0)}</div>
-                    <div class="pvp-stat-label">Проиграно MMO</div>
-                </div>
-            </div>
-            
-            <!-- Leaderboard -->
-            <div class="section-title">🏆 Топ игроков ${leagueInfo.name} лиги</div>
-            <div class="pvp-leaderboard-list" id="pvpLeaderboardList">
-                <div style="text-align:center; padding:20px; color:var(--text3)">Загрузка...</div>
-            </div>
-            
-            <!-- History -->
-            <div class="section-title">📜 История боёв</div>
-            <div class="pvp-history-list" id="pvpHistoryList">
-                <div style="text-align:center; padding:20px; color:var(--text3)">Загрузка...</div>
-            </div>
-        </div>
-    `;
-    
-    // Загружаем лидерборд и историю
-    loadPvPLeaderboard(stats.league);
-    loadPvPHistory();
-    
-    // Запускаем polling для проверки статуса
-    startPvPPolling();
-}
+// В script.js найдите функцию renderPvP и замените её на эту:
+
+async function renderPvP() {
+    const container = document.getElementById('tab-pvp');
+    if (!container) return;
+    
+    // Показываем загрузку
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="fa-solid fa-spinner fa-spin"></i> Загрузка PvP данных...</div>';
+    
+    // Ждём пока загрузится токен (максимум 5 секунд)
+    let waitCount = 0;
+    while (!state.token && waitCount < 50) {
+        await new Promise(r => setTimeout(r, 100));
+        waitCount++;
+    }
+    
+    if (!state.token) {
+        container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">⚠️ Не удалось загрузить PvP данные. Попробуйте позже.</div>';
+        return;
+    }
+    
+    const stats = await loadPvPStats();
+    if (!stats) {
+        container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="fa-solid fa-exclamation-triangle"></i> Ошибка загрузки PvP данных. Попробуйте позже.</div>';
+        return;
+    }
+    
+    // Рендерим контент
+    const leagueInfo = {
+        name: stats.leagueName || 'Бронзовая',
+        icon: stats.leagueIcon || '🥉',
+        color: stats.leagueColor || '#cd7c3a',
+        entryFee: stats.entryFee || 50
+    };
+    
+    const nextLeaguePoints = stats.nextLeaguePoints || (stats.leaguePoints + 300);
+    const pointsToNext = nextLeaguePoints - stats.leaguePoints;
+    const progressPercent = Math.min(100, (stats.leaguePoints / nextLeaguePoints) * 100);
+    
+    container.innerHTML = `
+        <div class="pvp-container" style="padding:8px;">
+            <!-- League Card -->
+            <div class="pvp-league-card" style="border-color: ${leagueInfo.color}">
+                <div class="league-icon">${leagueInfo.icon}</div>
+                <div class="league-name" style="color: ${leagueInfo.color}">${leagueInfo.name} лига</div>
+                <div class="league-points">
+                    ⭐ <span>${stats.leaguePoints}</span> / ${nextLeaguePoints}
+                </div>
+                <div class="league-progress">
+                    <div class="progress-fill" style="width: ${progressPercent}%; background: ${leagueInfo.color}"></div>
+                </div>
+                <div class="entry-fee">💰 Взнос за бой: ${leagueInfo.entryFee} MMO</div>
+                ${pointsToNext > 0 ? `<div style="font-size: 10px; color: var(--text3); margin-top: 8px;">До следующей лиги: ${pointsToNext} ⭐</div>` : ''}
+            </div>
+            
+            <!-- PvP Button -->
+            <button class="pvp-find-btn" id="pvpFindBtn" onclick="togglePvPQueue()">
+                <i class="fa-solid fa-sword"></i> НАЙТИ ПРОТИВНИКА
+            </button>
+            
+            <!-- Queue Status -->
+            <div class="pvp-queue-status" id="pvpQueueStatus" style="display: none;">
+                <div class="queue-spinner"></div>
+                <div>Поиск соперника...</div>
+                <div class="queue-timer" id="queueTimer">60</div>
+                <button class="queue-leave-btn" onclick="leavePvPQueue()">Отмена</button>
+            </div>
+            
+            <!-- Stats Grid -->
+            <div class="pvp-stats-grid">
+                <div class="pvp-stat-card">
+                    <div class="pvp-stat-value">${stats.wins || 0}</div>
+                    <div class="pvp-stat-label">Побед</div>
+                </div>
+                <div class="pvp-stat-card">
+                    <div class="pvp-stat-value">${stats.losses || 0}</div>
+                    <div class="pvp-stat-label">Поражений</div>
+                </div>
+                <div class="pvp-stat-card">
+                    <div class="pvp-stat-value">${stats.winRate || 0}%</div>
+                    <div class="pvp-stat-label">Винрейт</div>
+                </div>
+                <div class="pvp-stat-card">
+                    <div class="pvp-stat-value">${formatNum(stats.totalWonMMO || 0)}</div>
+                    <div class="pvp-stat-label">Выиграно MMO</div>
+                </div>
+                <div class="pvp-stat-card">
+                    <div class="pvp-stat-value">${stats.currentStreak || 0}</div>
+                    <div class="pvp-stat-label">Текущая серия</div>
+                </div>
+                <div class="pvp-stat-card">
+                    <div class="pvp-stat-value">${stats.bestStreak || 0}</div>
+                    <div class="pvp-stat-label">Лучшая серия</div>
+                </div>
+                <div class="pvp-stat-card">
+                    <div class="pvp-stat-value">${stats.dailyBattles || 0}/${stats.maxDailyBattles || 20}</div>
+                    <div class="pvp-stat-label">Боёв сегодня</div>
+                </div>
+                <div class="pvp-stat-card">
+                    <div class="pvp-stat-value">${formatNum(stats.totalLostMMO || 0)}</div>
+                    <div class="pvp-stat-label">Проиграно MMO</div>
+                </div>
+            </div>
+            
+            <!-- Leaderboard -->
+            <div class="section-title">🏆 Топ игроков ${leagueInfo.name} лиги</div>
+            <div class="pvp-leaderboard-list" id="pvpLeaderboardList">
+                <div style="text-align:center; padding:20px; color:var(--text3)">Загрузка...</div>
+            </div>
+            
+            <!-- History -->
+            <div class="section-title">📜 История боёв</div>
+            <div class="pvp-history-list" id="pvpHistoryList">
+                <div style="text-align:center; padding:20px; color:var(--text3)">Загрузка...</div>
+            </div>
+        </div>
+    `;
+    
+    // Загружаем лидерборд и историю
+    loadPvPLeaderboard(stats.league);
+    loadPvPHistory();
+    
+    // Запускаем polling для проверки статуса (только если вкладка активна)
+    startPvPPolling();
+}
 
 // Загрузить PvP лидерборд
 async function loadPvPLeaderboard(league) {
@@ -907,36 +915,43 @@ function stopQueueTimer() {
 }
 
 // Polling для проверки статуса
-function startPvPPolling() {
-    if (pvpPollingInterval) clearInterval(pvpPollingInterval);
-    
-    pvpPollingInterval = setInterval(async () => {
-        const res = await apiRequest('GET', '/api/pvp/queue/status');
-        if (res && res.success) {
-            // Проверяем наличие активного матча
-            if (res.activeMatch && res.activeMatch.status === 'ready') {
-                if (!pvpActiveMatch) {
-                    pvpActiveMatch = res.activeMatch;
-                    showMatchFoundModal(res.activeMatch);
-                }
-            } else {
-                pvpActiveMatch = null;
-            }
-            
-            // Обновляем статус очереди
-            if (pvpQueueStatus !== res.inQueue) {
-                pvpQueueStatus = res.inQueue;
-                updatePvPButton(pvpQueueStatus);
-                showQueueStatus(pvpQueueStatus);
-                if (pvpQueueStatus) {
-                    startQueueTimer();
-                } else {
-                    stopQueueTimer();
-                }
-            }
-        }
-    }, 3000);
-}
+// Polling для проверки статуса
+function startPvPPolling() {
+    if (pvpPollingInterval) clearInterval(pvpPollingInterval);
+    
+    pvpPollingInterval = setInterval(async () => {
+        // Проверяем, активна ли вкладка PvP
+        const pvpTab = document.getElementById('tab-pvp');
+        if (!pvpTab || !pvpTab.classList.contains('active')) {
+            return; // Не обновляем, если вкладка не активна
+        }
+        
+        const res = await apiRequest('GET', '/api/pvp/queue/status');
+        if (res && res.success) {
+            // Проверяем наличие активного матча
+            if (res.activeMatch && res.activeMatch.status === 'ready') {
+                if (!pvpActiveMatch) {
+                    pvpActiveMatch = res.activeMatch;
+                    showMatchFoundModal(res.activeMatch);
+                }
+            } else {
+                pvpActiveMatch = null;
+            }
+            
+            // Обновляем статус очереди
+            if (pvpQueueStatus !== res.inQueue) {
+                pvpQueueStatus = res.inQueue;
+                updatePvPButton(pvpQueueStatus);
+                showQueueStatus(pvpQueueStatus);
+                if (pvpQueueStatus) {
+                    startQueueTimer();
+                } else {
+                    stopQueueTimer();
+                }
+            }
+        }
+    }, 3000);
+}
 
 // Остановить PvP polling
 function stopPvPPolling() {
