@@ -3024,11 +3024,8 @@ function switchTab(tab) {
     }
     if (tab === 'shop') renderMarketplaceBuy();
     if (tab === 'friends') renderFriendsList();
-
-
-    if (tab === 'pvp') renderPvP();
+    if (tab === 'pvp') renderPvP();  // <--- ДОБАВИТЬ ЭТУ СТРОКУ
 }
-
 // ============================================================
 // OVERLAY
 // ============================================================
