@@ -1,10 +1,7 @@
 // ============================================================
-// DNA MMO - ПОЛНАЯ КЛИЕНТСКАЯ ЧАСТЬ (ИСПРАВЛЕННАЯ)
+// DNA MMO - ПОЛНАЯ КЛИЕНТСКАЯ ЧАСТЬ
 // ============================================================
 
-// ============================================================
-// CONFIG
-// ============================================================
 const API_URL = 'https://serv-production-765e.up.railway.app';
 
 // ============================================================
@@ -206,6 +203,106 @@ function updateServerSnapshot(newBalance, newIncomePerHour, newLastPassiveIncome
 }
 
 // ============================================================
+// LOADING SCREEN
+// ============================================================
+function showLoadingScreen(show) {
+    let el = document.getElementById('loadingScreen');
+    
+    if (!el && show) {
+        el = document.createElement('div');
+        el.id = 'loadingScreen';
+        el.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100vh;
+            height: 100dvh;
+            background: url('load.webp') center/cover no-repeat;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            padding-bottom: 12vh;
+        `;
+        
+        el.innerHTML = `
+            <style>
+                .loading-bar-container {
+                    width: 200px;
+                    height: 4px;
+                    background: rgba(168,85,247,0.2);
+                    border-radius: 4px;
+                    overflow: hidden;
+                }
+                .loading-bar-fill {
+                    width: 0%;
+                    height: 100%;
+                    background: linear-gradient(90deg, #a855f7, #06b6d4);
+                    border-radius: 4px;
+                    transition: width 0.3s ease;
+                }
+                .loading-text {
+                    font-family: 'Orbitron', monospace;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #a855f7;
+                    text-transform: uppercase;
+                    letter-spacing: 3px;
+                    margin-top: 16px;
+                }
+                .loading-percent {
+                    font-family: 'Orbitron', monospace;
+                    font-size: 11px;
+                    color: #94a3b8;
+                    margin-top: 6px;
+                }
+            </style>
+            
+            <div class="loading-bar-container">
+                <div class="loading-bar-fill" id="loadingBarFill"></div>
+            </div>
+            <div class="loading-text">LOADING</div>
+            <div class="loading-percent" id="loadingPercent">0%</div>
+        `;
+        
+        document.body.appendChild(el);
+        
+        let percent = 0;
+        const fillEl = document.getElementById('loadingBarFill');
+        const percentEl = document.getElementById('loadingPercent');
+        
+        const interval = setInterval(() => {
+            if (percent < 90) {
+                percent += Math.random() * 10;
+                percent = Math.min(percent, 90);
+                if (fillEl) fillEl.style.width = percent + '%';
+                if (percentEl) percentEl.textContent = Math.floor(percent) + '%';
+            }
+        }, 200);
+        el.dataset.percentInterval = interval;
+    } 
+    else if (el && !show) {
+        if (el.dataset.percentInterval) {
+            clearInterval(parseInt(el.dataset.percentInterval));
+        }
+        const fillEl = document.getElementById('loadingBarFill');
+        const percentEl = document.getElementById('loadingPercent');
+        if (fillEl) fillEl.style.width = '100%';
+        if (percentEl) percentEl.textContent = '100%';
+        
+        setTimeout(() => {
+            el.style.transition = 'opacity 0.5s ease';
+            el.style.opacity = '0';
+            setTimeout(() => el.remove(), 500);
+        }, 200);
+    }
+}
+
+// ============================================================
 // TELEGRAM WEBAPP INIT
 // ============================================================
 function clearAllIntervals() {
@@ -294,65 +391,6 @@ async function refreshUserProfile() {
     }
 }
 
-function showLoadingScreen(show) {
-    let el = document.getElementById('loadingScreen');
-    
-    if (!el && show) {
-        el = document.createElement('div');
-        el.id = 'loadingScreen';
-        el.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            width: 100%;
-            height: 100vh;
-            height: 100dvh;
-            background: #080b14;
-            z-index: 9999;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        `;
-        
-        el.innerHTML = `
-            <style>
-                .loading-spinner {
-                    width: 50px;
-                    height: 50px;
-                    border: 3px solid #1e2d4a;
-                    border-top-color: #a855f7;
-                    border-radius: 50%;
-                    animation: spin 1s linear infinite;
-                }
-                @keyframes spin {
-                    to { transform: rotate(360deg); }
-                }
-                .loading-text {
-                    font-family: 'Orbitron', monospace;
-                    font-size: 12px;
-                    font-weight: 600;
-                    color: #a855f7;
-                    margin-top: 16px;
-                }
-            </style>
-            <div class="loading-spinner"></div>
-            <div class="loading-text">LOADING DNA...</div>
-        `;
-        
-        document.body.appendChild(el);
-    } 
-    else if (el && !show) {
-        setTimeout(() => {
-            el.style.transition = 'opacity 0.5s ease';
-            el.style.opacity = '0';
-            setTimeout(() => el.remove(), 500);
-        }, 200);
-    }
-}
-
 async function initTelegramApp() {
     clearAllIntervals();
     showLoadingScreen(true);
@@ -367,6 +405,30 @@ async function initTelegramApp() {
             tg.enableClosingConfirmation();
         }
         
+        if (tg.requestFullscreen) {
+            try {
+                await tg.requestFullscreen();
+                console.log('✅ Fullscreen requested');
+            } catch (e) {
+                console.log('Fullscreen request failed:', e);
+            }
+        }
+        
+        setTimeout(() => {
+            const top = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tg-safe-area-inset-top')) || 55;
+            document.querySelector('.header').style.paddingTop = (top + 40) + 'px';
+        }, 400);
+        
+        if (tg.disableVerticalSwipes) {
+            tg.disableVerticalSwipes();
+        }
+        
+        setTimeout(() => {
+            if (tg && typeof tg.expand === 'function') {
+                tg.expand();
+            }
+        }, 500);
+        
         tg.setHeaderColor('#080b14');
         tg.setBackgroundColor('#080b14');
         
@@ -376,6 +438,7 @@ async function initTelegramApp() {
     }
 
     let initData = tg?.initData || '';
+    let tgUser = tg?.initDataUnsafe?.user;
     
     let referralCode = null;
     
@@ -399,6 +462,7 @@ async function initTelegramApp() {
         console.warn('⚠️ Dev mode: using mock Telegram user');
         const mockUser = { id: 123456789, first_name: 'Test', username: 'testuser' };
         initData = `user=${encodeURIComponent(JSON.stringify(mockUser))}&hash=devhash`;
+        tgUser = mockUser;
     }
 
     if (!initData) {
@@ -470,6 +534,11 @@ async function initTelegramApp() {
         img.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             return false;
+        });
+        img.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 1) {
+                e.preventDefault();
+            }
         });
     });
 }
@@ -2377,7 +2446,7 @@ function copyToClipboard(text) {
 }
 
 // ============================================================
-// НОВАЯ PVP СИСТЕМА - ВЫБОР ОТРЯДА
+// PVP СИСТЕМА - ВЫБОР ОТРЯДА
 // ============================================================
 
 async function loadPvPStats() {
@@ -2922,7 +2991,7 @@ async function executeAttackWithTarget() {
             endBattle(res.action);
         } else {
             updateBattleUI(res.action);
-            if (res.action.nextTurn && res.action.nextTurn === state.user._id) {
+            if (res.action.nextTurn && res.action.nextTurn !== state.user._id) {
                 selectedTargetPosition = null;
             }
         }
@@ -3125,7 +3194,7 @@ function closeBattleResult() {
 }
 
 // ============================================================
-// NAVIGATION
+// НАВИГАЦИЯ
 // ============================================================
 function switchTab(tab) {
     if (tab !== 'pvp') {
@@ -3159,27 +3228,24 @@ function switchTab(tab) {
     if (tab === 'pvp') renderPvP();
 }
 
-// ============================================================
-// OVERLAY
-// ============================================================
 function closeOverlay(e) {
     if (e && e.target !== document.getElementById('overlay')) return;
     document.getElementById('overlay').classList.remove('show');
 }
 
-// ============================================================
-// TOAST
-// ============================================================
 function showToast(msg, icon = '') {
-    const t = document.getElementById('toast');
+    let t = document.getElementById('toast');
+    if (!t) {
+        t = document.createElement('div');
+        t.id = 'toast';
+        t.className = 'toast';
+        document.body.appendChild(t);
+    }
     t.textContent = (icon ? icon + ' ' : '') + msg;
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 2500);
 }
 
-// ============================================================
-// EFFECTS
-// ============================================================
 function spawnStars(rarity) {
     const count = rarity === 'legendary' || rarity === 'mythic' ? 8 : rarity === 'epic' ? 5 : 3;
     const icons = ['✨', '⭐', '🌟', '💫', '✦'];
@@ -3208,53 +3274,8 @@ function spawnFloatingMMO(amount) {
 }
 
 // ============================================================
-// PARTICLES
-// ============================================================
-(function initParticles() {
-    const canvas = document.getElementById('particles-canvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    let W, H, particles = [];
-    function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
-    resize();
-    window.addEventListener('resize', resize);
-    for (let i = 0; i < 40; i++) {
-        particles.push({
-            x: Math.random() * 1000, y: Math.random() * 1000,
-            r: Math.random() * 1.5 + 0.3,
-            vx: (Math.random() - 0.5) * 0.3, vy: -Math.random() * 0.4 - 0.1,
-            alpha: Math.random() * 0.4 + 0.1,
-            color: Math.random() > 0.5 ? '124,58,237' : '6,182,212'
-        });
-    }
-    function draw() {
-        ctx.clearRect(0, 0, W, H);
-        particles.forEach(p => {
-            p.x += p.vx; p.y += p.vy;
-            if (p.y < -5) { p.y = H + 5; p.x = Math.random() * W; }
-            if (p.x < -5) p.x = W + 5;
-            if (p.x > W + 5) p.x = -5;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(${p.color},${p.alpha})`;
-            ctx.fill();
-        });
-        requestAnimationFrame(draw);
-    }
-    draw();
-})();
-
-// ============================================================
-// INIT
-// ============================================================
-document.addEventListener('DOMContentLoaded', () => {
-    initTelegramApp();
-});
-
-// ============================================================
 // ЭКСПОРТ ФУНКЦИЙ ДЛЯ ГЛОБАЛЬНОГО ДОСТУПА
 // ============================================================
-
 window.updateHeader = updateHeader;
 window.renderCards = renderCards;
 window.renderLeaderboard = renderLeaderboard;
@@ -3309,3 +3330,10 @@ window.declineMatch = declineMatch;
 window.selectTarget = selectTarget;
 window.executeAttackWithTarget = executeAttackWithTarget;
 window.closeBattleResult = closeBattleResult;
+
+// ============================================================
+// ЗАПУСК
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+    initTelegramApp();
+});
