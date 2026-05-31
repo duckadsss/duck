@@ -288,6 +288,13 @@ function clearAllIntervals() {
     if (window.questTimerInterval) clearInterval(window.questTimerInterval);
 }
 
+function clearAllQuestTimers() {
+    if (window.questTimerInterval) {
+        clearInterval(window.questTimerInterval);
+        window.questTimerInterval = null;
+    }
+}
+
 function startOptimizedIntervals() {
     intervals.leaderboard = setInterval(() => {
         if (!document.hidden) renderLeaderboard();
@@ -629,23 +636,34 @@ let matchTimerInterval = null;
 let queueTimerInterval = null;
 
 // Получить PvP статистику
-async function loadPvPStats() {
-    if (!state.token) {
-        console.warn('No token for PvP stats');
-        return null;
-    }
-    
-    try {
-        const res = await apiRequest('GET', '/api/pvp/stats');
-        if (res && res.success) {
-            return res.stats;
-        }
-        return null;
-    } catch (e) {
-        console.error('loadPvPStats error:', e);
-        return null;
-    }
-}
+// Получить PvP статистику
+async function loadPvPStats() {
+    // Ждём пока появится токен
+    let waitCount = 0;
+    while (!state.token && waitCount < 30) {
+        await new Promise(r => setTimeout(r, 100));
+        waitCount++;
+    }
+    
+    if (!state.token) {
+        console.warn('No token for PvP stats');
+        return null;
+    }
+    
+    try {
+        const res = await apiRequest('GET', '/api/pvp/stats');
+        if (res && res.success) {
+            return res.stats;
+        }
+        if (res && !res.success && res.message === 'Токен не предоставлен') {
+            console.error('Auth error in PvP stats');
+        }
+        return null;
+    } catch (e) {
+        console.error('loadPvPStats error:', e);
+        return null;
+    }
+}
 
 // Рендер PvP вкладки
 // В script.js найдите функцию renderPvP и замените её на эту:
