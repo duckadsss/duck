@@ -1028,34 +1028,41 @@ async function acceptMatch(matchId) {
     const modal = document.getElementById('matchFoundModal');
     if (modal) modal.remove();
     
-    showToast('Бой начинается...', '⚔️');
+    showToast('Подтверждение боя...', '⚔️');
     
     const res = await apiRequest('POST', '/api/pvp/accept-match', { matchId });
     if (res && res.success) {
-        startBattle(res.battle);
+        if (res.waiting) {
+            showToast('Ожидание подтверждения от противника...', '⏳');
+            startMatchStatusPolling(matchId);
+        } else if (res.battle) {
+            startBattle(res.battle);
+        }
     } else {
         showToast(res?.message || 'Ошибка начала боя', '❌');
     }
     
     pvpActiveMatch = null;
-    pvpQueueStatus = false;
-    updatePvPButton(false);
-    showQueueStatus(false);
-    stopQueueTimer();
 }
 
-async function declineMatch(matchId) {
-    clearInterval(matchTimerInterval);
-    matchTimerInterval = null;
-    const modal = document.getElementById('matchFoundModal');
-    if (modal) modal.remove();
+function startMatchStatusPolling(matchId) {
+    const interval = setInterval(async () => {
+        const res = await apiRequest('GET', `/api/pvp/match-status?matchId=${matchId}`);
+        if (res && res.success) {
+            if (res.battle) {
+                clearInterval(interval);
+                startBattle(res.battle);
+            } else if (res.status === 'expired' || res.status === 'cancelled') {
+                clearInterval(interval);
+                showToast('Матч отменен или истекло время', '❌');
+                renderPvP();
+            }
+        }
+    }, 2000);
     
-    const res = await apiRequest('POST', '/api/pvp/cancel-match', { matchId });
-    if (res && res.success) {
-        showToast(res.message, '⚠️');
-    }
-    
-    pvpActiveMatch = null;
+    setTimeout(() => {
+        clearInterval(interval);
+    }, 60000);
 }
 
 function startBattle(battleData) {
@@ -1330,6 +1337,20 @@ function closeBattleResult() {
     
     document.body.style.overflow = '';
     currentBattle = null;
+}
+
+async function declineMatch(matchId) {
+    clearInterval(matchTimerInterval);
+    matchTimerInterval = null;
+    const modal = document.getElementById('matchFoundModal');
+    if (modal) modal.remove();
+    
+    const res = await apiRequest('POST', '/api/pvp/cancel-match', { matchId });
+    if (res && res.success) {
+        showToast(res.message, '⚠️');
+    }
+    
+    pvpActiveMatch = null;
 }
 
 // ============================================================

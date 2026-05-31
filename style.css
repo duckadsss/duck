@@ -2431,7 +2431,6 @@ img {
     cursor: not-allowed;
 }
 
-/* Результат боя */
 .battle-result-overlay {
     position: fixed;
     top: 0;
