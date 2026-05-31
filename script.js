@@ -1,5 +1,5 @@
 // ============================================================
-// DNA MMO - ПОЛНАЯ КЛИЕНТСКАЯ ЧАСТЬ (НОВАЯ PVP СИСТЕМА)
+// DNA MMO - ПОЛНАЯ КЛИЕНТСКАЯ ЧАСТЬ (ИСПРАВЛЕННАЯ)
 // ============================================================
 
 // ============================================================
@@ -96,64 +96,6 @@ const RARITY_COLORS = {
 const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
 
 // ============================================================
-// ВИЗУАЛЬНЫЙ ТИКЕР
-// ============================================================
-let visualTickerInterval = null;
-
-function startVisualTicker() {
-    if (visualTickerInterval) clearInterval(visualTickerInterval);
-    
-    visualTickerInterval = setInterval(() => {
-        if (document.hidden || !state.user) return;
-        
-        const visualBalance = getVisualBalance();
-        
-        const balanceEl = document.getElementById('balanceDisplay');
-        if (balanceEl) balanceEl.textContent = formatBalance(visualBalance);
-        
-        const walletBalanceEl = document.getElementById('walletBalance');
-        if (walletBalanceEl) walletBalanceEl.textContent = formatBalance(visualBalance);
-    }, 1000);
-    
-    state.visualTicker = { cancel: () => clearInterval(visualTickerInterval) };
-}
-
-function formatBalance(n) {
-    const absN = Math.abs(n);
-    const sign = n < 0 ? '-' : '';
-    return sign + absN.toFixed(3);
-}
-
-function getVisualBalance() {
-    if (!state.user || !state.lastServerSync) return state.serverBalance;
-    const elapsedSeconds = (Date.now() - state.lastServerSync) / 1000;
-    const earned = (state.incomePerHour / 3600) * elapsedSeconds;
-    return state.serverBalance + earned;
-}
-
-function updateServerSnapshot(newBalance, newIncomePerHour, newLastPassiveIncome) {
-    state.serverBalance = newBalance;
-    state.incomePerHour = newIncomePerHour;
-    state.lastServerSync = newLastPassiveIncome ? new Date(newLastPassiveIncome).getTime() : Date.now();
-    if (state.user) state.user.balance = newBalance;
-}
-
-let collectIncomeTimer = null;
-async function startCollectIncomeLoop() {
-    if (collectIncomeTimer) clearInterval(collectIncomeTimer);
-    collectIncomeTimer = setInterval(async () => {
-        if (document.hidden || !state.token) return;
-        try {
-            const res = await apiRequest('POST', '/api/game/collect-income');
-            if (res && res.success) {
-                updateServerSnapshot(res.balance, res.incomePerHour, res.lastPassiveIncome);
-                if (state.user) state.user.balance = res.balance;
-            }
-        } catch (e) {}
-    }, 5 * 60 * 1000);
-}
-
-// ============================================================
 // API ЗАПРОСЫ
 // ============================================================
 let pendingRequests = new Map();
@@ -243,6 +185,55 @@ function getIconHtml(creature, addShadow = false, shadowColor = null) {
     return icon || '🧬';
 }
 
+function formatBalance(n) {
+    const absN = Math.abs(n);
+    const sign = n < 0 ? '-' : '';
+    return sign + absN.toFixed(3);
+}
+
+function getVisualBalance() {
+    if (!state.user || !state.lastServerSync) return state.serverBalance;
+    const elapsedSeconds = (Date.now() - state.lastServerSync) / 1000;
+    const earned = (state.incomePerHour / 3600) * elapsedSeconds;
+    return state.serverBalance + earned;
+}
+
+function updateServerSnapshot(newBalance, newIncomePerHour, newLastPassiveIncome) {
+    state.serverBalance = newBalance;
+    state.incomePerHour = newIncomePerHour;
+    state.lastServerSync = newLastPassiveIncome ? new Date(newLastPassiveIncome).getTime() : Date.now();
+    if (state.user) state.user.balance = newBalance;
+}
+
+// ============================================================
+// TELEGRAM WEBAPP INIT
+// ============================================================
+function clearAllIntervals() {
+    if (intervals.adsTimer) clearInterval(intervals.adsTimer);
+    if (intervals.specialQuests) clearInterval(intervals.specialQuests);
+    if (intervals.leaderboard) clearInterval(intervals.leaderboard);
+    if (intervals.marketplace) clearInterval(intervals.marketplace);
+    if (state.visualTicker) state.visualTicker.cancel();
+    if (collectIncomeTimer) clearInterval(collectIncomeTimer);
+    collectIncomeTimer = null;
+    for (const timer of activeQuestTimers.values()) clearTimeout(timer);
+    activeQuestTimers.clear();
+    clearAllQuestTimers();
+    if (window.questTimerInterval) clearInterval(window.questTimerInterval);
+    if (battlePollingInterval) clearInterval(battlePollingInterval);
+    if (queuePollingInterval) clearInterval(queuePollingInterval);
+    if (turnTimerInterval) clearInterval(turnTimerInterval);
+}
+
+function clearAllQuestTimers() {
+    if (window.questTimerInterval) {
+        clearInterval(window.questTimerInterval);
+        window.questTimerInterval = null;
+    }
+}
+
+let collectIncomeTimer = null;
+
 async function loadGameConfig() {
     const res = await apiRequest('GET', '/api/game/config');
     if (res && res.success) {
@@ -279,85 +270,6 @@ async function getCurrentIncome() {
     return income;
 }
 
-// ============================================================
-// TELEGRAM WEBAPP INIT
-// ============================================================
-function clearAllIntervals() {
-    if (intervals.adsTimer) clearInterval(intervals.adsTimer);
-    if (intervals.specialQuests) clearInterval(intervals.specialQuests);
-    if (intervals.leaderboard) clearInterval(intervals.leaderboard);
-    if (intervals.marketplace) clearInterval(intervals.marketplace);
-    if (state.visualTicker) state.visualTicker.cancel();
-    if (collectIncomeTimer) clearInterval(collectIncomeTimer);
-    collectIncomeTimer = null;
-    for (const timer of activeQuestTimers.values()) clearTimeout(timer);
-    activeQuestTimers.clear();
-    clearAllQuestTimers();
-    if (window.questTimerInterval) clearInterval(window.questTimerInterval);
-    if (battlePollingInterval) clearInterval(battlePollingInterval);
-    if (queuePollingInterval) clearInterval(queuePollingInterval);
-    if (turnTimerInterval) clearInterval(turnTimerInterval);
-}
-
-function clearAllQuestTimers() {
-    if (window.questTimerInterval) {
-        clearInterval(window.questTimerInterval);
-        window.questTimerInterval = null;
-    }
-}
-
-function startOptimizedIntervals() {
-    intervals.leaderboard = setInterval(() => {
-        if (!document.hidden) renderLeaderboard();
-    }, 5 * 60 * 1000);
-    
-    intervals.specialQuests = setInterval(() => {
-        if (!document.hidden) {
-            loadGameConfig();
-            renderSpecialQuests();
-        }
-    }, 5 * 60 * 1000);
-    
-    intervals.marketplace = setInterval(() => {
-        if (!document.hidden && isMarketplaceTabActive) {
-            renderMarketplaceBuy();
-        }
-    }, 10 * 1000);
-    
-    intervals.adsTimer = setInterval(updateAdsTimer, 1000);
-}
-
-function handleVisibilityChange() {
-    if (document.hidden) {
-        if (intervals.marketplace) clearInterval(intervals.marketplace);
-        intervals.marketplace = null;
-    } else {
-        apiRequest('POST', '/api/game/collect-income').then(res => {
-            if (res && res.success) {
-                updateServerSnapshot(res.balance, res.incomePerHour, res.lastPassiveIncome);
-                if (state.user) {
-                    state.user.balance = res.balance;
-                    updateHeader();
-                }
-                if (res.earned > 1) {
-                    showToast(`+${formatNum(res.earned)} MMO получено`, '💰');
-                }
-            }
-        }).catch(err => {
-            console.warn('collect-income error on visibility change:', err);
-        });
-
-        if (isMarketplaceTabActive) {
-            renderMarketplaceBuy();
-            intervals.marketplace = setInterval(() => {
-                if (!document.hidden && isMarketplaceTabActive) {
-                    renderMarketplaceBuy();
-                }
-            }, 10 * 1000);
-        }
-    }
-}
-
 async function refreshUserProfile() {
     const res = await apiRequest('GET', '/api/user/profile');
     if (res && res.success) {
@@ -382,6 +294,65 @@ async function refreshUserProfile() {
     }
 }
 
+function showLoadingScreen(show) {
+    let el = document.getElementById('loadingScreen');
+    
+    if (!el && show) {
+        el = document.createElement('div');
+        el.id = 'loadingScreen';
+        el.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100vh;
+            height: 100dvh;
+            background: #080b14;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        `;
+        
+        el.innerHTML = `
+            <style>
+                .loading-spinner {
+                    width: 50px;
+                    height: 50px;
+                    border: 3px solid #1e2d4a;
+                    border-top-color: #a855f7;
+                    border-radius: 50%;
+                    animation: spin 1s linear infinite;
+                }
+                @keyframes spin {
+                    to { transform: rotate(360deg); }
+                }
+                .loading-text {
+                    font-family: 'Orbitron', monospace;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #a855f7;
+                    margin-top: 16px;
+                }
+            </style>
+            <div class="loading-spinner"></div>
+            <div class="loading-text">LOADING DNA...</div>
+        `;
+        
+        document.body.appendChild(el);
+    } 
+    else if (el && !show) {
+        setTimeout(() => {
+            el.style.transition = 'opacity 0.5s ease';
+            el.style.opacity = '0';
+            setTimeout(() => el.remove(), 500);
+        }, 200);
+    }
+}
+
 async function initTelegramApp() {
     clearAllIntervals();
     showLoadingScreen(true);
@@ -396,30 +367,6 @@ async function initTelegramApp() {
             tg.enableClosingConfirmation();
         }
         
-        if (tg.requestFullscreen) {
-            try {
-                await tg.requestFullscreen();
-                console.log('✅ Fullscreen requested');
-            } catch (e) {
-                console.log('Fullscreen request failed:', e);
-            }
-        }
-        
-        setTimeout(() => {
-            const top = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tg-safe-area-inset-top')) || 55;
-            document.querySelector('.header').style.paddingTop = (top + 40) + 'px';
-        }, 400);
-        
-        if (tg.disableVerticalSwipes) {
-            tg.disableVerticalSwipes();
-        }
-        
-        setTimeout(() => {
-            if (tg && typeof tg.expand === 'function') {
-                tg.expand();
-            }
-        }, 500);
-        
         tg.setHeaderColor('#080b14');
         tg.setBackgroundColor('#080b14');
         
@@ -429,7 +376,6 @@ async function initTelegramApp() {
     }
 
     let initData = tg?.initData || '';
-    let tgUser = tg?.initDataUnsafe?.user;
     
     let referralCode = null;
     
@@ -453,7 +399,6 @@ async function initTelegramApp() {
         console.warn('⚠️ Dev mode: using mock Telegram user');
         const mockUser = { id: 123456789, first_name: 'Test', username: 'testuser' };
         initData = `user=${encodeURIComponent(JSON.stringify(mockUser))}&hash=devhash`;
-        tgUser = mockUser;
     }
 
     if (!initData) {
@@ -526,806 +471,96 @@ async function initTelegramApp() {
             e.preventDefault();
             return false;
         });
-        img.addEventListener('touchstart', (e) => {
-            if (e.touches.length > 1) {
-                e.preventDefault();
-            }
-        });
     });
 }
 
 // ============================================================
-// LOADING SCREEN
+// ВИЗУАЛЬНЫЙ ТИКЕР
 // ============================================================
-function showLoadingScreen(show) {
-    let el = document.getElementById('loadingScreen');
+let visualTickerInterval = null;
+
+function startVisualTicker() {
+    if (visualTickerInterval) clearInterval(visualTickerInterval);
     
-    if (!el && show) {
-        el = document.createElement('div');
-        el.id = 'loadingScreen';
-        el.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            width: 100%;
-            height: 100vh;
-            height: 100dvh;
-            background: url('load.webp') center/cover no-repeat;
-            z-index: 9999;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-end;
-            padding-bottom: 12vh;
-        `;
+    visualTickerInterval = setInterval(() => {
+        if (document.hidden || !state.user) return;
         
-        el.innerHTML = `
-            <style>
-                .loading-bar-container {
-                    width: 200px;
-                    height: 4px;
-                    background: rgba(168,85,247,0.2);
-                    border-radius: 4px;
-                    overflow: hidden;
-                }
-                .loading-bar-fill {
-                    width: 0%;
-                    height: 100%;
-                    background: linear-gradient(90deg, #a855f7, #06b6d4);
-                    border-radius: 4px;
-                    transition: width 0.3s ease;
-                }
-                .loading-text {
-                    font-family: 'Orbitron', monospace;
-                    font-size: 12px;
-                    font-weight: 600;
-                    color: #a855f7;
-                    text-transform: uppercase;
-                    letter-spacing: 3px;
-                    margin-top: 16px;
-                }
-                .loading-percent {
-                    font-family: 'Orbitron', monospace;
-                    font-size: 11px;
-                    color: #94a3b8;
-                    margin-top: 6px;
-                }
-            </style>
-            
-            <div class="loading-bar-container">
-                <div class="loading-bar-fill" id="loadingBarFill"></div>
-            </div>
-            <div class="loading-text">LOADING</div>
-            <div class="loading-percent" id="loadingPercent">0%</div>
-        `;
+        const visualBalance = getVisualBalance();
         
-        document.body.appendChild(el);
+        const balanceEl = document.getElementById('balanceDisplay');
+        if (balanceEl) balanceEl.textContent = formatBalance(visualBalance);
         
-        let percent = 0;
-        const fillEl = document.getElementById('loadingBarFill');
-        const percentEl = document.getElementById('loadingPercent');
-        
-        const interval = setInterval(() => {
-            if (percent < 90) {
-                percent += Math.random() * 10;
-                percent = Math.min(percent, 90);
-                if (fillEl) fillEl.style.width = percent + '%';
-                if (percentEl) percentEl.textContent = Math.floor(percent) + '%';
-            }
-        }, 200);
-        el.dataset.percentInterval = interval;
-    } 
-    else if (el && !show) {
-        if (el.dataset.percentInterval) {
-            clearInterval(parseInt(el.dataset.percentInterval));
-        }
-        const fillEl = document.getElementById('loadingBarFill');
-        const percentEl = document.getElementById('loadingPercent');
-        if (fillEl) fillEl.style.width = '100%';
-        if (percentEl) percentEl.textContent = '100%';
-        
-        setTimeout(() => {
-            el.style.transition = 'opacity 0.5s ease';
-            el.style.opacity = '0';
-            setTimeout(() => el.remove(), 500);
-        }, 200);
-    }
-}
-
-// ============================================================
-// PVP СИСТЕМА - ОСНОВНЫЕ ФУНКЦИИ
-// ============================================================
-
-async function loadPvPStats() {
-    let waitCount = 0;
-    while (!state.token && waitCount < 30) {
-        await new Promise(r => setTimeout(r, 100));
-        waitCount++;
-    }
-    
-    if (!state.token) {
-        console.warn('No token for PvP stats');
-        return { wins: 0, losses: 0, totalDamageDealt: 0, bestCreature: '-', currentStreak: 0, bestStreak: 0 };
-    }
-    
-    try {
-        const res = await apiRequest('GET', '/api/pvp/stats');
-        if (res && res.success) {
-            return res.stats;
-        }
-        return { wins: 0, losses: 0, totalDamageDealt: 0, bestCreature: '-', currentStreak: 0, bestStreak: 0 };
-    } catch (e) {
-        console.error('loadPvPStats error:', e);
-        return { wins: 0, losses: 0, totalDamageDealt: 0, bestCreature: '-', currentStreak: 0, bestStreak: 0 };
-    }
-}
-
-async function renderPvP() {
-    const container = document.getElementById('tab-pvp');
-    if (!container) return;
-    
-    const stats = await loadPvPStats();
-    
-    container.innerHTML = `
-        <div style="padding: 12px;">
-            <div class="section-title"><i class="fa-solid fa-sword" style="color: var(--mythic);"></i> PvP Арена</div>
-            
-            <button class="pvp-find-btn" onclick="openTeamSelection()">
-                <i class="fa-solid fa-sword"></i> ВЫБРАТЬ ОТРЯД И НАЙТИ БОЙ
-            </button>
-            
-            <div class="pvp-stats-grid">
-                <div class="pvp-stat-card"><div class="pvp-stat-value">${stats.wins || 0}</div><div class="pvp-stat-label">Побед</div></div>
-                <div class="pvp-stat-card"><div class="pvp-stat-value">${stats.losses || 0}</div><div class="pvp-stat-label">Поражений</div></div>
-                <div class="pvp-stat-card"><div class="pvp-stat-value">${stats.totalDamageDealt || 0}</div><div class="pvp-stat-label">Урона нанесено</div></div>
-                <div class="pvp-stat-card"><div class="pvp-stat-value">${stats.bestCreature || '-'}</div><div class="pvp-stat-label">Лучшее существо</div></div>
-                <div class="pvp-stat-card"><div class="pvp-stat-value">${stats.currentStreak || 0}</div><div class="pvp-stat-label">Текущая серия</div></div>
-                <div class="pvp-stat-card"><div class="pvp-stat-value">${stats.bestStreak || 0}</div><div class="pvp-stat-label">Лучшая серия</div></div>
-            </div>
-            
-            <div class="section-title">📜 История боёв</div>
-            <div class="pvp-history-list" id="pvpHistoryList">Загрузка...</div>
-        </div>
-    `;
-    
-    loadPvPHistory();
-    startQueuePolling();
-}
-
-async function loadPvPHistory() {
-    if (!state.token) return;
-    
-    const res = await apiRequest('GET', '/api/pvp/history');
-    if (res && res.success && res.history) {
-        const listEl = document.getElementById('pvpHistoryList');
-        if (listEl) {
-            if (res.history.length === 0) {
-                listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text3)">Нет боёв</div>';
-            } else {
-                listEl.innerHTML = res.history.map(match => `
-                    <div class="pvp-history-item ${match.isWinner ? 'pvp-history-win' : 'pvp-history-lose'}">
-                        <div>
-                            <div class="history-opponent">${escapeHtml(match.opponentName)}</div>
-                            <div class="history-result ${match.isWinner ? 'history-result-win' : 'history-result-lose'}">
-                                ${match.isWinner ? '🏆 Победа' : '💀 Поражение'}
-                            </div>
-                            <div style="font-size: 9px; color: var(--text3); margin-top: 4px;">
-                                Урон: ${match.myDamageDealt || 0} vs ${match.opponentDamageDealt || 0}
-                            </div>
-                        </div>
-                        <div class="history-amount">
-                            ${match.isWinner ? `+${match.winnerGets}` : `-${match.betAmount}`} MMO
-                        </div>
-                    </div>
-                `).join('');
-            }
-        }
-    }
-}
-
-// ============================================================
-// ВЫБОР ОТРЯДА
-// ============================================================
-
-async function loadTeamSelection() {
-    const res = await apiRequest('GET', '/api/pvp/team-selection');
-    if (res && res.success) {
-        availableCreatures = res.availableCreatures;
-        currentTeam = res.currentTeam;
-        if (currentTeam) {
-            selectedCreatureIds = currentTeam.creatures.map(c => c.creatureId);
-        } else {
-            selectedCreatureIds = [];
-        }
-        renderTeamSelection();
-    }
-}
-
-function renderTeamSelection() {
-    const container = document.getElementById('teamSelectionContainer');
-    if (!container) return;
-    
-    const slotsHtml = `
-        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-            ${[0, 1, 2].map(pos => {
-                const selected = currentTeam?.creatures?.find(c => c.position === pos);
-                return `
-                    <div class="team-slot" data-slot="${pos}" style="
-                        flex: 1;
-                        aspect-ratio: 1;
-                        background: ${selected ? 'var(--surface)' : 'rgba(13,17,32,0.5)'};
-                        border: 2px solid ${selected ? 'var(--accent3)' : 'var(--border)'};
-                        border-radius: 16px;
-                        display: flex;
-                        flex-direction: column;
-                        align-items: center;
-                        justify-content: center;
-                        gap: 8px;
-                        cursor: pointer;
-                        transition: all 0.2s;
-                    " onclick="removeFromTeam(${pos})">
-                        ${selected ? `
-                            <img src="${selected.icon}" style="width: 48px; height: 48px; object-fit: contain;">
-                            <div style="font-size: 10px; font-weight: 600; text-align: center;">${selected.name}</div>
-                            <div style="font-size: 9px; color: var(--text3);">✖ Убрать</div>
-                        ` : `
-                            <i class="fa-solid fa-plus" style="font-size: 24px; color: var(--text3);"></i>
-                            <div style="font-size: 10px; color: var(--text3);">Слот ${pos + 1}</div>
-                        `}
-                    </div>
-                `;
-            }).join('')}
-        </div>
-    `;
-    
-    const creaturesHtml = `
-        <div style="margin-bottom: 20px;">
-            <div class="section-title">📦 Доступные существа</div>
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-                ${availableCreatures.map(creature => {
-                    const isSelected = selectedCreatureIds.includes(creature.creatureId);
-                    const isFull = selectedCreatureIds.length >= 3 && !isSelected;
-                    return `
-                        <div class="creature-card ${creature.rarity}" 
-                             style="opacity: ${isFull ? '0.5' : '1'}; cursor: ${isFull ? 'not-allowed' : 'pointer'}"
-                             onclick="${!isFull ? `addToTeam('${creature.creatureId}')` : ''}">
-                            <div class="card-icon"><img src="${creature.icon}" style="width: 48px; height: 48px;"></div>
-                            <div class="card-name">${creature.name}</div>
-                            <div class="card-rarity-badge badge-${creature.rarity}">${creature.rarity}</div>
-                            <div style="font-size: 9px; margin-top: 4px;">
-                                ❤️ ${creature.stats.hp} | ⚔️ ${creature.stats.atk} | ⚡ ${creature.stats.speed}
-                            </div>
-                            ${isSelected ? '<div style="color: #22c55e; font-size: 10px;">✓ В отряде</div>' : ''}
-                        </div>
-                    `;
-                }).join('')}
-            </div>
-        </div>
-    `;
-    
-    const power = currentTeam?.totalPower || 0;
-    
-    container.innerHTML = `
-        ${slotsHtml}
-        ${creaturesHtml}
-        <div style="background: var(--surface); border-radius: 12px; padding: 12px; margin-top: 12px;">
-            <div style="display: flex; justify-content: space-between;">
-                <span>⚔️ Сила отряда:</span>
-                <span style="font-weight: 700; color: var(--accent3);">${power}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-top: 8px;">
-                <span>💰 Ставка:</span>
-                <select id="betAmountSelect" style="background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; color: var(--text);">
-                    <option value="50">50 MMO</option>
-                    <option value="100" selected>100 MMO</option>
-                    <option value="200">200 MMO</option>
-                    <option value="500">500 MMO</option>
-                </select>
-            </div>
-        </div>
-        <button class="popup-btn" style="margin-top: 16px; background: linear-gradient(135deg, #22c55e, #16a34a);" 
-                onclick="saveAndJoinQueue()" ${selectedCreatureIds.length !== 3 ? 'disabled style="opacity: 0.5;"' : ''}>
-            <i class="fa-solid fa-sword"></i> НАЙТИ БОЙ
-        </button>
-    `;
-}
-
-function addToTeam(creatureId) {
-    if (selectedCreatureIds.length >= 3) {
-        showToast('Максимум 3 существа в отряде', '⚠️');
-        return;
-    }
-    if (selectedCreatureIds.includes(creatureId)) {
-        showToast('Это существо уже в отряде', '⚠️');
-        return;
-    }
-    selectedCreatureIds.push(creatureId);
-    renderTeamSelection();
-}
-
-function removeFromTeam(position) {
-    if (!currentTeam) return;
-    const creatureAtPos = currentTeam.creatures.find(c => c.position === position);
-    if (creatureAtPos) {
-        const index = selectedCreatureIds.indexOf(creatureAtPos.creatureId);
-        if (index !== -1) selectedCreatureIds.splice(index, 1);
-        renderTeamSelection();
-    }
-}
-
-function openTeamSelection() {
-    document.getElementById('overlay').classList.add('show');
-    document.getElementById('popup').innerHTML = '<div style="text-align:center;padding:20px;">Загрузка...</div>';
-    document.getElementById('popup').style.maxWidth = '380px';
-    document.getElementById('popup').style.width = '100%';
-    loadTeamSelection();
-}
-
-async function saveAndJoinQueue() {
-    if (selectedCreatureIds.length !== 3) {
-        showToast('Выберите 3 существа для боя', '⚠️');
-        return;
-    }
-    
-    const saveRes = await apiRequest('POST', '/api/pvp/save-team', { creatureIds: selectedCreatureIds });
-    if (!saveRes.success) {
-        showToast(saveRes.message || 'Ошибка сохранения отряда', '❌');
-        return;
-    }
-    
-    currentTeam = saveRes.team;
-    
-    const betAmount = parseInt(document.getElementById('betAmountSelect')?.value || 100);
-    
-    const queueRes = await apiRequest('POST', '/api/pvp/queue/join', { teamId: currentTeam.id, betAmount });
-    if (!queueRes.success) {
-        showToast(queueRes.message || 'Ошибка входа в очередь', '❌');
-        return;
-    }
-    
-    closeOverlay();
-    showToast('Вы в очереди на бой...', '⚔️');
-    startQueuePolling();
-}
-
-// ============================================================
-// ОЧЕРЕДЬ И ПОИСК МАТЧА
-// ============================================================
-
-function startQueuePolling() {
-    if (queuePollingInterval) clearInterval(queuePollingInterval);
-    
-    queuePollingInterval = setInterval(async () => {
-        const res = await apiRequest('GET', '/api/pvp/queue/status');
-        if (res && res.success) {
-            if (res.pendingMatch) {
-                clearInterval(queuePollingInterval);
-                showMatchConfirmation(res.pendingMatch);
-            }
-            if (!res.inQueue && !res.pendingMatch && !res.activeBattle) {
-                clearInterval(queuePollingInterval);
-                queuePollingInterval = null;
-            }
-        }
-    }, 2000);
-}
-
-function showMatchConfirmation(match) {
-    const modalHtml = `
-        <div class="match-found-modal" id="matchConfirmModal">
-            <div class="match-found-card">
-                <div class="match-found-icon">⚔️</div>
-                <div class="match-found-title">СОПЕРНИК НАЙДЕН!</div>
-                <div class="match-bet">Ставка: <span class="match-bet-amount">${match.betAmount} MMO</span></div>
-                <div class="match-timer" id="matchTimer">Принять бой за: <span id="matchSeconds">15</span> секунд</div>
-                <div class="match-actions">
-                    <button class="match-accept-btn" onclick="confirmMatch('${match.matchId}')">
-                        <i class="fa-solid fa-check"></i> ПРИНЯТЬ БОЙ
-                    </button>
-                    <button class="match-decline-btn" onclick="declineMatch('${match.matchId}')">
-                        <i class="fa-solid fa-times"></i> ОТКАЗ
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
-    let seconds = 15;
-    const timerInterval = setInterval(() => {
-        seconds--;
-        const secondsEl = document.getElementById('matchSeconds');
-        if (secondsEl) secondsEl.textContent = seconds;
-        if (seconds <= 0) {
-            clearInterval(timerInterval);
-            const modal = document.getElementById('matchConfirmModal');
-            if (modal) modal.remove();
-            showToast('Время на принятие боя истекло', '⏳');
-        }
+        const walletBalanceEl = document.getElementById('walletBalance');
+        if (walletBalanceEl) walletBalanceEl.textContent = formatBalance(visualBalance);
     }, 1000);
+    
+    state.visualTicker = { cancel: () => clearInterval(visualTickerInterval) };
 }
 
-async function confirmMatch(matchId) {
-    const modal = document.getElementById('matchConfirmModal');
-    if (modal) modal.remove();
+function startCollectIncomeLoop() {
+    if (collectIncomeTimer) clearInterval(collectIncomeTimer);
+    collectIncomeTimer = setInterval(async () => {
+        if (document.hidden || !state.token) return;
+        try {
+            const res = await apiRequest('POST', '/api/game/collect-income');
+            if (res && res.success) {
+                updateServerSnapshot(res.balance, res.incomePerHour, res.lastPassiveIncome);
+                if (state.user) state.user.balance = res.balance;
+            }
+        } catch (e) {}
+    }, 5 * 60 * 1000);
+}
+
+function startOptimizedIntervals() {
+    intervals.leaderboard = setInterval(() => {
+        if (!document.hidden) renderLeaderboard();
+    }, 5 * 60 * 1000);
     
-    showToast('Подтверждение боя...', '⚔️');
-    
-    const res = await apiRequest('POST', '/api/pvp/accept-match', { matchId });
-    if (res && res.success) {
-        if (res.waiting) {
-            showToast('Ожидание подтверждения от противника...', '⏳');
-            startMatchStatusPolling(matchId);
-        } else if (res.battle) {
-            startBattle(res.battle);
+    intervals.specialQuests = setInterval(() => {
+        if (!document.hidden) {
+            loadGameConfig();
+            renderSpecialQuests();
         }
+    }, 5 * 60 * 1000);
+    
+    intervals.marketplace = setInterval(() => {
+        if (!document.hidden && isMarketplaceTabActive) {
+            renderMarketplaceBuy();
+        }
+    }, 10 * 1000);
+    
+    intervals.adsTimer = setInterval(updateAdsTimer, 1000);
+}
+
+function handleVisibilityChange() {
+    if (document.hidden) {
+        if (intervals.marketplace) clearInterval(intervals.marketplace);
+        intervals.marketplace = null;
     } else {
-        showToast(res?.message || 'Ошибка начала боя', '❌');
-    }
-}
-
-async function declineMatch(matchId) {
-    const modal = document.getElementById('matchConfirmModal');
-    if (modal) modal.remove();
-    
-    const res = await apiRequest('POST', '/api/pvp/cancel-match', { matchId });
-    if (res && res.success) {
-        showToast(res.message, '⚠️');
-    }
-}
-
-function startMatchStatusPolling(matchId) {
-    const interval = setInterval(async () => {
-        const res = await apiRequest('GET', `/api/pvp/match-status?matchId=${matchId}`);
-        if (res && res.success) {
-            if (res.battle) {
-                clearInterval(interval);
-                startBattle(res.battle);
-            } else if (res.status === 'expired' || res.status === 'cancelled') {
-                clearInterval(interval);
-                showToast('Матч отменен или истекло время', '❌');
-            }
-        }
-    }, 2000);
-    
-    setTimeout(() => clearInterval(interval), 60000);
-}
-
-// ============================================================
-// БОЕВАЯ СИСТЕМА
-// ============================================================
-
-function startBattle(battleData) {
-    currentBattleId = battleData.battleId;
-    showBattleScreen(battleData);
-    startBattlePolling(battleData.battleId);
-    startTurnTimer(battleData.turnStartTime);
-}
-
-function showBattleScreen(battleData) {
-    const myTeam = battleData.myTeam;
-    const opponentTeam = battleData.opponentTeam;
-    
-    const myTeamHtml = myTeam.map(creature => `
-        <div class="battle-creature ${creature.isAlive ? '' : 'dead'}" data-position="${creature.position}" style="
-            background: var(--surface);
-            border-radius: 12px;
-            padding: 8px;
-            text-align: center;
-            opacity: ${creature.isAlive ? '1' : '0.4'};
-            cursor: pointer;
-        " onclick="selectTarget(${creature.position})">
-            <img src="${creature.icon}" style="width: 48px; height: 48px; object-fit: contain;">
-            <div style="font-size: 10px; font-weight: 600;">${creature.name}</div>
-            <div class="battle-hp-bar" style="height: 4px; background: var(--border); border-radius: 2px; margin: 4px 0;">
-                <div style="width: ${(creature.currentHp / creature.maxHp) * 100}%; height: 100%; background: #22c55e; border-radius: 2px;"></div>
-            </div>
-            <div style="font-size: 9px;">${creature.currentHp}/${creature.maxHp} HP</div>
-        </div>
-    `).join('');
-    
-    const opponentTeamHtml = opponentTeam.map(creature => `
-        <div class="battle-creature ${creature.isAlive ? '' : 'dead'}" style="
-            background: var(--surface);
-            border-radius: 12px;
-            padding: 8px;
-            text-align: center;
-            opacity: ${creature.isAlive ? '1' : '0.4'};
-        ">
-            <img src="${creature.icon}" style="width: 48px; height: 48px; object-fit: contain;">
-            <div style="font-size: 10px; font-weight: 600;">${creature.name}</div>
-            <div class="battle-hp-bar" style="height: 4px; background: var(--border); border-radius: 2px; margin: 4px 0;">
-                <div style="width: ${(creature.currentHp / creature.maxHp) * 100}%; height: 100%; background: #ef4444; border-radius: 2px;"></div>
-            </div>
-            <div style="font-size: 9px;">${creature.currentHp}/${creature.maxHp} HP</div>
-        </div>
-    `).join('');
-    
-    const battleHtml = `
-        <div class="battle-screen" id="battleScreen">
-            <div class="battle-header">
-                <div class="battle-title">⚔️ ПОЕДИНОК ⚔️</div>
-                <div class="battle-turn-indicator" id="turnIndicator">
-                    ${battleData.isMyTurn ? '🔥 ВАШ ХОД!' : '⏳ ХОД ПРОТИВНИКА...'}
-                </div>
-                <div class="battle-timer" id="battleTimer">⏱️ 30с</div>
-            </div>
-            
-            <div style="padding: 16px;">
-                <div style="margin-bottom: 20px;">
-                    <div class="section-title">👤 Противник</div>
-                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-                        ${opponentTeamHtml}
-                    </div>
-                </div>
-                
-                <div style="margin-bottom: 20px;">
-                    <div class="section-title">👤 Ваш отряд</div>
-                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-                        ${myTeamHtml}
-                    </div>
-                </div>
-                
-                <div class="battle-log" id="battleLog">
-                    <div class="battle-log-title">📜 ХОД БОЯ</div>
-                    <div class="battle-log-messages" id="battleLogMessages">
-                        <div>⚔️ Бой начался!</div>
-                        ${battleData.isMyTurn ? '<div>🔥 Ваш ход! Выберите цель и нажмите АТАКОВАТЬ</div>' : '<div>⏳ Ожидание хода противника...</div>'}
-                    </div>
-                </div>
-                
-                <div class="battle-actions">
-                    <button class="battle-attack-btn" id="battleAttackBtn" ${!battleData.isMyTurn ? 'disabled' : ''} onclick="executeAttackWithTarget()">
-                        <i class="fa-solid fa-sword"></i> АТАКОВАТЬ
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    const oldScreen = document.getElementById('battleScreen');
-    if (oldScreen) oldScreen.remove();
-    document.body.insertAdjacentHTML('beforeend', battleHtml);
-    document.body.style.overflow = 'hidden';
-    
-    selectedTargetPosition = null;
-}
-
-function selectTarget(position) {
-    selectedTargetPosition = position;
-    document.querySelectorAll('.battle-creature').forEach(el => {
-        el.style.border = '';
-    });
-    const targetEl = document.querySelector(`.battle-creature[data-position="${position}"]`);
-    if (targetEl) targetEl.style.border = '2px solid #f59e0b';
-    showToast(`Цель выбрана!`, '🎯');
-}
-
-async function executeAttackWithTarget() {
-    if (!selectedTargetPosition) {
-        showToast('Сначала выберите цель (нажмите на существо противника)', '⚠️');
-        return;
-    }
-    
-    const attackBtn = document.getElementById('battleAttackBtn');
-    if (attackBtn) {
-        attackBtn.disabled = true;
-        attackBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> АТАКА...';
-    }
-    
-    const res = await apiRequest('POST', '/api/pvp/attack', { 
-        battleId: currentBattleId, 
-        targetCreaturePosition: selectedTargetPosition 
-    });
-    
-    if (res && res.success) {
-        if (res.action.isGameOver) {
-            endBattle(res.action);
-        } else {
-            updateBattleUI(res.action);
-            if (res.action.nextTurn && res.action.nextTurn === state.user._id) {
-                selectedTargetPosition = null;
-            }
-        }
-    } else {
-        showToast(res?.message || 'Ошибка атаки', '❌');
-        if (attackBtn) {
-            attackBtn.disabled = false;
-            attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> АТАКОВАТЬ';
-        }
-    }
-}
-
-function updateBattleUI(action) {
-    if (action.yourTeam) {
-        action.yourTeam.forEach(creature => {
-            const creatureEl = document.querySelector(`.battle-creature[data-position="${creature.position}"]`);
-            if (creatureEl) {
-                const hpFill = creatureEl.querySelector('.battle-hp-bar div');
-                const hpText = creatureEl.querySelector('div:last-child');
-                if (hpFill) hpFill.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
-                if (hpText) hpText.textContent = `${creature.currentHp}/${creature.maxHp} HP`;
-                if (!creature.isAlive) creatureEl.style.opacity = '0.4';
-            }
-        });
-    }
-    
-    if (action.opponentTeam) {
-        action.opponentTeam.forEach(creature => {
-            const creatureEls = document.querySelectorAll('.battle-creature');
-            for (const el of creatureEls) {
-                if (el.querySelector('div:first-child')?.innerText === creature.name) {
-                    const hpFill = el.querySelector('.battle-hp-bar div');
-                    const hpText = el.querySelector('div:last-child');
-                    if (hpFill) hpFill.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
-                    if (hpText) hpText.textContent = `${creature.currentHp}/${creature.maxHp} HP`;
-                    if (!creature.isAlive) el.style.opacity = '0.4';
-                    break;
+        apiRequest('POST', '/api/game/collect-income').then(res => {
+            if (res && res.success) {
+                updateServerSnapshot(res.balance, res.incomePerHour, res.lastPassiveIncome);
+                if (state.user) {
+                    state.user.balance = res.balance;
+                    updateHeader();
+                }
+                if (res.earned > 1) {
+                    showToast(`+${formatNum(res.earned)} MMO получено`, '💰');
                 }
             }
+        }).catch(err => {
+            console.warn('collect-income error on visibility change:', err);
         });
-    }
-    
-    const logContainer = document.getElementById('battleLogMessages');
-    if (logContainer && action.message) {
-        const logEntry = document.createElement('div');
-        logEntry.className = `battle-log-entry ${action.isCrit ? 'crit' : ''}`;
-        logEntry.innerHTML = action.message;
-        logContainer.appendChild(logEntry);
-        logContainer.scrollTop = logContainer.scrollHeight;
-    }
-    
-    const turnIndicator = document.getElementById('turnIndicator');
-    const attackBtn = document.getElementById('battleAttackBtn');
-    
-    if (action.isMyTurn !== undefined) {
-        if (turnIndicator) {
-            turnIndicator.textContent = action.isMyTurn ? '🔥 ВАШ ХОД!' : '⏳ ХОД ПРОТИВНИКА...';
-            turnIndicator.style.color = action.isMyTurn ? '#22c55e' : '#f59e0b';
-        }
-        if (attackBtn) {
-            attackBtn.disabled = !action.isMyTurn;
-            attackBtn.style.opacity = action.isMyTurn ? '1' : '0.5';
-            if (action.isMyTurn) attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> АТАКОВАТЬ';
-        }
-    }
-    
-    if (action.turnStartTime) {
-        startTurnTimer(action.turnStartTime);
-    }
-}
 
-function startTurnTimer(turnStartTime) {
-    if (turnTimerInterval) clearInterval(turnTimerInterval);
-    
-    turnTimerInterval = setInterval(() => {
-        const elapsed = (Date.now() - new Date(turnStartTime).getTime()) / 1000;
-        const remaining = Math.max(0, 30 - Math.floor(elapsed));
-        const timerEl = document.getElementById('battleTimer');
-        if (timerEl) {
-            timerEl.textContent = `⏱️ ${remaining}с`;
-            if (remaining <= 5) timerEl.style.color = '#ef4444';
-            else timerEl.style.color = '#f59e0b';
-        }
-        if (remaining <= 0) {
-            clearInterval(turnTimerInterval);
-        }
-    }, 1000);
-}
-
-function startBattlePolling(battleId) {
-    if (battlePollingInterval) clearInterval(battlePollingInterval);
-    
-    battlePollingInterval = setInterval(async () => {
-        const res = await apiRequest('GET', `/api/pvp/battle-status?battleId=${battleId}`);
-        if (res && res.success && res.battle) {
-            if (res.battle.status === 'finished') {
-                clearInterval(battlePollingInterval);
-                clearInterval(turnTimerInterval);
-                endBattle(res.battle);
-            } else {
-                if (res.battle.myTeam) {
-                    updateBattleUIFromStatus(res.battle);
+        if (isMarketplaceTabActive) {
+            renderMarketplaceBuy();
+            intervals.marketplace = setInterval(() => {
+                if (!document.hidden && isMarketplaceTabActive) {
+                    renderMarketplaceBuy();
                 }
-            }
-        }
-    }, 2000);
-}
-
-function updateBattleUIFromStatus(battle) {
-    if (battle.myTeam) {
-        battle.myTeam.forEach(creature => {
-            const creatureEl = document.querySelector(`.battle-creature[data-position="${creature.position}"]`);
-            if (creatureEl) {
-                const hpFill = creatureEl.querySelector('.battle-hp-bar div');
-                const hpText = creatureEl.querySelector('div:last-child');
-                if (hpFill) hpFill.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
-                if (hpText) hpText.textContent = `${creature.currentHp}/${creature.maxHp} HP`;
-            }
-        });
-    }
-    
-    if (battle.opponentTeam) {
-        battle.opponentTeam.forEach(creature => {
-            const creatureEls = document.querySelectorAll('.battle-creature');
-            for (const el of creatureEls) {
-                if (el.querySelector('div:first-child')?.innerText === creature.name) {
-                    const hpFill = el.querySelector('.battle-hp-bar div');
-                    const hpText = el.querySelector('div:last-child');
-                    if (hpFill) hpFill.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
-                    if (hpText) hpText.textContent = `${creature.currentHp}/${creature.maxHp} HP`;
-                    break;
-                }
-            }
-        });
-    }
-    
-    const turnIndicator = document.getElementById('turnIndicator');
-    if (turnIndicator && battle.isMyTurn !== undefined) {
-        turnIndicator.textContent = battle.isMyTurn ? '🔥 ВАШ ХОД!' : '⏳ ХОД ПРОТИВНИКА...';
-        const attackBtn = document.getElementById('battleAttackBtn');
-        if (attackBtn) {
-            attackBtn.disabled = !battle.isMyTurn;
-            if (battle.isMyTurn) attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> АТАКОВАТЬ';
+            }, 10 * 1000);
         }
     }
-    
-    if (battle.recentActions && battle.recentActions.length > 0) {
-        const logContainer = document.getElementById('battleLogMessages');
-        if (logContainer && battle.recentActions.length > (logContainer.dataset.lastCount || 0)) {
-            const newActions = battle.recentActions.slice(logContainer.dataset.lastCount || 0);
-            newActions.forEach(action => {
-                const logEntry = document.createElement('div');
-                logEntry.className = 'battle-log-entry';
-                logEntry.innerHTML = action;
-                logContainer.appendChild(logEntry);
-            });
-            logContainer.dataset.lastCount = battle.recentActions.length;
-            logContainer.scrollTop = logContainer.scrollHeight;
-        }
-    }
-}
-
-function endBattle(battleResult) {
-    const isWinner = battleResult.winnerId === state.user._id;
-    const winnerGets = battleResult.winnerGets || 0;
-    
-    const resultHtml = `
-        <div class="battle-result-overlay" id="battleResultOverlay">
-            <div class="battle-result-card ${isWinner ? 'win' : 'lose'}">
-                <div class="battle-result-icon">${isWinner ? '🏆' : '💀'}</div>
-                <div class="battle-result-title">${isWinner ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}</div>
-                <div class="battle-result-subtitle">
-                    ${isWinner ? `Вы выиграли ${winnerGets} MMO!` : 'В следующий раз повезёт больше!'}
-                </div>
-                <button class="battle-result-btn" onclick="closeBattleResult()">ПРОДОЛЖИТЬ</button>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', resultHtml);
-    
-    if (battlePollingInterval) clearInterval(battlePollingInterval);
-    if (turnTimerInterval) clearInterval(turnTimerInterval);
-    
-    refreshUserProfile();
-}
-
-function closeBattleResult() {
-    const overlay = document.getElementById('battleResultOverlay');
-    if (overlay) overlay.remove();
-    
-    const battleScreen = document.getElementById('battleScreen');
-    if (battleScreen) battleScreen.remove();
-    
-    document.body.style.overflow = '';
-    currentBattleId = null;
-    selectedTargetPosition = null;
-    
-    renderPvP();
 }
 
 // ============================================================
@@ -3142,6 +2377,754 @@ function copyToClipboard(text) {
 }
 
 // ============================================================
+// НОВАЯ PVP СИСТЕМА - ВЫБОР ОТРЯДА
+// ============================================================
+
+async function loadPvPStats() {
+    let waitCount = 0;
+    while (!state.token && waitCount < 30) {
+        await new Promise(r => setTimeout(r, 100));
+        waitCount++;
+    }
+    
+    if (!state.token) {
+        return { wins: 0, losses: 0, totalDamageDealt: 0, bestCreature: '-', currentStreak: 0, bestStreak: 0 };
+    }
+    
+    try {
+        const res = await apiRequest('GET', '/api/pvp/stats');
+        if (res && res.success) {
+            return res.stats;
+        }
+        return { wins: 0, losses: 0, totalDamageDealt: 0, bestCreature: '-', currentStreak: 0, bestStreak: 0 };
+    } catch (e) {
+        console.error('loadPvPStats error:', e);
+        return { wins: 0, losses: 0, totalDamageDealt: 0, bestCreature: '-', currentStreak: 0, bestStreak: 0 };
+    }
+}
+
+async function renderPvP() {
+    const container = document.getElementById('tab-pvp');
+    if (!container) return;
+    
+    const stats = await loadPvPStats();
+    
+    container.innerHTML = `
+        <div style="padding: 12px;">
+            <div class="section-title"><i class="fa-solid fa-sword" style="color: var(--mythic);"></i> PvP Арена</div>
+            
+            <button class="pvp-find-btn" onclick="openTeamSelection()">
+                <i class="fa-solid fa-sword"></i> ВЫБРАТЬ ОТРЯД И НАЙТИ БОЙ
+            </button>
+            
+            <div class="pvp-stats-grid">
+                <div class="pvp-stat-card"><div class="pvp-stat-value">${stats.wins || 0}</div><div class="pvp-stat-label">Побед</div></div>
+                <div class="pvp-stat-card"><div class="pvp-stat-value">${stats.losses || 0}</div><div class="pvp-stat-label">Поражений</div></div>
+                <div class="pvp-stat-card"><div class="pvp-stat-value">${stats.totalDamageDealt || 0}</div><div class="pvp-stat-label">Урона нанесено</div></div>
+                <div class="pvp-stat-card"><div class="pvp-stat-value">${stats.bestCreature || '-'}</div><div class="pvp-stat-label">Лучшее существо</div></div>
+                <div class="pvp-stat-card"><div class="pvp-stat-value">${stats.currentStreak || 0}</div><div class="pvp-stat-label">Текущая серия</div></div>
+                <div class="pvp-stat-card"><div class="pvp-stat-value">${stats.bestStreak || 0}</div><div class="pvp-stat-label">Лучшая серия</div></div>
+            </div>
+            
+            <div class="section-title">📜 История боёв</div>
+            <div class="pvp-history-list" id="pvpHistoryList">Загрузка...</div>
+        </div>
+    `;
+    
+    loadPvPHistory();
+}
+
+async function loadPvPHistory() {
+    if (!state.token) return;
+    
+    const res = await apiRequest('GET', '/api/pvp/history');
+    if (res && res.success && res.history) {
+        const listEl = document.getElementById('pvpHistoryList');
+        if (listEl) {
+            if (res.history.length === 0) {
+                listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text3)">Нет боёв</div>';
+            } else {
+                listEl.innerHTML = res.history.map(match => `
+                    <div class="pvp-history-item ${match.isWinner ? 'pvp-history-win' : 'pvp-history-lose'}">
+                        <div>
+                            <div class="history-opponent">${escapeHtml(match.opponentName)}</div>
+                            <div class="history-result ${match.isWinner ? 'history-result-win' : 'history-result-lose'}">
+                                ${match.isWinner ? '🏆 Победа' : '💀 Поражение'}
+                            </div>
+                            <div style="font-size: 9px; color: var(--text3); margin-top: 4px;">
+                                Урон: ${match.myDamageDealt || 0} vs ${match.opponentDamageDealt || 0}
+                            </div>
+                        </div>
+                        <div class="history-amount">
+                            ${match.isWinner ? `+${match.winnerGets}` : `-${match.betAmount}`} MMO
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+    }
+}
+
+// ОТКРЫТИЕ ВЫБОРА ОТРЯДА
+async function openTeamSelection() {
+    document.getElementById('overlay').classList.add('show');
+    
+    const popup = document.getElementById('popup');
+    popup.style.maxWidth = '380px';
+    popup.style.width = '100%';
+    popup.innerHTML = `
+        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
+        <div id="teamSelectionContainer" style="padding: 4px;">
+            <div style="text-align:center;padding:20px;">
+                <i class="fa-solid fa-spinner fa-spin"></i> Загрузка существ...
+            </div>
+        </div>
+    `;
+    
+    await loadTeamSelectionData();
+}
+
+async function loadTeamSelectionData() {
+    const res = await apiRequest('GET', '/api/pvp/team-selection');
+    const container = document.getElementById('teamSelectionContainer');
+    
+    if (!res || !res.success) {
+        if (container) {
+            container.innerHTML = `<div style="text-align:center;padding:20px;color:var(--mythic);">
+                <i class="fa-solid fa-exclamation-triangle"></i> Ошибка загрузки: ${res?.message || 'Неизвестная ошибка'}
+                <br><button onclick="closeOverlay()" style="margin-top:10px;padding:8px 20px;background:var(--accent);border:none;border-radius:8px;color:#fff;">ЗАКРЫТЬ</button>
+            </div>`;
+        }
+        return;
+    }
+    
+    availableCreatures = res.availableCreatures;
+    currentTeam = res.currentTeam;
+    
+    if (currentTeam) {
+        selectedCreatureIds = currentTeam.creatures.map(c => c.creatureId);
+    } else {
+        selectedCreatureIds = [];
+        currentTeam = { creatures: [], totalPower: 0 };
+    }
+    
+    renderTeamSelectionUI();
+}
+
+function renderTeamSelectionUI() {
+    const container = document.getElementById('teamSelectionContainer');
+    if (!container) return;
+    
+    // Слоты для 3 существ
+    const slotsHtml = `
+        <div style="margin-bottom: 20px;">
+            <div style="font-size: 11px; color: var(--text2); margin-bottom: 8px;">⚔️ ВАШ ОТРЯД (3 существа)</div>
+            <div style="display: flex; gap: 10px;">
+                ${[0, 1, 2].map(pos => {
+                    const selected = currentTeam?.creatures?.find(c => c.position === pos);
+                    return `
+                        <div style="
+                            flex: 1;
+                            aspect-ratio: 1;
+                            background: ${selected ? 'var(--surface)' : 'rgba(13,17,32,0.5)'};
+                            border: 2px solid ${selected ? 'var(--accent3)' : 'var(--border)'};
+                            border-radius: 16px;
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            justify-content: center;
+                            gap: 6px;
+                            cursor: ${selected ? 'pointer' : 'default'};
+                            transition: all 0.2s;
+                            padding: 8px;
+                        " onclick="${selected ? `removeFromTeamByPosition(${pos})` : ''}">
+                            ${selected ? `
+                                <img src="${selected.icon}" style="width: 48px; height: 48px; object-fit: contain;">
+                                <div style="font-size: 10px; font-weight: 600; text-align: center;">${escapeHtml(selected.name)}</div>
+                                <div style="font-size: 8px; color: var(--mythic);">✖ Убрать</div>
+                            ` : `
+                                <i class="fa-solid fa-plus" style="font-size: 24px; color: var(--text3);"></i>
+                                <div style="font-size: 9px; color: var(--text3);">Слот ${pos + 1}</div>
+                            `}
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+    `;
+    
+    // Доступные существа
+    let creaturesHtml = '';
+    if (availableCreatures.length === 0) {
+        creaturesHtml = `<div style="text-align:center;padding:20px;color:var(--text3);">
+            <i class="fa-solid fa-dna"></i> У вас нет существ для битвы!<br>
+            Откройте капсулы в игре.
+        </div>`;
+    } else {
+        creaturesHtml = `
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 11px; color: var(--text2); margin-bottom: 8px;">📦 ДОСТУПНЫЕ СУЩЕСТВА</div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; max-height: 280px; overflow-y: auto; padding: 4px;">
+                    ${availableCreatures.map(creature => {
+                        const isSelected = selectedCreatureIds.includes(creature.creatureId);
+                        const isFull = selectedCreatureIds.length >= 3 && !isSelected;
+                        return `
+                            <div class="creature-card ${creature.rarity}" 
+                                 style="opacity: ${isFull ? '0.5' : '1'}; cursor: ${isFull ? 'not-allowed' : 'pointer'}; padding: 8px;"
+                                 onclick="${!isFull ? `addToTeamById('${creature.creatureId}')` : ''}">
+                                <div class="card-icon"><img src="${creature.icon}" style="width: 48px; height: 48px; object-fit: contain;"></div>
+                                <div class="card-name" style="font-size: 9px;">${creature.name}</div>
+                                <div class="card-rarity-badge badge-${creature.rarity}" style="font-size: 7px;">${creature.rarity}</div>
+                                <div style="font-size: 8px; margin-top: 4px;">
+                                    ❤️ ${creature.stats.hp} | ⚔️ ${creature.stats.atk}
+                                </div>
+                                ${isSelected ? '<div style="color: #22c55e; font-size: 8px;">✓ В отряде</div>' : ''}
+                                ${creature.count > 1 ? `<div style="color: var(--text3); font-size: 7px;">x${creature.count}</div>` : ''}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    }
+    
+    const power = currentTeam?.totalPower || 0;
+    const isTeamReady = selectedCreatureIds.length === 3;
+    
+    container.innerHTML = `
+        ${slotsHtml}
+        ${creaturesHtml}
+        <div style="background: var(--surface); border-radius: 12px; padding: 12px; margin-top: 12px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span>⚔️ Сила отряда:</span>
+                <span style="font-weight: 700; color: var(--accent3);">${power}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                <span>💰 Ставка:</span>
+                <select id="betAmountSelect" style="background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; color: var(--text); font-size: 12px;">
+                    <option value="50">50 MMO</option>
+                    <option value="100" selected>100 MMO</option>
+                    <option value="200">200 MMO</option>
+                    <option value="500">500 MMO</option>
+                    <option value="1000">1000 MMO</option>
+                </select>
+            </div>
+        </div>
+        <button class="popup-btn" style="margin-top: 16px; background: linear-gradient(135deg, #22c55e, #16a34a); width: 100%;" 
+                onclick="saveAndJoinQueueFromSelection()" ${!isTeamReady ? 'disabled style="opacity: 0.5;"' : ''}>
+            <i class="fa-solid fa-sword"></i> ${isTeamReady ? 'НАЙТИ БОЙ' : 'ВЫБЕРИТЕ 3 СУЩЕСТВА'}
+        </button>
+    `;
+}
+
+function addToTeamById(creatureId) {
+    if (selectedCreatureIds.length >= 3) {
+        showToast('Максимум 3 существа в отряде', '⚠️');
+        return;
+    }
+    if (selectedCreatureIds.includes(creatureId)) {
+        showToast('Это существо уже в отряде', '⚠️');
+        return;
+    }
+    
+    const creature = availableCreatures.find(c => c.creatureId === creatureId);
+    if (!creature) return;
+    
+    selectedCreatureIds.push(creatureId);
+    const position = currentTeam.creatures.length;
+    currentTeam.creatures.push({
+        creatureId: creature.creatureId,
+        name: creature.name,
+        icon: creature.icon,
+        position: position
+    });
+    currentTeam.totalPower += creature.stats.atk;
+    
+    renderTeamSelectionUI();
+}
+
+function removeFromTeamByPosition(position) {
+    const index = currentTeam.creatures.findIndex(c => c.position === position);
+    if (index !== -1) {
+        const creatureId = currentTeam.creatures[index].creatureId;
+        const creature = availableCreatures.find(c => c.creatureId === creatureId);
+        if (creature) {
+            currentTeam.totalPower -= creature.stats.atk;
+        }
+        currentTeam.creatures.splice(index, 1);
+        selectedCreatureIds = selectedCreatureIds.filter(id => id !== creatureId);
+        // Перенумеровываем позиции
+        currentTeam.creatures.forEach((c, idx) => {
+            c.position = idx;
+        });
+        renderTeamSelectionUI();
+    }
+}
+
+async function saveAndJoinQueueFromSelection() {
+    if (selectedCreatureIds.length !== 3) {
+        showToast('Выберите 3 существа для боя', '⚠️');
+        return;
+    }
+    
+    showToast('Сохранение отряда...', '⏳');
+    
+    const saveRes = await apiRequest('POST', '/api/pvp/save-team', { creatureIds: selectedCreatureIds });
+    if (!saveRes.success) {
+        showToast(saveRes.message || 'Ошибка сохранения отряда', '❌');
+        return;
+    }
+    
+    currentTeam = saveRes.team;
+    
+    const betAmount = parseInt(document.getElementById('betAmountSelect')?.value || 100);
+    
+    showToast('Вход в очередь...', '⏳');
+    
+    const queueRes = await apiRequest('POST', '/api/pvp/queue/join', { teamId: currentTeam.id, betAmount });
+    if (!queueRes.success) {
+        showToast(queueRes.message || 'Ошибка входа в очередь', '❌');
+        return;
+    }
+    
+    closeOverlay();
+    showToast('✅ Вы в очереди на бой! Ищем соперника...', '⚔️');
+    startQueuePolling();
+}
+
+// ОЧЕРЕДЬ
+function startQueuePolling() {
+    if (queuePollingInterval) clearInterval(queuePollingInterval);
+    
+    queuePollingInterval = setInterval(async () => {
+        const res = await apiRequest('GET', '/api/pvp/queue/status');
+        if (res && res.success) {
+            if (res.pendingMatch) {
+                clearInterval(queuePollingInterval);
+                showMatchConfirmation(res.pendingMatch);
+            }
+            if (!res.inQueue && !res.pendingMatch && !res.activeBattle) {
+                clearInterval(queuePollingInterval);
+                queuePollingInterval = null;
+            }
+        }
+    }, 2000);
+}
+
+function showMatchConfirmation(match) {
+    const modalHtml = `
+        <div class="match-found-modal" id="matchConfirmModal">
+            <div class="match-found-card">
+                <div class="match-found-icon">⚔️</div>
+                <div class="match-found-title">СОПЕРНИК НАЙДЕН!</div>
+                <div class="match-bet">Ставка: <span class="match-bet-amount">${match.betAmount} MMO</span></div>
+                <div class="match-timer" id="matchTimer">Принять бой за: <span id="matchSeconds">15</span> секунд</div>
+                <div class="match-actions">
+                    <button class="match-accept-btn" onclick="confirmMatch('${match.matchId}')">
+                        <i class="fa-solid fa-check"></i> ПРИНЯТЬ БОЙ
+                    </button>
+                    <button class="match-decline-btn" onclick="declineMatch('${match.matchId}')">
+                        <i class="fa-solid fa-times"></i> ОТКАЗ
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    let seconds = 15;
+    const timerInterval = setInterval(() => {
+        seconds--;
+        const secondsEl = document.getElementById('matchSeconds');
+        if (secondsEl) secondsEl.textContent = seconds;
+        if (seconds <= 0) {
+            clearInterval(timerInterval);
+            const modal = document.getElementById('matchConfirmModal');
+            if (modal) modal.remove();
+            showToast('Время на принятие боя истекло', '⏳');
+        }
+    }, 1000);
+}
+
+async function confirmMatch(matchId) {
+    const modal = document.getElementById('matchConfirmModal');
+    if (modal) modal.remove();
+    
+    showToast('Подтверждение боя...', '⚔️');
+    
+    const res = await apiRequest('POST', '/api/pvp/accept-match', { matchId });
+    if (res && res.success) {
+        if (res.waiting) {
+            showToast('Ожидание подтверждения от противника...', '⏳');
+            startMatchStatusPolling(matchId);
+        } else if (res.battle) {
+            startBattle(res.battle);
+        }
+    } else {
+        showToast(res?.message || 'Ошибка начала боя', '❌');
+    }
+}
+
+async function declineMatch(matchId) {
+    const modal = document.getElementById('matchConfirmModal');
+    if (modal) modal.remove();
+    
+    const res = await apiRequest('POST', '/api/pvp/cancel-match', { matchId });
+    if (res && res.success) {
+        showToast(res.message, '⚠️');
+    }
+}
+
+function startMatchStatusPolling(matchId) {
+    const interval = setInterval(async () => {
+        const res = await apiRequest('GET', `/api/pvp/match-status?matchId=${matchId}`);
+        if (res && res.success) {
+            if (res.battle) {
+                clearInterval(interval);
+                startBattle(res.battle);
+            } else if (res.status === 'expired' || res.status === 'cancelled') {
+                clearInterval(interval);
+                showToast('Матч отменен или истекло время', '❌');
+            }
+        }
+    }, 2000);
+    
+    setTimeout(() => clearInterval(interval), 60000);
+}
+
+// БОЕВАЯ СИСТЕМА
+function startBattle(battleData) {
+    currentBattleId = battleData.battleId;
+    showBattleScreen(battleData);
+    startBattlePolling(battleData.battleId);
+    startTurnTimer(battleData.turnStartTime);
+}
+
+function showBattleScreen(battleData) {
+    const myTeam = battleData.myTeam;
+    const opponentTeam = battleData.opponentTeam;
+    
+    const myTeamHtml = myTeam.map(creature => `
+        <div class="battle-creature ${creature.isAlive ? '' : 'dead'}" data-position="${creature.position}" style="
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 8px;
+            text-align: center;
+            opacity: ${creature.isAlive ? '1' : '0.4'};
+            cursor: pointer;
+        " onclick="selectTarget(${creature.position})">
+            <img src="${creature.icon}" style="width: 48px; height: 48px; object-fit: contain;">
+            <div style="font-size: 10px; font-weight: 600;">${creature.name}</div>
+            <div class="battle-hp-bar" style="height: 4px; background: var(--border); border-radius: 2px; margin: 4px 0;">
+                <div style="width: ${(creature.currentHp / creature.maxHp) * 100}%; height: 100%; background: #22c55e; border-radius: 2px;"></div>
+            </div>
+            <div style="font-size: 9px;">${creature.currentHp}/${creature.maxHp} HP</div>
+        </div>
+    `).join('');
+    
+    const opponentTeamHtml = opponentTeam.map(creature => `
+        <div class="battle-creature ${creature.isAlive ? '' : 'dead'}" style="
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 8px;
+            text-align: center;
+            opacity: ${creature.isAlive ? '1' : '0.4'};
+        ">
+            <img src="${creature.icon}" style="width: 48px; height: 48px; object-fit: contain;">
+            <div style="font-size: 10px; font-weight: 600;">${creature.name}</div>
+            <div class="battle-hp-bar" style="height: 4px; background: var(--border); border-radius: 2px; margin: 4px 0;">
+                <div style="width: ${(creature.currentHp / creature.maxHp) * 100}%; height: 100%; background: #ef4444; border-radius: 2px;"></div>
+            </div>
+            <div style="font-size: 9px;">${creature.currentHp}/${creature.maxHp} HP</div>
+        </div>
+    `).join('');
+    
+    const battleHtml = `
+        <div class="battle-screen" id="battleScreen">
+            <div class="battle-header">
+                <div class="battle-title">⚔️ ПОЕДИНОК ⚔️</div>
+                <div class="battle-turn-indicator" id="turnIndicator">
+                    ${battleData.isMyTurn ? '🔥 ВАШ ХОД!' : '⏳ ХОД ПРОТИВНИКА...'}
+                </div>
+                <div class="battle-timer" id="battleTimer">⏱️ 30с</div>
+            </div>
+            
+            <div style="padding: 16px;">
+                <div style="margin-bottom: 20px;">
+                    <div class="section-title">👤 Противник</div>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                        ${opponentTeamHtml}
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <div class="section-title">👤 Ваш отряд</div>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                        ${myTeamHtml}
+                    </div>
+                </div>
+                
+                <div class="battle-log" id="battleLog">
+                    <div class="battle-log-title">📜 ХОД БОЯ</div>
+                    <div class="battle-log-messages" id="battleLogMessages">
+                        <div>⚔️ Бой начался!</div>
+                        ${battleData.isMyTurn ? '<div>🔥 Ваш ход! Выберите цель и нажмите АТАКОВАТЬ</div>' : '<div>⏳ Ожидание хода противника...</div>'}
+                    </div>
+                </div>
+                
+                <div class="battle-actions">
+                    <button class="battle-attack-btn" id="battleAttackBtn" ${!battleData.isMyTurn ? 'disabled' : ''} onclick="executeAttackWithTarget()">
+                        <i class="fa-solid fa-sword"></i> АТАКОВАТЬ
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    const oldScreen = document.getElementById('battleScreen');
+    if (oldScreen) oldScreen.remove();
+    document.body.insertAdjacentHTML('beforeend', battleHtml);
+    document.body.style.overflow = 'hidden';
+    
+    selectedTargetPosition = null;
+}
+
+function selectTarget(position) {
+    selectedTargetPosition = position;
+    document.querySelectorAll('.battle-creature').forEach(el => {
+        el.style.border = '';
+    });
+    const targetEl = document.querySelector(`.battle-creature[data-position="${position}"]`);
+    if (targetEl) targetEl.style.border = '2px solid #f59e0b';
+    showToast(`Цель выбрана!`, '🎯');
+}
+
+async function executeAttackWithTarget() {
+    if (!selectedTargetPosition) {
+        showToast('Сначала выберите цель (нажмите на существо противника)', '⚠️');
+        return;
+    }
+    
+    const attackBtn = document.getElementById('battleAttackBtn');
+    if (attackBtn) {
+        attackBtn.disabled = true;
+        attackBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> АТАКА...';
+    }
+    
+    const res = await apiRequest('POST', '/api/pvp/attack', { 
+        battleId: currentBattleId, 
+        targetCreaturePosition: selectedTargetPosition 
+    });
+    
+    if (res && res.success) {
+        if (res.action.isGameOver) {
+            endBattle(res.action);
+        } else {
+            updateBattleUI(res.action);
+            if (res.action.nextTurn && res.action.nextTurn === state.user._id) {
+                selectedTargetPosition = null;
+            }
+        }
+    } else {
+        showToast(res?.message || 'Ошибка атаки', '❌');
+        if (attackBtn) {
+            attackBtn.disabled = false;
+            attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> АТАКОВАТЬ';
+        }
+    }
+}
+
+function updateBattleUI(action) {
+    if (action.yourTeam) {
+        action.yourTeam.forEach(creature => {
+            const creatureEl = document.querySelector(`.battle-creature[data-position="${creature.position}"]`);
+            if (creatureEl) {
+                const hpFill = creatureEl.querySelector('.battle-hp-bar div');
+                const hpText = creatureEl.querySelector('div:last-child');
+                if (hpFill) hpFill.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
+                if (hpText) hpText.textContent = `${creature.currentHp}/${creature.maxHp} HP`;
+                if (!creature.isAlive) creatureEl.style.opacity = '0.4';
+            }
+        });
+    }
+    
+    if (action.opponentTeam) {
+        action.opponentTeam.forEach(creature => {
+            const creatureEls = document.querySelectorAll('.battle-creature');
+            for (const el of creatureEls) {
+                if (el.querySelector('div:first-child')?.innerText === creature.name) {
+                    const hpFill = el.querySelector('.battle-hp-bar div');
+                    const hpText = el.querySelector('div:last-child');
+                    if (hpFill) hpFill.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
+                    if (hpText) hpText.textContent = `${creature.currentHp}/${creature.maxHp} HP`;
+                    if (!creature.isAlive) el.style.opacity = '0.4';
+                    break;
+                }
+            }
+        });
+    }
+    
+    const logContainer = document.getElementById('battleLogMessages');
+    if (logContainer && action.message) {
+        const logEntry = document.createElement('div');
+        logEntry.className = `battle-log-entry ${action.isCrit ? 'crit' : ''}`;
+        logEntry.innerHTML = action.message;
+        logContainer.appendChild(logEntry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    const turnIndicator = document.getElementById('turnIndicator');
+    const attackBtn = document.getElementById('battleAttackBtn');
+    
+    if (action.isMyTurn !== undefined) {
+        if (turnIndicator) {
+            turnIndicator.textContent = action.isMyTurn ? '🔥 ВАШ ХОД!' : '⏳ ХОД ПРОТИВНИКА...';
+            turnIndicator.style.color = action.isMyTurn ? '#22c55e' : '#f59e0b';
+        }
+        if (attackBtn) {
+            attackBtn.disabled = !action.isMyTurn;
+            attackBtn.style.opacity = action.isMyTurn ? '1' : '0.5';
+            if (action.isMyTurn) attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> АТАКОВАТЬ';
+        }
+    }
+    
+    if (action.turnStartTime) {
+        startTurnTimer(action.turnStartTime);
+    }
+}
+
+function startTurnTimer(turnStartTime) {
+    if (turnTimerInterval) clearInterval(turnTimerInterval);
+    
+    turnTimerInterval = setInterval(() => {
+        const elapsed = (Date.now() - new Date(turnStartTime).getTime()) / 1000;
+        const remaining = Math.max(0, 30 - Math.floor(elapsed));
+        const timerEl = document.getElementById('battleTimer');
+        if (timerEl) {
+            timerEl.textContent = `⏱️ ${remaining}с`;
+            if (remaining <= 5) timerEl.style.color = '#ef4444';
+            else timerEl.style.color = '#f59e0b';
+        }
+        if (remaining <= 0) {
+            clearInterval(turnTimerInterval);
+        }
+    }, 1000);
+}
+
+function startBattlePolling(battleId) {
+    if (battlePollingInterval) clearInterval(battlePollingInterval);
+    
+    battlePollingInterval = setInterval(async () => {
+        const res = await apiRequest('GET', `/api/pvp/battle-status?battleId=${battleId}`);
+        if (res && res.success && res.battle) {
+            if (res.battle.status === 'finished') {
+                clearInterval(battlePollingInterval);
+                clearInterval(turnTimerInterval);
+                endBattle(res.battle);
+            } else {
+                if (res.battle.myTeam) {
+                    updateBattleUIFromStatus(res.battle);
+                }
+            }
+        }
+    }, 2000);
+}
+
+function updateBattleUIFromStatus(battle) {
+    if (battle.myTeam) {
+        battle.myTeam.forEach(creature => {
+            const creatureEl = document.querySelector(`.battle-creature[data-position="${creature.position}"]`);
+            if (creatureEl) {
+                const hpFill = creatureEl.querySelector('.battle-hp-bar div');
+                const hpText = creatureEl.querySelector('div:last-child');
+                if (hpFill) hpFill.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
+                if (hpText) hpText.textContent = `${creature.currentHp}/${creature.maxHp} HP`;
+            }
+        });
+    }
+    
+    if (battle.opponentTeam) {
+        battle.opponentTeam.forEach(creature => {
+            const creatureEls = document.querySelectorAll('.battle-creature');
+            for (const el of creatureEls) {
+                if (el.querySelector('div:first-child')?.innerText === creature.name) {
+                    const hpFill = el.querySelector('.battle-hp-bar div');
+                    const hpText = el.querySelector('div:last-child');
+                    if (hpFill) hpFill.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
+                    if (hpText) hpText.textContent = `${creature.currentHp}/${creature.maxHp} HP`;
+                    break;
+                }
+            }
+        });
+    }
+    
+    const turnIndicator = document.getElementById('turnIndicator');
+    if (turnIndicator && battle.isMyTurn !== undefined) {
+        turnIndicator.textContent = battle.isMyTurn ? '🔥 ВАШ ХОД!' : '⏳ ХОД ПРОТИВНИКА...';
+        const attackBtn = document.getElementById('battleAttackBtn');
+        if (attackBtn) {
+            attackBtn.disabled = !battle.isMyTurn;
+            if (battle.isMyTurn) attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> АТАКОВАТЬ';
+        }
+    }
+    
+    if (battle.recentActions && battle.recentActions.length > 0) {
+        const logContainer = document.getElementById('battleLogMessages');
+        if (logContainer && battle.recentActions.length > (logContainer.dataset.lastCount || 0)) {
+            const newActions = battle.recentActions.slice(logContainer.dataset.lastCount || 0);
+            newActions.forEach(action => {
+                const logEntry = document.createElement('div');
+                logEntry.className = 'battle-log-entry';
+                logEntry.innerHTML = action;
+                logContainer.appendChild(logEntry);
+            });
+            logContainer.dataset.lastCount = battle.recentActions.length;
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+    }
+}
+
+function endBattle(battleResult) {
+    const isWinner = battleResult.winnerId === state.user._id;
+    const winnerGets = battleResult.winnerGets || 0;
+    
+    const resultHtml = `
+        <div class="battle-result-overlay" id="battleResultOverlay">
+            <div class="battle-result-card ${isWinner ? 'win' : 'lose'}">
+                <div class="battle-result-icon">${isWinner ? '🏆' : '💀'}</div>
+                <div class="battle-result-title">${isWinner ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}</div>
+                <div class="battle-result-subtitle">
+                    ${isWinner ? `Вы выиграли ${winnerGets} MMO!` : 'В следующий раз повезёт больше!'}
+                </div>
+                <button class="battle-result-btn" onclick="closeBattleResult()">ПРОДОЛЖИТЬ</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', resultHtml);
+    
+    if (battlePollingInterval) clearInterval(battlePollingInterval);
+    if (turnTimerInterval) clearInterval(turnTimerInterval);
+    
+    refreshUserProfile();
+}
+
+function closeBattleResult() {
+    const overlay = document.getElementById('battleResultOverlay');
+    if (overlay) overlay.remove();
+    
+    const battleScreen = document.getElementById('battleScreen');
+    if (battleScreen) battleScreen.remove();
+    
+    document.body.style.overflow = '';
+    currentBattleId = null;
+    selectedTargetPosition = null;
+    
+    renderPvP();
+}
+
+// ============================================================
 // NAVIGATION
 // ============================================================
 function switchTab(tab) {
@@ -3318,9 +3301,9 @@ window.checkActiveRequests = checkActiveRequests;
 
 // НОВЫЕ PVP ФУНКЦИИ
 window.openTeamSelection = openTeamSelection;
-window.addToTeam = addToTeam;
-window.removeFromTeam = removeFromTeam;
-window.saveAndJoinQueue = saveAndJoinQueue;
+window.addToTeamById = addToTeamById;
+window.removeFromTeamByPosition = removeFromTeamByPosition;
+window.saveAndJoinQueueFromSelection = saveAndJoinQueueFromSelection;
 window.confirmMatch = confirmMatch;
 window.declineMatch = declineMatch;
 window.selectTarget = selectTarget;
