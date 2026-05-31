@@ -293,7 +293,7 @@
     <!-- В bottom-nav добавить -->
 <div class="nav-item" onclick="switchTab('pvp')" id="nav-pvp">
     <i class="fa-solid fa-sword"></i>
-    <span data-i18n="nav.pvp">Арена</span>
+    <span>Арена</span>
 </div>
     <div class="nav-item" onclick="switchTab('friends')" id="nav-friends">
         <i class="fa-solid fa-users"></i>
@@ -320,5 +320,9 @@
 <!-- SCRIPTS -->
 <script src="script.js"></script>
 <script src="localization.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+<script>
+eruda.init();
+</script>
 </body>
 </html>
