@@ -2221,3 +2221,6 @@ img {
     color: var(--accent3);
     text-align: right;
 }
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
