@@ -1,5 +1,5 @@
 // ============================================================
-// DNA MMO - ПОЛНАЯ КЛИЕНТСКАЯ ЧАСТЬ (С СОХРАНЕНИЕМ СТАТУСА КВЕСТОВ)
+// DNA MMO - ПОЛНАЯ КЛИЕНТСКАЯ ЧАСТЬ (С ЖИВЫМ PVP БОЕМ)
 // ============================================================
 
 // ============================================================
@@ -59,11 +59,21 @@ let marketplaceCache = { data: null, hash: null, expiresAt: 0 };
 let currentPaymentMemo = null;
 let currentPaymentAmount = null;
 
-// Хранилище статусов квестов (pending, available, claimed)
+// Хранилище статусов квестов
 let questStatuses = new Map();
-
-// Ключ для хранения в localStorage
 const QUESTS_STORAGE_KEY = 'dna_mmo_quests_status';
+
+// ============================================================
+// PVP ПЕРЕМЕННЫЕ ДЛЯ ЖИВОГО БОЯ
+// ============================================================
+let pvpPollingInterval = null;
+let pvpQueueStatus = false;
+let pvpActiveMatch = null;
+let matchTimerInterval = null;
+let queueTimerInterval = null;
+let currentBattle = null;
+let battlePollingInterval = null;
+let isBattleActive = false;
 
 // ============================================================
 // GAME DATA
@@ -86,16 +96,6 @@ const RARITY_COLORS = {
     epic: '#a855f7', legendary: '#f59e0b', mythic: '#ef4444'
 };
 const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
-
-// ============================================================
-// PVP СИСТЕМА - ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
-// ============================================================
-
-let pvpPollingInterval = null;
-let pvpQueueStatus = false;
-let pvpActiveMatch = null;
-let matchTimerInterval = null;
-let queueTimerInterval = null;
 
 // ============================================================
 // ВИЗУАЛЬНЫЙ ТИКЕР
@@ -296,6 +296,7 @@ function clearAllIntervals() {
     activeQuestTimers.clear();
     clearAllQuestTimers();
     if (window.questTimerInterval) clearInterval(window.questTimerInterval);
+    if (battlePollingInterval) clearInterval(battlePollingInterval);
 }
 
 function clearAllQuestTimers() {
@@ -476,7 +477,6 @@ async function initTelegramApp() {
     await loadGameConfig();
     await loadCreaturesFromServer();
     
-    // Загружаем сохраненные статусы квестов
     loadQuestStatusesFromStorage();
 
     updatePlayerInfo();
@@ -603,7 +603,6 @@ function showLoadingScreen(show) {
         
         document.body.appendChild(el);
         
-        // Анимация роста полосы
         let percent = 0;
         const fillEl = document.getElementById('loadingBarFill');
         const percentEl = document.getElementById('loadingPercent');
@@ -636,10 +635,9 @@ function showLoadingScreen(show) {
 }
 
 // ============================================================
-// PVP СИСТЕМА - ФУНКЦИИ
+// PVP СИСТЕМА - ФУНКЦИИ ДЛЯ ЖИВОГО БОЯ
 // ============================================================
 
-// Остановить PvP polling (ВАЖНО! ДОБАВЛЕНО)
 function stopPvPPolling() {
     if (pvpPollingInterval) {
         clearInterval(pvpPollingInterval);
@@ -653,11 +651,13 @@ function stopPvPPolling() {
         clearInterval(queueTimerInterval);
         queueTimerInterval = null;
     }
+    if (battlePollingInterval) {
+        clearInterval(battlePollingInterval);
+        battlePollingInterval = null;
+    }
 }
 
-// Получить PvP статистику
 async function loadPvPStats() {
-    // Ждём пока появится токен
     let waitCount = 0;
     while (!state.token && waitCount < 30) {
         await new Promise(r => setTimeout(r, 100));
@@ -674,9 +674,6 @@ async function loadPvPStats() {
         if (res && res.success) {
             return res.stats;
         }
-        if (res && !res.success && res.message === 'Токен не предоставлен') {
-            console.error('Auth error in PvP stats');
-        }
         return null;
     } catch (e) {
         console.error('loadPvPStats error:', e);
@@ -689,10 +686,12 @@ async function renderPvP() {
     const container = document.getElementById('tab-pvp');
     if (!container) return;
     
-    // Показываем загрузку
+    if (isBattleActive && currentBattle) {
+        return;
+    }
+    
     container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="fa-solid fa-spinner fa-spin"></i> Загрузка PvP данных...</div>';
     
-    // Ждём пока загрузится токен (максимум 5 секунд)
     let waitCount = 0;
     while (!state.token && waitCount < 50) {
         await new Promise(r => setTimeout(r, 100));
@@ -710,7 +709,6 @@ async function renderPvP() {
         return;
     }
     
-    // Рендерим контент
     const leagueInfo = {
         name: stats.leagueName || 'Бронзовая',
         icon: stats.leagueIcon || '🥉',
@@ -723,7 +721,6 @@ async function renderPvP() {
     
     container.innerHTML = `
         <div class="pvp-container" style="padding:8px;">
-            <!-- League Card -->
             <div class="pvp-league-card" style="border-color: ${leagueInfo.color}">
                 <div class="league-icon">${leagueInfo.icon}</div>
                 <div class="league-name" style="color: ${leagueInfo.color}">${leagueInfo.name} лига</div>
@@ -737,12 +734,10 @@ async function renderPvP() {
                 ${pointsToNext > 0 ? `<div style="font-size: 10px; color: var(--text3); margin-top: 8px;">До следующей лиги: ${pointsToNext} ⭐</div>` : ''}
             </div>
             
-            <!-- PvP Button -->
             <button class="pvp-find-btn" id="pvpFindBtn" onclick="togglePvPQueue()">
                 <i class="fa-solid fa-sword"></i> НАЙТИ ПРОТИВНИКА
             </button>
             
-            <!-- Queue Status -->
             <div class="pvp-queue-status" id="pvpQueueStatus" style="display: none;">
                 <div class="queue-spinner"></div>
                 <div>Поиск соперника...</div>
@@ -750,7 +745,6 @@ async function renderPvP() {
                 <button class="queue-leave-btn" onclick="leavePvPQueue()">Отмена</button>
             </div>
             
-            <!-- Stats Grid -->
             <div class="pvp-stats-grid">
                 <div class="pvp-stat-card">
                     <div class="pvp-stat-value">${stats.wins || 0}</div>
@@ -786,13 +780,11 @@ async function renderPvP() {
                 </div>
             </div>
             
-            <!-- Leaderboard -->
             <div class="section-title">🏆 Топ игроков ${leagueInfo.name} лиги</div>
             <div class="pvp-leaderboard-list" id="pvpLeaderboardList">
                 <div style="text-align:center; padding:20px; color:var(--text3)">Загрузка...</div>
             </div>
             
-            <!-- History -->
             <div class="section-title">📜 История боёв</div>
             <div class="pvp-history-list" id="pvpHistoryList">
                 <div style="text-align:center; padding:20px; color:var(--text3)">Загрузка...</div>
@@ -800,15 +792,11 @@ async function renderPvP() {
         </div>
     `;
     
-    // Загружаем лидерборд и историю
     loadPvPLeaderboard(stats.league);
     loadPvPHistory();
-    
-    // Запускаем polling для проверки статуса (только если вкладка активна)
     startPvPPolling();
 }
 
-// Загрузить PvP лидерборд
 async function loadPvPLeaderboard(league) {
     if (!state.token) return;
     
@@ -837,7 +825,6 @@ async function loadPvPLeaderboard(league) {
     }
 }
 
-// Загрузить историю боёв
 async function loadPvPHistory() {
     if (!state.token) return;
     
@@ -866,7 +853,6 @@ async function loadPvPHistory() {
     }
 }
 
-// Переключение очереди PvP
 async function togglePvPQueue() {
     if (pvpQueueStatus) {
         await leavePvPQueue();
@@ -875,7 +861,6 @@ async function togglePvPQueue() {
     }
 }
 
-// Вступить в очередь
 async function joinPvPQueue() {
     const res = await apiRequest('POST', '/api/pvp/queue/join');
     if (res && res.success) {
@@ -889,7 +874,6 @@ async function joinPvPQueue() {
     }
 }
 
-// Выйти из очереди
 async function leavePvPQueue() {
     const res = await apiRequest('POST', '/api/pvp/queue/leave');
     if (res && res.success) {
@@ -902,7 +886,6 @@ async function leavePvPQueue() {
     }
 }
 
-// Обновить кнопку PvP
 function updatePvPButton(inQueue) {
     const btn = document.getElementById('pvpFindBtn');
     if (btn) {
@@ -916,7 +899,6 @@ function updatePvPButton(inQueue) {
     }
 }
 
-// Показать/скрыть статус очереди
 function showQueueStatus(show) {
     const statusEl = document.getElementById('pvpQueueStatus');
     if (statusEl) {
@@ -924,7 +906,6 @@ function showQueueStatus(show) {
     }
 }
 
-// Таймер очереди
 function startQueueTimer() {
     if (queueTimerInterval) clearInterval(queueTimerInterval);
     let seconds = 60;
@@ -952,12 +933,10 @@ function stopQueueTimer() {
     }
 }
 
-// Polling для проверки статуса
 function startPvPPolling() {
     if (pvpPollingInterval) clearInterval(pvpPollingInterval);
     
     pvpPollingInterval = setInterval(async () => {
-        // Проверяем, активна ли вкладка PvP и есть ли токен
         const pvpTab = document.getElementById('tab-pvp');
         if (!pvpTab || !pvpTab.classList.contains('active') || !state.token) {
             return;
@@ -988,7 +967,6 @@ function startPvPPolling() {
     }, 3000);
 }
 
-// Показать модальное окно найденного матча
 function showMatchFoundModal(match) {
     const existingModal = document.querySelector('.match-found-modal');
     if (existingModal) existingModal.remove();
@@ -1040,7 +1018,10 @@ function showMatchFoundModal(match) {
     }, 1000);
 }
 
-// Принять матч
+// ============================================================
+// ЖИВОЙ БОЙ - ФУНКЦИИ
+// ============================================================
+
 async function acceptMatch(matchId) {
     clearInterval(matchTimerInterval);
     matchTimerInterval = null;
@@ -1051,9 +1032,9 @@ async function acceptMatch(matchId) {
     
     const res = await apiRequest('POST', '/api/pvp/accept-match', { matchId });
     if (res && res.success) {
-        showBattleAnimation(res.result);
+        startBattle(res.battle);
     } else {
-        showToast(res?.message || 'Ошибка боя', '❌');
+        showToast(res?.message || 'Ошибка начала боя', '❌');
     }
     
     pvpActiveMatch = null;
@@ -1061,13 +1042,8 @@ async function acceptMatch(matchId) {
     updatePvPButton(false);
     showQueueStatus(false);
     stopQueueTimer();
-    
-    setTimeout(() => {
-        renderPvP();
-    }, 2000);
 }
 
-// Отказаться от матча
 async function declineMatch(matchId) {
     clearInterval(matchTimerInterval);
     matchTimerInterval = null;
@@ -1082,61 +1058,278 @@ async function declineMatch(matchId) {
     pvpActiveMatch = null;
 }
 
-// Анимация боя
-function showBattleAnimation(result) {
+function startBattle(battleData) {
+    currentBattle = battleData;
+    isBattleActive = true;
+    
+    showBattleScreen(battleData);
+    startBattlePolling(battleData.battleId);
+}
+
+function showBattleScreen(battleData) {
+    const isMyTurn = battleData.isMyTurn;
+    const myPlayerId = state.user._id;
+    const isPlayer1 = battleData.player1.id === myPlayerId;
+    
+    const myPlayer = isPlayer1 ? battleData.player1 : battleData.player2;
+    const opponent = isPlayer1 ? battleData.player2 : battleData.player1;
+    
     const modalHtml = `
-        <div class="battle-animation" id="battleAnimation">
-            <div class="battle-players">
-                <div class="battle-player">
-                    <div style="font-size: 48px;">👤</div>
-                    <div class="battle-player-name">ВЫ</div>
-                    <div class="battle-player-power">⚔️ Сила: ${result.power1}</div>
-                    <div class="battle-power-bar">
-                        <div class="battle-power-fill" style="width: ${result.winChance}%; background: ${result.winner ? '#22c55e' : '#ef4444'}"></div>
-                    </div>
-                </div>
-                <div class="battle-versus">VS</div>
-                <div class="battle-player">
-                    <div style="font-size: 48px;">👾</div>
-                    <div class="battle-player-name">${escapeHtml(result.loserName)}</div>
-                    <div class="battle-player-power">⚔️ Сила: ${result.power2}</div>
-                    <div class="battle-power-bar">
-                        <div class="battle-power-fill" style="width: ${100 - result.winChance}%; background: ${!result.winner ? '#22c55e' : '#ef4444'}"></div>
-                    </div>
+        <div class="battle-screen" id="battleScreen">
+            <div class="battle-header">
+                <div class="battle-title">⚔️ ПОЕДИНОК ⚔️</div>
+                <div class="battle-turn-indicator" id="turnIndicator">
+                    ${isMyTurn ? '🔥 ВАШ ХОД!' : '⏳ ХОД ПРОТИВНИКА...'}
                 </div>
             </div>
-            <div class="battle-result">
-                <div class="battle-result-text ${result.winner ? 'battle-result-win' : 'battle-result-lose'}">
-                    ${result.winner ? '🏆 ПОБЕДА! 🏆' : '💀 ПОРАЖЕНИЕ 💀'}
+            
+            <div class="battle-players-area">
+                <div class="battle-player opponent">
+                    <div class="battle-player-avatar">
+                        <div class="battle-player-icon">👤</div>
+                    </div>
+                    <div class="battle-player-name">${escapeHtml(opponent.name)}</div>
+                    <div class="battle-hp-bar">
+                        <div class="battle-hp-fill" id="opponentHpFill" style="width: ${(opponent.hp / opponent.maxHp) * 100}%"></div>
+                    </div>
+                    <div class="battle-hp-text" id="opponentHpText">${opponent.hp}/${opponent.maxHp} HP</div>
                 </div>
-                ${result.winner ? `
-                    <div class="battle-reward">
-                        +${result.winnerGets} MMO
+                
+                <div class="battle-vs">VS</div>
+                
+                <div class="battle-player player">
+                    <div class="battle-player-avatar">
+                        <div class="battle-player-icon">👤</div>
                     </div>
-                    <div class="battle-reward" style="font-size: 12px; color: var(--text2);">
-                        Комиссия: ${result.burnedFee} MMO
+                    <div class="battle-player-name">${escapeHtml(myPlayer.name)} (ВЫ)</div>
+                    <div class="battle-hp-bar">
+                        <div class="battle-hp-fill" id="myHpFill" style="width: ${(myPlayer.hp / myPlayer.maxHp) * 100}%"></div>
                     </div>
-                ` : `
-                    <div class="battle-reward" style="color: var(--mythic);">
-                        -${result.betAmount || 100} MMO
-                    </div>
-                `}
-                <div style="margin-top: 16px;">
-                    <div>⭐ Очки лиги: ${result.winner ? '+' : '-'}${result.leaguePointsChange?.winner || result.leaguePointsChange?.loser || 0}</div>
-                    <div style="font-size: 11px; color: var(--text2); margin-top: 8px;">Шанс победы: ${result.winChance}%</div>
+                    <div class="battle-hp-text" id="myHpText">${myPlayer.hp}/${myPlayer.maxHp} HP</div>
                 </div>
-                <button class="battle-close-btn" onclick="closeBattleAnimation()">ПРОДОЛЖИТЬ</button>
+            </div>
+            
+            <div class="battle-log" id="battleLog">
+                <div class="battle-log-title">📜 ХОД БОЯ</div>
+                <div class="battle-log-messages" id="battleLogMessages">
+                    <div>⚔️ Бой начался!</div>
+                    <div>${isMyTurn ? '🔥 Ваш ход! Нажмите АТАКОВАТЬ' : '⏳ Ожидание хода противника...'}</div>
+                </div>
+            </div>
+            
+            <div class="battle-actions">
+                <button class="battle-attack-btn" id="battleAttackBtn" ${!isMyTurn ? 'disabled' : ''} onclick="executeAttack()">
+                    <i class="fa-solid fa-sword"></i> АТАКОВАТЬ
+                </button>
             </div>
         </div>
     `;
     
+    const oldScreen = document.getElementById('battleScreen');
+    if (oldScreen) oldScreen.remove();
+    
     document.body.insertAdjacentHTML('beforeend', modalHtml);
+    document.body.style.overflow = 'hidden';
 }
 
-function closeBattleAnimation() {
-    const anim = document.getElementById('battleAnimation');
-    if (anim) anim.remove();
+function startBattlePolling(battleId) {
+    if (battlePollingInterval) clearInterval(battlePollingInterval);
+    
+    battlePollingInterval = setInterval(async () => {
+        if (!isBattleActive) {
+            clearInterval(battlePollingInterval);
+            battlePollingInterval = null;
+            return;
+        }
+        
+        try {
+            const res = await apiRequest('GET', `/api/pvp/battle-status?battleId=${battleId}`);
+            if (res && res.success && res.battle) {
+                updateBattleUI(res.battle);
+                
+                if (res.battle.status === 'finished') {
+                    endBattle(res.battle);
+                }
+            }
+        } catch (e) {
+            console.error('Battle polling error:', e);
+        }
+    }, 2000);
+}
+
+function updateBattleUI(battleData) {
+    const isMyTurn = battleData.isMyTurn;
+    const myPlayerId = state.user._id;
+    const isPlayer1 = battleData.player1.id === myPlayerId;
+    
+    const myHp = isPlayer1 ? battleData.player1.hp : battleData.player2.hp;
+    const myMaxHp = isPlayer1 ? battleData.player1.maxHp : battleData.player2.maxHp;
+    const opponentHp = isPlayer1 ? battleData.player2.hp : battleData.player1.hp;
+    const opponentMaxHp = isPlayer1 ? battleData.player2.maxHp : battleData.player1.maxHp;
+    
+    const myHpFill = document.getElementById('myHpFill');
+    const myHpText = document.getElementById('myHpText');
+    const opponentHpFill = document.getElementById('opponentHpFill');
+    const opponentHpText = document.getElementById('opponentHpText');
+    const turnIndicator = document.getElementById('turnIndicator');
+    const attackBtn = document.getElementById('battleAttackBtn');
+    
+    if (myHpFill) myHpFill.style.width = `${(myHp / myMaxHp) * 100}%`;
+    if (myHpText) myHpText.textContent = `${myHp}/${myMaxHp} HP`;
+    if (opponentHpFill) opponentHpFill.style.width = `${(opponentHp / opponentMaxHp) * 100}%`;
+    if (opponentHpText) opponentHpText.textContent = `${opponentHp}/${opponentMaxHp} HP`;
+    
+    if (turnIndicator) {
+        turnIndicator.textContent = isMyTurn ? '🔥 ВАШ ХОД!' : '⏳ ХОД ПРОТИВНИКА...';
+        turnIndicator.style.color = isMyTurn ? '#22c55e' : '#f59e0b';
+    }
+    
+    if (attackBtn) {
+        attackBtn.disabled = !isMyTurn;
+        attackBtn.style.opacity = isMyTurn ? '1' : '0.5';
+    }
+    
+    if (battleData.lastActions && battleData.lastActions.length > 0) {
+        const logContainer = document.getElementById('battleLogMessages');
+        if (logContainer) {
+            const lastAction = battleData.lastActions[battleData.lastActions.length - 1];
+            const isMyAction = lastAction.attackerName === (isPlayer1 ? battleData.player1.name : battleData.player2.name);
+            
+            const actionMessage = getBattleActionMessage(lastAction, isMyAction);
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = `battle-log-entry ${isMyAction ? 'my-action' : 'opponent-action'}`;
+            logEntry.innerHTML = actionMessage;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+    }
+}
+
+function getBattleActionMessage(action, isMyAction) {
+    switch(action.type) {
+        case 'crit':
+            return `🔥 ${isMyAction ? 'ВЫ нанесли' : action.attackerName + ' нанёс'} КРИТИЧЕСКИЙ удар! -${action.damage} HP!`;
+        case 'miss':
+            return `😤 ${isMyAction ? 'ВЫ промахнулись!' : action.attackerName + ' промахнулся!'}`;
+        case 'block':
+            return `🛡️ ${isMyAction ? 'ВЫ нанесли заблокированный удар' : action.attackerName + ' нанёс заблокированный удар'}! -${action.damage} HP!`;
+        default:
+            return `⚔️ ${isMyAction ? 'ВЫ атаковали' : action.attackerName + ' атаковал'}! -${action.damage} HP!`;
+    }
+}
+
+async function executeAttack() {
+    if (!currentBattle) return;
+    
+    const attackBtn = document.getElementById('battleAttackBtn');
+    if (attackBtn) {
+        attackBtn.disabled = true;
+        attackBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> АТАКА...';
+    }
+    
+    try {
+        const res = await apiRequest('POST', '/api/pvp/attack', { battleId: currentBattle.battleId });
+        
+        if (res && res.success) {
+            if (res.action.isGameOver) {
+                showToast(res.action.message || 'Бой завершен!', '🏆');
+            } else {
+                updateBattleAfterAttack(res.action);
+            }
+        } else {
+            showToast(res?.message || 'Ошибка атаки', '❌');
+            if (attackBtn) {
+                attackBtn.disabled = false;
+                attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> АТАКОВАТЬ';
+            }
+        }
+    } catch (e) {
+        console.error('Attack error:', e);
+        showToast('Ошибка при атаке', '❌');
+        if (attackBtn) {
+            attackBtn.disabled = false;
+            attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> АТАКОВАТЬ';
+        }
+    }
+}
+
+function updateBattleAfterAttack(action) {
+    const myHpFill = document.getElementById('myHpFill');
+    const myHpText = document.getElementById('myHpText');
+    const opponentHpFill = document.getElementById('opponentHpFill');
+    const opponentHpText = document.getElementById('opponentHpText');
+    
+    if (myHpFill) myHpFill.style.width = `${(action.yourNewHp / currentBattle.player1.maxHp) * 100}%`;
+    if (myHpText) myHpText.textContent = `${action.yourNewHp}/${currentBattle.player1.maxHp} HP`;
+    if (opponentHpFill) opponentHpFill.style.width = `${(action.opponentNewHp / currentBattle.player2.maxHp) * 100}%`;
+    if (opponentHpText) opponentHpText.textContent = `${action.opponentNewHp}/${currentBattle.player2.maxHp} HP`;
+    
+    const logContainer = document.getElementById('battleLogMessages');
+    if (logContainer && action.message) {
+        const logEntry = document.createElement('div');
+        logEntry.className = 'battle-log-entry my-action';
+        logEntry.innerHTML = action.message;
+        logContainer.appendChild(logEntry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    const turnIndicator = document.getElementById('turnIndicator');
+    const attackBtn = document.getElementById('battleAttackBtn');
+    
+    if (action.isGameOver) {
+        if (turnIndicator) turnIndicator.textContent = '🏆 БОЙ ЗАВЕРШЕН!';
+        if (attackBtn) attackBtn.disabled = true;
+    } else {
+        const isMyTurn = action.nextTurn === state.user._id;
+        if (turnIndicator) {
+            turnIndicator.textContent = isMyTurn ? '🔥 ВАШ ХОД!' : '⏳ ХОД ПРОТИВНИКА...';
+            turnIndicator.style.color = isMyTurn ? '#22c55e' : '#f59e0b';
+        }
+        if (attackBtn) {
+            attackBtn.disabled = !isMyTurn;
+            attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> АТАКОВАТЬ';
+            attackBtn.style.opacity = isMyTurn ? '1' : '0.5';
+        }
+    }
+}
+
+async function endBattle(battleData) {
+    isBattleActive = false;
+    
+    if (battlePollingInterval) {
+        clearInterval(battlePollingInterval);
+        battlePollingInterval = null;
+    }
+    
+    const isWinner = battleData.winner && battleData.winner.id === state.user._id;
+    
+    const resultHtml = `
+        <div class="battle-result-overlay" id="battleResultOverlay">
+            <div class="battle-result-card ${isWinner ? 'win' : 'lose'}">
+                <div class="battle-result-icon">${isWinner ? '🏆' : '💀'}</div>
+                <div class="battle-result-title">${isWinner ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}</div>
+                <div class="battle-result-subtitle">${isWinner ? 'Вы одержали победу в бою!' : 'В следующий раз повезёт больше!'}</div>
+                <button class="battle-result-btn" onclick="closeBattleResult()">ПРОДОЛЖИТЬ</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', resultHtml);
+    
+    await refreshUserProfile();
     renderPvP();
+}
+
+function closeBattleResult() {
+    const overlay = document.getElementById('battleResultOverlay');
+    if (overlay) overlay.remove();
+    
+    const battleScreen = document.getElementById('battleScreen');
+    if (battleScreen) battleScreen.remove();
+    
+    document.body.style.overflow = '';
+    currentBattle = null;
 }
 
 // ============================================================
@@ -2149,7 +2342,7 @@ function renderLeaderboardData(data) {
 }
 
 // ============================================================
-// FRIENDS (ОБНОВЛЕНО - ТРЕБОВАНИЕ 5+ УРОВНЯ)
+// FRIENDS
 // ============================================================
 async function inviteFriend() {
     const res = await apiRequest('GET', '/api/user/referrals');
@@ -2225,9 +2418,6 @@ async function renderFriendsList() {
     }
 }
 
-// ============================================================
-// РЕФЕРАЛЬНЫЕ НАГРАДЫ (ТРЕБОВАНИЕ 5+ УРОВНЯ)
-// ============================================================
 async function claimFriendReward(requiredFriends, creatureId, creatureName, creatureIcon) {
     if (state.isLoading) return;
     
@@ -2338,10 +2528,9 @@ function updateFriendRewardButtons() {
 }
 
 // ============================================================
-// SPECIAL QUESTS (С СОХРАНЕНИЕМ В localStorage)
+// SPECIAL QUESTS
 // ============================================================
 
-// Функция загрузки статусов квестов из localStorage
 function loadQuestStatusesFromStorage() {
     const saved = localStorage.getItem(QUESTS_STORAGE_KEY);
     if (saved) {
@@ -2372,7 +2561,6 @@ function loadQuestStatusesFromStorage() {
     }
 }
 
-// Функция сохранения статусов квестов в localStorage
 function saveQuestStatusesToStorage() {
     const toSave = {};
     for (const [questId, data] of questStatuses.entries()) {
@@ -2384,7 +2572,6 @@ function saveQuestStatusesToStorage() {
     localStorage.setItem(QUESTS_STORAGE_KEY, JSON.stringify(toSave));
 }
 
-// Функция перезапуска таймера квеста
 function restartQuestTimer(questId, remainingSeconds) {
     if (remainingSeconds <= 0) return;
     
@@ -2409,7 +2596,6 @@ function restartQuestTimer(questId, remainingSeconds) {
     }
 }
 
-// Функция очистки всех таймеров квестов
 function updateQuestButton(questId, status) {
     const questCard = document.querySelector(`.special-quest-card[data-quest-id="${questId}"]`);
     if (!questCard) return;
@@ -2574,6 +2760,11 @@ function openCustomLinkAndComplete(questId, link) {
     showToast('🔍 Проверка выполнения квеста... Подождите 60 секунд.', '⏳');
 }
 
+function getQuestTitle(questId) {
+    const quest = SPECIAL_QUESTS.find(q => q.id === questId);
+    return quest?.title || 'квест';
+}
+
 async function claimSpecialQuest(questId) {
     if (state.isLoading) return;
     
@@ -2622,42 +2813,6 @@ async function claimSpecialQuest(questId) {
     spawnFloatingMMO(res.reward);
 }
 
-async function claimSpecialQuestSilent(questId) {
-    if (state.isLoading) return;
-    
-    const questStatus = questStatuses.get(questId);
-    if (questStatus && questStatus.status !== 'available') {
-        return;
-    }
-    
-    if (state.user?.completedSpecialQuests?.includes(questId)) {
-        return;
-    }
-    
-    state.isLoading = true;
-    const res = await apiRequest('POST', '/api/game/complete-special-quest', { questId });
-    state.isLoading = false;
-    
-    if (!res.success) {
-        console.log('Ошибка получения награды:', res.message);
-        return;
-    }
-    
-    state.user = res.user;
-    updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
-    updateHeader();
-    
-    const existing = questStatuses.get(questId);
-    if (existing && existing.timerId) {
-        clearTimeout(existing.timerId);
-    }
-    questStatuses.delete(questId);
-    saveQuestStatusesToStorage();
-    
-    await renderSpecialQuests();
-    showToast(`+${res.reward} MMO получено за квест!`, '✅');
-}
-
 async function renderSpecialQuests() {
     const container = document.getElementById('specialQuestsList');
     if (!container) return;
@@ -2678,7 +2833,6 @@ async function renderSpecialQuests() {
         return;
     }
     
-    // Обновляем статусы из localStorage при рендере
     for (const [questId, data] of questStatuses.entries()) {
         if (data.status === 'pending' && data.expiresAt && data.expiresAt <= Date.now()) {
             questStatuses.set(questId, { status: 'available', expiresAt: null, timerId: null });
@@ -2745,7 +2899,6 @@ async function renderSpecialQuests() {
         </div>`;
     }).join('');
     
-    // Запускаем обновление таймеров каждую секунду для отображения обратного отсчета
     if (window.questTimerInterval) clearInterval(window.questTimerInterval);
     window.questTimerInterval = setInterval(() => {
         const pendingButtons = document.querySelectorAll('.special-quest-btn.pending');
@@ -2770,11 +2923,6 @@ async function renderSpecialQuests() {
             }
         }
     }, 1000);
-}
-
-async function updateSpecialQuests() {
-    await loadGameConfig();
-    renderSpecialQuests();
 }
 
 // ============================================================
@@ -3038,7 +3186,6 @@ function copyToClipboard(text) {
 // NAVIGATION
 // ============================================================
 function switchTab(tab) {
-    // Останавливаем PvP polling при уходе с вкладки
     if (tab !== 'pvp') {
         stopPvPPolling();
     }
@@ -3168,8 +3315,8 @@ window.createWithdrawRequest = createWithdrawRequest;
 window.copyToClipboard = copyToClipboard;
 window.checkActiveRequests = checkActiveRequests;
 
-// PvP экспорт
 window.togglePvPQueue = togglePvPQueue;
 window.acceptMatch = acceptMatch;
 window.declineMatch = declineMatch;
-window.closeBattleAnimation = closeBattleAnimation;
+window.executeAttack = executeAttack;
+window.closeBattleResult = closeBattleResult;
