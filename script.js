@@ -617,6 +617,7 @@ function showLoadingScreen(show) {
         }, 200);
     }
 }
+
 // ============================================
 // PVP СИСТЕМА
 // ============================================
@@ -624,6 +625,8 @@ function showLoadingScreen(show) {
 let pvpPollingInterval = null;
 let pvpQueueStatus = false;
 let pvpActiveMatch = null;
+let matchTimerInterval = null;
+let queueTimerInterval = null;
 
 // Получить PvP статистику
 async function loadPvPStats() {
@@ -677,84 +680,80 @@ async function renderPvP() {
     const progressPercent = Math.min(100, (stats.leaguePoints / nextLeaguePoints) * 100);
     
     container.innerHTML = `
-        <div style="padding:8px;">
+        <div class="pvp-container" style="padding:8px;">
             <!-- League Card -->
-            <div style="background: linear-gradient(135deg, var(--surface) 0%, var(--bg2) 100%); border: 2px solid ${leagueInfo.color}; border-radius: 20px; padding: 20px 16px; text-align: center; margin-bottom: 20px;">
-                <div style="font-size: 48px; margin-bottom: 8px;">${leagueInfo.icon}</div>
-                <div style="font-family: 'Orbitron', monospace; font-size: 18px; font-weight: 700; color: ${leagueInfo.color}; margin-bottom: 8px;">${leagueInfo.name} лига</div>
-                <div style="font-size: 13px; color: var(--text2); margin-bottom: 12px;">
-                    ⭐ <span style="font-weight: 700; font-size: 18px;">${stats.leaguePoints}</span> / ${nextLeaguePoints}
+            <div class="pvp-league-card" style="border-color: ${leagueInfo.color}">
+                <div class="league-icon">${leagueInfo.icon}</div>
+                <div class="league-name" style="color: ${leagueInfo.color}">${leagueInfo.name} лига</div>
+                <div class="league-points">
+                    ⭐ <span>${stats.leaguePoints}</span> / ${nextLeaguePoints}
                 </div>
-                <div style="height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin: 12px 0;">
-                    <div style="height: 100%; width: ${progressPercent}%; background: ${leagueInfo.color}; border-radius: 3px;"></div>
+                <div class="league-progress">
+                    <div class="progress-fill" style="width: ${progressPercent}%; background: ${leagueInfo.color}"></div>
                 </div>
-                <div style="font-size: 12px; font-weight: 600; color: var(--accent3);">💰 Взнос за бой: ${leagueInfo.entryFee} MMO</div>
+                <div class="entry-fee">💰 Взнос за бой: ${leagueInfo.entryFee} MMO</div>
                 ${pointsToNext > 0 ? `<div style="font-size: 10px; color: var(--text3); margin-top: 8px;">До следующей лиги: ${pointsToNext} ⭐</div>` : ''}
             </div>
             
             <!-- PvP Button -->
-            <button class="pvp-find-btn" id="pvpFindBtn" onclick="togglePvPQueue()" style="width: 100%; padding: 16px; border: none; border-radius: 16px; background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; font-family: 'Orbitron', monospace; font-size: 16px; font-weight: 700; cursor: pointer; margin-bottom: 20px;">
+            <button class="pvp-find-btn" id="pvpFindBtn" onclick="togglePvPQueue()">
                 <i class="fa-solid fa-sword"></i> НАЙТИ ПРОТИВНИКА
             </button>
             
             <!-- Queue Status -->
-            <div class="pvp-queue-status" id="pvpQueueStatus" style="display: none; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; text-align: center; margin-bottom: 20px;">
-                <div style="width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--accent3); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 12px;"></div>
+            <div class="pvp-queue-status" id="pvpQueueStatus" style="display: none;">
+                <div class="queue-spinner"></div>
                 <div>Поиск соперника...</div>
-                <div style="font-family: 'Orbitron', monospace; font-size: 24px; font-weight: 700; color: var(--accent3);" id="queueTimer">60</div>
-                <button class="queue-leave-btn" onclick="leavePvPQueue()" style="margin-top: 12px; padding: 8px 20px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; color: var(--text2); cursor: pointer;">Отмена</button>
+                <div class="queue-timer" id="queueTimer">60</div>
+                <button class="queue-leave-btn" onclick="leavePvPQueue()">Отмена</button>
             </div>
             
             <!-- Stats Grid -->
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;">
-                <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; text-align: center;">
-                    <div style="font-family: 'Orbitron', monospace; font-size: 22px; font-weight: 700; color: var(--accent3);">${stats.wins || 0}</div>
-                    <div style="font-size: 10px; color: var(--text2); margin-top: 4px;">Побед</div>
+            <div class="pvp-stats-grid">
+                <div class="pvp-stat-card">
+                    <div class="pvp-stat-value">${stats.wins || 0}</div>
+                    <div class="pvp-stat-label">Побед</div>
                 </div>
-                <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; text-align: center;">
-                    <div style="font-family: 'Orbitron', monospace; font-size: 22px; font-weight: 700; color: var(--accent3);">${stats.losses || 0}</div>
-                    <div style="font-size: 10px; color: var(--text2); margin-top: 4px;">Поражений</div>
+                <div class="pvp-stat-card">
+                    <div class="pvp-stat-value">${stats.losses || 0}</div>
+                    <div class="pvp-stat-label">Поражений</div>
                 </div>
-                <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; text-align: center;">
-                    <div style="font-family: 'Orbitron', monospace; font-size: 22px; font-weight: 700; color: var(--accent3);">${stats.winRate || 0}%</div>
-                    <div style="font-size: 10px; color: var(--text2); margin-top: 4px;">Винрейт</div>
+                <div class="pvp-stat-card">
+                    <div class="pvp-stat-value">${stats.winRate || 0}%</div>
+                    <div class="pvp-stat-label">Винрейт</div>
                 </div>
-                <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; text-align: center;">
-                    <div style="font-family: 'Orbitron', monospace; font-size: 22px; font-weight: 700; color: var(--accent3);">${formatNum(stats.totalWonMMO || 0)}</div>
-                    <div style="font-size: 10px; color: var(--text2); margin-top: 4px;">Выиграно MMO</div>
+                <div class="pvp-stat-card">
+                    <div class="pvp-stat-value">${formatNum(stats.totalWonMMO || 0)}</div>
+                    <div class="pvp-stat-label">Выиграно MMO</div>
                 </div>
-                <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; text-align: center;">
-                    <div style="font-family: 'Orbitron', monospace; font-size: 22px; font-weight: 700; color: var(--accent3);">${stats.currentStreak || 0}</div>
-                    <div style="font-size: 10px; color: var(--text2); margin-top: 4px;">Текущая серия</div>
+                <div class="pvp-stat-card">
+                    <div class="pvp-stat-value">${stats.currentStreak || 0}</div>
+                    <div class="pvp-stat-label">Текущая серия</div>
                 </div>
-                <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; text-align: center;">
-                    <div style="font-family: 'Orbitron', monospace; font-size: 22px; font-weight: 700; color: var(--accent3);">${stats.bestStreak || 0}</div>
-                    <div style="font-size: 10px; color: var(--text2); margin-top: 4px;">Лучшая серия</div>
+                <div class="pvp-stat-card">
+                    <div class="pvp-stat-value">${stats.bestStreak || 0}</div>
+                    <div class="pvp-stat-label">Лучшая серия</div>
                 </div>
-                <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; text-align: center;">
-                    <div style="font-family: 'Orbitron', monospace; font-size: 22px; font-weight: 700; color: var(--accent3);">${stats.dailyBattles || 0}/${stats.maxDailyBattles || 20}</div>
-                    <div style="font-size: 10px; color: var(--text2); margin-top: 4px;">Боёв сегодня</div>
+                <div class="pvp-stat-card">
+                    <div class="pvp-stat-value">${stats.dailyBattles || 0}/${stats.maxDailyBattles || 20}</div>
+                    <div class="pvp-stat-label">Боёв сегодня</div>
                 </div>
-                <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; text-align: center;">
-                    <div style="font-family: 'Orbitron', monospace; font-size: 22px; font-weight: 700; color: var(--accent3);">${formatNum(stats.totalLostMMO || 0)}</div>
-                    <div style="font-size: 10px; color: var(--text2); margin-top: 4px;">Проиграно MMO</div>
+                <div class="pvp-stat-card">
+                    <div class="pvp-stat-value">${formatNum(stats.totalLostMMO || 0)}</div>
+                    <div class="pvp-stat-label">Проиграно MMO</div>
                 </div>
             </div>
             
             <!-- Leaderboard -->
-            <div style="margin-bottom: 20px;">
-                <div style="font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 10px;">🏆 Топ игроков ${leagueInfo.name} лиги</div>
-                <div id="pvpLeaderboardList" style="display: flex; flex-direction: column; gap: 8px;">
-                    <div style="text-align:center; padding:20px; color:var(--text3)">Загрузка...</div>
-                </div>
+            <div class="section-title">🏆 Топ игроков ${leagueInfo.name} лиги</div>
+            <div class="pvp-leaderboard-list" id="pvpLeaderboardList">
+                <div style="text-align:center; padding:20px; color:var(--text3)">Загрузка...</div>
             </div>
             
             <!-- History -->
-            <div style="margin-bottom: 20px;">
-                <div style="font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 10px;">📜 История боёв</div>
-                <div id="pvpHistoryList" style="display: flex; flex-direction: column; gap: 8px;">
-                    <div style="text-align:center; padding:20px; color:var(--text3)">Загрузка...</div>
-                </div>
+            <div class="section-title">📜 История боёв</div>
+            <div class="pvp-history-list" id="pvpHistoryList">
+                <div style="text-align:center; padding:20px; color:var(--text3)">Загрузка...</div>
             </div>
         </div>
     `;
@@ -769,10 +768,7 @@ async function renderPvP() {
 
 // Загрузить PvP лидерборд
 async function loadPvPLeaderboard(league) {
-    const res = await apiRequest(
-    'GET',
-    `/api/pvp/leaderboard?league=${league}`
-);
+    const res = await apiRequest('GET', `/api/pvp/leaderboard?league=${league}`);
     if (res && res.success && res.leaders) {
         const listEl = document.getElementById('pvpLeaderboardList');
         if (listEl) {
@@ -855,6 +851,8 @@ async function leavePvPQueue() {
         updatePvPButton(false);
         showQueueStatus(false);
         stopQueueTimer();
+    } else {
+        showToast(res?.message || 'Ошибка выхода из очереди', '❌');
     }
 }
 
@@ -881,8 +879,6 @@ function showQueueStatus(show) {
 }
 
 // Таймер очереди
-let queueTimerInterval = null;
-
 function startQueueTimer() {
     if (queueTimerInterval) clearInterval(queueTimerInterval);
     let seconds = 60;
@@ -894,6 +890,7 @@ function startQueueTimer() {
         if (timerEl) timerEl.textContent = seconds;
         if (seconds <= 0) {
             clearInterval(queueTimerInterval);
+            queueTimerInterval = null;
             if (pvpQueueStatus) {
                 leavePvPQueue();
                 showToast('Время поиска истекло. Попробуйте снова.', '⏳');
@@ -941,9 +938,23 @@ function startPvPPolling() {
     }, 3000);
 }
 
-// Показать модальное окно найденного матча
-let matchTimerInterval = null;
+// Остановить PvP polling
+function stopPvPPolling() {
+    if (pvpPollingInterval) {
+        clearInterval(pvpPollingInterval);
+        pvpPollingInterval = null;
+    }
+    if (matchTimerInterval) {
+        clearInterval(matchTimerInterval);
+        matchTimerInterval = null;
+    }
+    if (queueTimerInterval) {
+        clearInterval(queueTimerInterval);
+        queueTimerInterval = null;
+    }
+}
 
+// Показать модальное окно найденного матча
 function showMatchFoundModal(match) {
     // Закрываем существующее модальное окно
     const existingModal = document.querySelector('.match-found-modal');
@@ -988,6 +999,7 @@ function showMatchFoundModal(match) {
         if (secondsEl) secondsEl.textContent = seconds;
         if (seconds <= 0) {
             clearInterval(matchTimerInterval);
+            matchTimerInterval = null;
             const modal = document.getElementById('matchFoundModal');
             if (modal) modal.remove();
             showToast('Время на принятие боя истекло', '⏳');
@@ -999,6 +1011,7 @@ function showMatchFoundModal(match) {
 // Принять матч
 async function acceptMatch(matchId) {
     clearInterval(matchTimerInterval);
+    matchTimerInterval = null;
     const modal = document.getElementById('matchFoundModal');
     if (modal) modal.remove();
     
@@ -1026,6 +1039,7 @@ async function acceptMatch(matchId) {
 // Отказаться от матча
 async function declineMatch(matchId) {
     clearInterval(matchTimerInterval);
+    matchTimerInterval = null;
     const modal = document.getElementById('matchFoundModal');
     if (modal) modal.remove();
     
@@ -1093,27 +1107,6 @@ function closeBattleAnimation() {
     if (anim) anim.remove();
     renderPvP();
 }
-
-// Остановить PvP polling (при переключении вкладки)
-function stopPvPPolling() {
-    if (pvpPollingInterval) {
-        clearInterval(pvpPollingInterval);
-        pvpPollingInterval = null;
-    }
-}
-
-// Добавляем вкладку в навигацию
-// В switchTab функцию добавляем:
-// if (tab === 'pvp') renderPvP();
-
-// В HTML добавляем новую вкладку в bottom-nav:
-// <div class="nav-item" onclick="switchTab('pvp')" id="nav-pvp">
-//     <i class="fa-solid fa-sword"></i>
-//     <span data-i18n="nav.pvp">Арена</span>
-// </div>
-
-// И добавляем tab-content:
-// <div class="tab-content" id="tab-pvp"></div>
 
 // ============================================================
 // PARTICLES
@@ -3031,6 +3024,11 @@ function copyToClipboard(text) {
 // NAVIGATION
 // ============================================================
 function switchTab(tab) {
+    // Останавливаем PvP polling при уходе с вкладки
+    if (tab !== 'pvp') {
+        stopPvPPolling();
+    }
+    
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.getElementById(`tab-${tab}`).classList.add('active');
@@ -3154,3 +3152,9 @@ window.showWithdrawModal = showWithdrawModal;
 window.createWithdrawRequest = createWithdrawRequest;
 window.copyToClipboard = copyToClipboard;
 window.checkActiveRequests = checkActiveRequests;
+
+// PvP экспорт
+window.togglePvPQueue = togglePvPQueue;
+window.acceptMatch = acceptMatch;
+window.declineMatch = declineMatch;
+window.closeBattleAnimation = closeBattleAnimation;
