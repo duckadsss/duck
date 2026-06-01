@@ -408,5 +408,147 @@
 <!-- SCRIPTS -->
 <script src="script.js"></script>
 <script src="localization.js"></script>
+<!-- DEBUG CONSOLE -->
+<div id="debugConsole" style="display: none; position: fixed; bottom: 70px; left: 0; right: 0; background: rgba(0,0,0,0.95); border-top: 2px solid #a855f7; padding: 8px; z-index: 10000; font-family: monospace; font-size: 11px; max-height: 200px; overflow-y: auto; backdrop-filter: blur(8px);">
+    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #a855f7;">
+        <span style="color: #a855f7;">🐛 DEBUG CONSOLE</span>
+        <div>
+            <button onclick="clearDebugLogs()" style="background: #1e2d4a; border: none; color: #fff; padding: 2px 8px; border-radius: 4px; margin-right: 8px; font-size: 10px; cursor: pointer;">Очистить</button>
+            <button onclick="toggleDebugConsole()" style="background: #ef4444; border: none; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 10px; cursor: pointer;">✕ Закрыть</button>
+        </div>
+    </div>
+    <div id="debugLogs" style="color: #94a3b8;"></div>
+</div>
+
+<button onclick="toggleDebugConsole()" style="position: fixed; bottom: 130px; right: 8px; background: #a855f7; border: none; color: #fff; width: 36px; height: 36px; border-radius: 50%; font-size: 16px; cursor: pointer; z-index: 9999; box-shadow: 0 0 10px rgba(168,85,247,0.5);">
+    🐛
+</button>
+
+<script>
+// ============================================
+// DEBUG CONSOLE
+// ============================================
+
+let debugLogs = [];
+let debugConsoleShown = false;
+
+function addDebugLog(message, type = 'info') {
+    const timestamp = new Date().toLocaleTimeString();
+    const logEntry = { timestamp, message, type };
+    debugLogs.unshift(logEntry);
+    if (debugLogs.length > 100) debugLogs.pop();
+    
+    updateDebugDisplay();
+    
+    // Также выводим в браузерную консоль
+    if (type === 'error') {
+        console.error(`[DEBUG] ${message}`);
+    } else if (type === 'warn') {
+        console.warn(`[DEBUG] ${message}`);
+    } else {
+        console.log(`[DEBUG] ${message}`);
+    }
+}
+
+function updateDebugDisplay() {
+    const container = document.getElementById('debugLogs');
+    if (!container) return;
+    
+    container.innerHTML = debugLogs.map(log => {
+        let color = '#94a3b8';
+        if (log.type === 'error') color = '#ef4444';
+        else if (log.type === 'warn') color = '#f59e0b';
+        else if (log.type === 'success') color = '#22c55e';
+        
+        return `<div style="padding: 4px 0; border-bottom: 1px solid #1e2d4a; color: ${color};">
+            <span style="color: #4a5568;">[${log.timestamp}]</span> ${escapeHtml(log.message)}
+        </div>`;
+    }).join('');
+}
+
+function clearDebugLogs() {
+    debugLogs = [];
+    updateDebugDisplay();
+    addDebugLog('Логи очищены', 'info');
+}
+
+function toggleDebugConsole() {
+    const consoleEl = document.getElementById('debugConsole');
+    if (consoleEl) {
+        debugConsoleShown = !debugConsoleShown;
+        consoleEl.style.display = debugConsoleShown ? 'block' : 'none';
+    }
+}
+
+// Перехват ошибок
+window.addEventListener('error', (e) => {
+    addDebugLog(`Ошибка: ${e.message} в ${e.filename}:${e.lineno}`, 'error');
+});
+
+window.addEventListener('unhandledrejection', (e) => {
+    addDebugLog(`Promise ошибка: ${e.reason}`, 'error');
+});
+
+// Перехват fetch запросов (для отладки)
+const originalFetch = window.fetch;
+window.fetch = async function(...args) {
+    const url = args[0];
+    addDebugLog(`📡 Запрос: ${args[1]?.method || 'GET'} ${url}`, 'info');
+    
+    try {
+        const response = await originalFetch(...args);
+        if (!response.ok) {
+            addDebugLog(`❌ Ошибка ${response.status}: ${url}`, 'error');
+        } else {
+            addDebugLog(`✅ Успешно: ${response.status} ${url}`, 'success');
+        }
+        return response;
+    } catch (error) {
+        addDebugLog(`❌ Сеть: ${error.message} - ${url}`, 'error');
+        throw error;
+    }
+};
+
+// Функция для проверки соединения с сервером
+async function testConnection() {
+    addDebugLog('🔍 Проверка соединения с сервером...', 'info');
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(`${API_URL}/health`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+            const data = await response.json();
+            addDebugLog(`✅ Сервер онлайн! DB: ${data.db}`, 'success');
+        } else {
+            addDebugLog(`⚠️ Сервер ответил с ошибкой: ${response.status}`, 'warn');
+        }
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            addDebugLog(`❌ Таймаут соединения с сервером! Сервер не отвечает.`, 'error');
+        } else {
+            addDebugLog(`❌ Не могу соединиться с сервером: ${error.message}`, 'error');
+        }
+        addDebugLog(`   Проверь: сервер запущен и API_URL правильный: ${API_URL}`, 'error');
+    }
+}
+
+// Добавляем кнопку теста
+const testBtn = document.createElement('button');
+testBtn.innerHTML = '🔌 Тест API';
+testBtn.style.cssText = 'position: fixed; bottom: 130px; right: 50px; background: #22c55e; border: none; color: #fff; padding: 6px 12px; border-radius: 20px; font-size: 10px; cursor: pointer; z-index: 9999; font-weight: bold;';
+testBtn.onclick = testConnection;
+document.body.appendChild(testBtn);
+
+// Добавляем информацию о версии
+addDebugLog(`🚀 DNA MMO v5.0 (с ареной)`, 'success');
+addDebugLog(`📡 API_URL: ${API_URL}`, 'info');
+addDebugLog(`🌐 Frontend: ${window.location.href}`, 'info');
+setTimeout(() => {
+    testConnection();
+}, 2000);
+</script>
 </body>
 </html>
