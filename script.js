@@ -2748,16 +2748,36 @@ async function saveArenaTeam() {
 }
 
 async function renderArenaFightTab() {
+    console.log('🎮 renderArenaFightTab вызвана');
+    
     const statusContainer = document.getElementById('arenaFightStatus');
     const battleContainer = document.getElementById('arenaBattleContainer');
     
     const battleRes = await apiRequest('GET', '/api/arena/battle/status');
+    console.log('📡 Статус боя при загрузке вкладки:', battleRes);
     
     if (battleRes?.hasBattle && battleRes.status !== 'finished') {
         statusContainer.style.display = 'none';
         battleContainer.style.display = 'block';
-        startBattlePolling();
-        renderBattleInterface(battleRes);
+        
+        // Запускаем polling если ещё не запущен
+        if (!arenaState.battlePollingInterval) {
+            startBattlePolling();
+        }
+        
+        // Если бой активен и не подтверждён — показываем модалку
+        if (battleRes.status === 'active') {
+            const needConfirmation = (battleRes.isPlayer1 && !battleRes.player1Confirmed) || 
+                                     (!battleRes.isPlayer1 && !battleRes.player2Confirmed);
+            if (needConfirmation) {
+                console.log('🔔 Показываем модалку подтверждения из renderArenaFightTab');
+                showBattleConfirmation(battleRes);
+            } else if (battleRes.player1Confirmed && battleRes.player2Confirmed) {
+                renderBattleInterface(battleRes);
+            }
+        } else {
+            renderBattleInterface(battleRes);
+        }
     } else {
         statusContainer.style.display = 'block';
         battleContainer.style.display = 'none';
@@ -2798,6 +2818,8 @@ async function renderArenaFightTab() {
 }
 
 async function findMatch() {
+    console.log('🎮 findMatch вызвана');
+    
     if (arenaState.isSearching) {
         showToast('Поиск уже идёт...', '⏳');
         return;
@@ -2824,7 +2846,10 @@ async function findMatch() {
     if (res?.success) {
         if (res.battle?.player2Id) {
             if (searchStatus) searchStatus.innerHTML = '⚔️ Соперник найден! Ожидание подтверждения...';
-            startBattlePolling();
+            // Запускаем polling сразу
+            if (!arenaState.battlePollingInterval) {
+                startBattlePolling();
+            }
         } else {
             if (searchStatus) searchStatus.innerHTML = '⏳ В очереди поиска...';
         }
@@ -2842,10 +2867,16 @@ async function findMatch() {
 function startBattlePolling() {
     if (arenaState.battlePollingInterval) clearInterval(arenaState.battlePollingInterval);
     
+    console.log('🟢 ЗАПУЩЕН POLLING БОЯ');
+    
     arenaState.battlePollingInterval = setInterval(async () => {
+        console.log('🔍 Проверка статуса боя...');
+        
         const res = await apiRequest('GET', '/api/arena/battle/status');
+        console.log('📡 Ответ от сервера:', res);
         
         if (!res?.hasBattle) {
+            console.log('❌ Бой закончился или отменён');
             if (arenaState.battlePollingInterval) {
                 clearInterval(arenaState.battlePollingInterval);
                 arenaState.battlePollingInterval = null;
@@ -2865,18 +2896,36 @@ function startBattlePolling() {
         }
         
         if (res.status === 'waiting') {
+            console.log('⏳ Статус: ожидание соперника');
             const searchStatus = document.getElementById('arenaSearchStatus');
             if (searchStatus) searchStatus.innerHTML = '⏳ Поиск соперника...';
         } else if (res.status === 'active') {
+            console.log('⚔️ Статус: активный бой');
+            console.log('   player1Confirmed:', res.player1Confirmed);
+            console.log('   player2Confirmed:', res.player2Confirmed);
+            console.log('   isPlayer1:', res.isPlayer1);
+            
             const searchStatus = document.getElementById('arenaSearchStatus');
             if (searchStatus) searchStatus.innerHTML = '';
             
-            if (!res.player1Confirmed || !res.player2Confirmed) {
+            // Проверяем, нужно ли показать модалку ПРЯМО СЕЙЧАС
+            const needConfirmation = (res.isPlayer1 && !res.player1Confirmed) || (!res.isPlayer1 && !res.player2Confirmed);
+            console.log('   needConfirmation:', needConfirmation);
+            
+            if (needConfirmation) {
+                console.log('🔔 ПОКАЗЫВАЕМ МОДАЛКУ ПОДТВЕРЖДЕНИЯ');
                 showBattleConfirmation(res);
-            } else {
+            } else if (res.player1Confirmed && res.player2Confirmed) {
+                console.log('✅ Оба подтвердили, начинаем бой');
+                // Закрываем модалку если открыта
+                const overlay = document.getElementById('overlay');
+                if (overlay.classList.contains('show')) {
+                    closeOverlay();
+                }
                 renderBattleInterface(res);
             }
         } else if (res.status === 'finished') {
+            console.log('🏆 Бой завершён');
             showBattleResult(res);
             if (arenaState.battlePollingInterval) {
                 clearInterval(arenaState.battlePollingInterval);
