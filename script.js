@@ -1119,6 +1119,10 @@ async function upgradeInventory() {
 // ADS (ОБНОВЛЕННАЯ ВЕРСИЯ С 20 MMO)
 // ============================================================
 async function updateAdsStatus() {
+    // Защита от слишком частых запросов
+    if (window._adsUpdating) return;
+    window._adsUpdating = true;
+    
     try {
         const res = await apiRequest('GET', '/api/game/ads-status');
         if (res && res.success) {
@@ -1159,11 +1163,13 @@ async function updateAdsStatus() {
                 adsBtn.style.opacity = canWatch ? '1' : '0.5';
                 adsBtn.disabled = !canWatch;
             }
-        } else {
-            console.error('Ads status error:', res);
+            
+            window.lastAdsUpdate = Date.now();
         }
     } catch (e) {
         console.error('updateAdsStatus error:', e);
+    } finally {
+        window._adsUpdating = false;
     }
 }
 
@@ -1246,23 +1252,39 @@ async function watchAd() {
 function updateAdsTimer() {
     if (!state.user) return;
     
-    if (state.adsCooldown <= 0) {
-        updateAdsStatus();
-        return;
+    // Обновляем отображение таймера без запроса к серверу
+    if (state.adsCooldown > 0) {
+        state.adsCooldown--;
+        const timerEl = document.getElementById('adsTimer');
+        if (timerEl) timerEl.textContent = `${state.adsCooldown}s`;
+        
+        const btn = document.getElementById('adsBtn');
+        if (btn && state.adsCooldown > 0) {
+            btn.style.opacity = '0.5';
+            btn.disabled = true;
+        }
     }
     
-    state.adsCooldown--;
-    const timerEl = document.getElementById('adsTimer');
-    if (timerEl) timerEl.textContent = `${state.adsCooldown}s`;
-    
-    const btn = document.getElementById('adsBtn');
-    if (btn && state.adsCooldown > 0) {
-        btn.style.opacity = '0.5';
-        btn.disabled = true;
-    }
-    
+    // Обновляем статус ТОЛЬКО когда кулдаун закончился или раз в минуту
     if (state.adsCooldown === 0) {
-        updateAdsStatus();
+        // Не делаем запрос каждую секунду, а только когда нужно
+        if (!window.lastAdsUpdate || Date.now() - window.lastAdsUpdate > 60000) {
+            updateAdsStatus();
+            window.lastAdsUpdate = Date.now();
+        }
+        
+        // Обновляем UI для готовности
+        const timerEl = document.getElementById('adsTimer');
+        if (timerEl) {
+            timerEl.textContent = 'Ready';
+            timerEl.style.color = '#22c55e';
+        }
+        
+        const btn = document.getElementById('adsBtn');
+        if (btn && state.adsAvailable > 0) {
+            btn.style.opacity = '1';
+            btn.disabled = false;
+        }
     }
 }
 
