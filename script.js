@@ -1,8 +1,11 @@
 // ============================================================
-// DNA MMO - ПОЛНАЯ КЛИЕНТСКАЯ ЧАСТЬ (РАБОЧАЯ ВЕРСИЯ)
+// DNA MMO - ПОЛНАЯ КЛИЕНТСКАЯ ЧАСТЬ (С АРЕНОЙ)
 // ============================================================
 
-const API_URL = 'https://serv-production-765e.up.railway.app';
+// ============================================================
+// CONFIG
+// ============================================================
+const API_URL = 'https://serv-production-dbf3.up.railway.app';
 
 // ============================================================
 // ЗАПРЕТ КОНТЕКСТНОГО МЕНЮ И ВЫДЕЛЕНИЯ
@@ -31,6 +34,8 @@ let state = {
     inventory: [],
     incomePerHour: 0,
     adsCooldown: 0,
+    adsAvailable: 10,
+    maxAdsPerDay: 10,
     isLoading: false,
     serverBalance: 0,
     lastServerSync: 0,
@@ -48,22 +53,6 @@ let activeQuestTimers = new Map();
 let currentLeaderboardController = null;
 let isMarketplaceTabActive = false;
 
-// PVP ПЕРЕМЕННЫЕ
-let pvpState = {
-    inQueue: false,
-    queueTimer: null,
-    queueInterval: null,
-    matchCheckInterval: null,
-    currentMatch: null,
-    currentBattle: null,
-    battleInterval: null,
-    selectedTeam: null,
-    availableCreatures: [],
-    selectedCreatureIds: [],
-    turnTimer: null,
-    selectedTargetPos: null
-};
-
 // КЭШИ
 let leaderboardCache = { data: null, expiresAt: 0 };
 let marketplaceCache = { data: null, hash: null, expiresAt: 0 };
@@ -77,6 +66,19 @@ let questStatuses = new Map();
 const QUESTS_STORAGE_KEY = 'dna_mmo_quests_status';
 
 // ============================================================
+// ARENA STATE
+// ============================================================
+let arenaState = {
+    selectedTeam: [],
+    currentBattle: null,
+    battlePollingInterval: null,
+    isSearching: false,
+    battleMoveTimeout: null
+};
+
+let battleTimerInterval = null;
+
+// ============================================================
 // GAME DATA
 // ============================================================
 let CREATURES = [];
@@ -85,7 +87,7 @@ let RARITY_WEIGHTS = {
     basic: { common: 80, uncommon: 20, rare: 0, epic: 0, legendary: 0 },
     premium: { common: 60, uncommon: 30, rare: 10, epic: 2, legendary: 1 }
 };
-let AD_REWARD = 100;
+let AD_REWARD = 20;
 let AD_COOLDOWN = 60;
 let UPGRADE_BASE_COST = 300;
 let UPGRADE_MULTIPLIER = 1.5;
@@ -97,6 +99,75 @@ const RARITY_COLORS = {
     epic: '#a855f7', legendary: '#f59e0b', mythic: '#ef4444'
 };
 const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
+
+const RARITY_MULTIPLIERS = {
+    common: 1.0,
+    uncommon: 1.05,
+    rare: 1.10,
+    epic: 1.15,
+    legendary: 1.25,
+    mythic: 1.40
+};
+
+// ============================================================
+// ВИЗУАЛЬНЫЙ ТИКЕР
+// ============================================================
+let visualTickerInterval = null;
+
+function startVisualTicker() {
+    if (visualTickerInterval) clearInterval(visualTickerInterval);
+    
+    visualTickerInterval = setInterval(() => {
+        if (document.hidden || !state.user) return;
+        
+        const visualBalance = getVisualBalance();
+        
+        const balanceEl = document.getElementById('balanceDisplay');
+        if (balanceEl) balanceEl.textContent = formatBalance(visualBalance);
+        
+        const walletBalanceEl = document.getElementById('walletBalance');
+        if (walletBalanceEl) walletBalanceEl.textContent = formatBalance(visualBalance);
+    }, 1000);
+    
+    state.visualTicker = { cancel: () => clearInterval(visualTickerInterval) };
+}
+
+function formatBalance(n) {
+    const absN = Math.abs(n);
+    const sign = n < 0 ? '-' : '';
+    return sign + absN.toFixed(3);
+}
+
+function getVisualBalance() {
+    if (!state.user) return 0;
+    if (!state.lastServerSync) return state.serverBalance || 0;
+    const elapsedSeconds = (Date.now() - state.lastServerSync) / 1000;
+    const earned = (state.incomePerHour / 3600) * elapsedSeconds;
+    return (state.serverBalance || 0) + earned;
+}
+
+function updateServerSnapshot(newBalance, newIncomePerHour, newLastPassiveIncome) {
+    console.log('📊 updateServerSnapshot:', { newBalance, newIncomePerHour, newLastPassiveIncome });
+    state.serverBalance = newBalance !== undefined ? newBalance : state.serverBalance;
+    state.incomePerHour = newIncomePerHour !== undefined ? newIncomePerHour : state.incomePerHour;
+    state.lastServerSync = newLastPassiveIncome ? new Date(newLastPassiveIncome).getTime() : Date.now();
+    if (state.user) state.user.balance = state.serverBalance;
+}
+
+let collectIncomeTimer = null;
+async function startCollectIncomeLoop() {
+    if (collectIncomeTimer) clearInterval(collectIncomeTimer);
+    collectIncomeTimer = setInterval(async () => {
+        if (document.hidden || !state.token) return;
+        try {
+            const res = await apiRequest('POST', '/api/game/collect-income');
+            if (res && res.success) {
+                updateServerSnapshot(res.balance, res.incomePerHour, res.lastPassiveIncome);
+                if (state.user) state.user.balance = res.balance;
+            }
+        } catch (e) {}
+    }, 5 * 60 * 1000);
+}
 
 // ============================================================
 // API ЗАПРОСЫ
@@ -188,104 +259,13 @@ function getIconHtml(creature, addShadow = false, shadowColor = null) {
     return icon || '🧬';
 }
 
-function formatBalance(n) {
-    return n.toFixed(3);
-}
-
-function getVisualBalance() {
-    if (!state.user || !state.lastServerSync) return state.serverBalance;
-    const elapsedSeconds = (Date.now() - state.lastServerSync) / 1000;
-    const earned = (state.incomePerHour / 3600) * elapsedSeconds;
-    return state.serverBalance + earned;
-}
-
-function updateServerSnapshot(newBalance, newIncomePerHour, newLastPassiveIncome) {
-    state.serverBalance = newBalance;
-    state.incomePerHour = newIncomePerHour;
-    state.lastServerSync = newLastPassiveIncome ? new Date(newLastPassiveIncome).getTime() : Date.now();
-    if (state.user) state.user.balance = newBalance;
-}
-
-// ============================================================
-// LOADING SCREEN
-// ============================================================
-function showLoadingScreen(show) {
-    let el = document.getElementById('loadingScreen');
-    
-    if (!el && show) {
-        el = document.createElement('div');
-        el.id = 'loadingScreen';
-        el.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            width: 100%;
-            height: 100vh;
-            height: 100dvh;
-            background: #080b14;
-            z-index: 9999;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-        `;
-        el.innerHTML = `
-            <style>
-                .spinner { width: 50px; height: 50px; border: 3px solid #1e2d4a; border-top-color: #a855f7; border-radius: 50%; animation: spin 1s linear infinite; }
-                @keyframes spin { to { transform: rotate(360deg); } }
-                .loading-text { font-family: 'Orbitron', monospace; font-size: 12px; color: #a855f7; margin-top: 16px; }
-            </style>
-            <div class="spinner"></div>
-            <div class="loading-text">LOADING DNA...</div>
-        `;
-        document.body.appendChild(el);
-    } 
-    else if (el && !show) {
-        el.style.transition = 'opacity 0.5s ease';
-        el.style.opacity = '0';
-        setTimeout(() => el.remove(), 500);
-    }
-}
-
-// ============================================================
-// TELEGRAM WEBAPP INIT
-// ============================================================
-function clearAllIntervals() {
-    if (intervals.adsTimer) clearInterval(intervals.adsTimer);
-    if (intervals.specialQuests) clearInterval(intervals.specialQuests);
-    if (intervals.leaderboard) clearInterval(intervals.leaderboard);
-    if (intervals.marketplace) clearInterval(intervals.marketplace);
-    if (state.visualTicker) state.visualTicker.cancel();
-    if (collectIncomeTimer) clearInterval(collectIncomeTimer);
-    collectIncomeTimer = null;
-    for (const timer of activeQuestTimers.values()) clearTimeout(timer);
-    activeQuestTimers.clear();
-    clearAllQuestTimers();
-    if (window.questTimerInterval) clearInterval(window.questTimerInterval);
-    if (pvpState.battleInterval) clearInterval(pvpState.battleInterval);
-    if (pvpState.matchCheckInterval) clearInterval(pvpState.matchCheckInterval);
-    if (pvpState.queueTimer) clearInterval(pvpState.queueTimer);
-    if (pvpState.turnTimer) clearInterval(pvpState.turnTimer);
-}
-
-function clearAllQuestTimers() {
-    if (window.questTimerInterval) {
-        clearInterval(window.questTimerInterval);
-        window.questTimerInterval = null;
-    }
-}
-
-let collectIncomeTimer = null;
-
 async function loadGameConfig() {
     const res = await apiRequest('GET', '/api/game/config');
     if (res && res.success) {
         const cfg = res.config;
         CAPSULE_COSTS = cfg.capsuleCosts || { basic: 500, premium: 2000 };
         RARITY_WEIGHTS = cfg.capsuleRarities || RARITY_WEIGHTS;
-        AD_REWARD = cfg.adReward || 100;
+        AD_REWARD = cfg.adReward || 20;
         AD_COOLDOWN = cfg.adCooldown || 60;
         UPGRADE_BASE_COST = cfg.upgradeBaseCost || 300;
         UPGRADE_MULTIPLIER = cfg.upgradeMultiplier || 1.5;
@@ -315,168 +295,47 @@ async function getCurrentIncome() {
     return income;
 }
 
-async function refreshUserProfile() {
-    const res = await apiRequest('GET', '/api/user/profile');
-    if (res && res.success) {
-        state.user = res.user;
-        state.inventory = res.inventory || [];
-        state.incomePerHour = res.incomePerHour || 0;
-        
-        updateServerSnapshot(state.user.balance, state.incomePerHour, res.lastPassiveIncome);
-        
-        updateHeader();
-        renderCards();
-        updateFriendRewardButtons();
-        
-        const friendCountDisplay = document.getElementById('friendCountDisplay');
-        if (friendCountDisplay && state.user) {
-            friendCountDisplay.textContent = `${state.user.referralCount || 0} друзей 5+ уровня`;
+// ============================================================
+// СТАТИСТИКА ПОЛЬЗОВАТЕЛЯ (КОШЕЛЕК)
+// ============================================================
+async function loadUserStats() {
+    try {
+        const res = await apiRequest('GET', '/api/user/stats');
+        if (res && res.success) {
+            const stats = res.stats;
+            
+            const withdrawnEl = document.getElementById('walletWithdrawn');
+            if (withdrawnEl) withdrawnEl.textContent = formatNum(stats.totalWithdrawn || 0);
+            
+            const referralEl = document.getElementById('walletReferralEarned');
+            if (referralEl) referralEl.textContent = formatNum(stats.referralEarned || 0);
+            
+            const adsWatchedEl = document.getElementById('walletAdsWatched');
+            if (adsWatchedEl) adsWatchedEl.textContent = stats.adsWatched || 0;
+            
+            const adsEarnedEl = document.getElementById('walletAdsEarned');
+            if (adsEarnedEl) adsEarnedEl.textContent = formatNum(stats.adsEarned || 0);
         }
-        
-        if (res.offlineEarned > 10) {
-            setTimeout(() => showToast(`+${formatNum(res.offlineEarned)} MMO offline!`, '💤'), 1000);
-        }
+    } catch (e) {
+        console.error('loadUserStats error:', e);
     }
-}
-
-async function initTelegramApp() {
-    clearAllIntervals();
-    showLoadingScreen(true);
-
-    const tg = window.Telegram?.WebApp;
-    
-    if (tg) {
-        tg.ready();
-        tg.expand();
-        
-        if (tg.enableClosingConfirmation) {
-            tg.enableClosingConfirmation();
-        }
-        
-        tg.setHeaderColor('#080b14');
-        tg.setBackgroundColor('#080b14');
-        
-        console.log('✅ Telegram WebApp initialized');
-    } else {
-        console.warn('⚠️ Telegram WebApp not available');
-    }
-
-    let initData = tg?.initData || '';
-    let referralCode = tg?.initDataUnsafe?.start_param || null;
-    
-    const urlParams = new URLSearchParams(window.location.search);
-    if (!referralCode && urlParams.get('startapp')) {
-        referralCode = urlParams.get('startapp');
-    }
-    if (!referralCode && urlParams.get('ref')) {
-        referralCode = urlParams.get('ref');
-    }
-
-    if (!initData && window.location.hostname === 'localhost') {
-        console.warn('⚠️ Dev mode: using mock Telegram user');
-        const mockUser = { id: 123456789, first_name: 'Test', username: 'testuser' };
-        initData = `user=${encodeURIComponent(JSON.stringify(mockUser))}&hash=devhash`;
-    }
-
-    if (!initData) {
-        showLoadingScreen(false);
-        showToast('Открой игру через Telegram!', '⚠️');
-        return;
-    }
-
-    const loginRes = await apiRequest('POST', '/api/auth/login', { initData, referralCode });
-
-    if (!loginRes.success) {
-        showLoadingScreen(false);
-        showToast(loginRes.message || 'Ошибка авторизации', '❌');
-        return;
-    }
-
-    state.token = loginRes.token;
-    state.user = loginRes.user;
-    state.inventory = loginRes.inventory || [];
-
-    await loadGameConfig();
-    await loadCreaturesFromServer();
-    
-    loadQuestStatusesFromStorage();
-
-    updatePlayerInfo();
-
-    const profileRes = await apiRequest('GET', '/api/user/profile');
-    if (profileRes.success) {
-        state.user = profileRes.user;
-        state.inventory = profileRes.inventory || [];
-        state.incomePerHour = profileRes.incomePerHour || 0;
-        
-        updateServerSnapshot(state.user.balance, state.incomePerHour, profileRes.lastPassiveIncome);
-
-        if (profileRes.offlineEarned > 10) {
-            setTimeout(() => showToast(`+${formatNum(profileRes.offlineEarned)} MMO offline!`, '💤'), 1000);
-        }
-    }
-
-    showLoadingScreen(false);
-    renderAll();
-
-    startVisualTicker();
-    startCollectIncomeLoop();
-    startOptimizedIntervals();
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    if (loginRes.isNewUser && referralCode) {
-        setTimeout(() => showToast('🎉 Добро пожаловать! Реферальный бонус: 2% от депозитов друга', '🎁'), 800);
-    } else if (loginRes.isNewUser) {
-        setTimeout(() => showToast('Open a DNA Capsule to start!', '🧬'), 800);
-    }
-    
-    setTimeout(() => checkActiveRequests(), 1000);
-    updateAdsStatus();
-    
-    document.querySelectorAll('img').forEach(img => {
-        img.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            return false;
-        });
-    });
 }
 
 // ============================================================
-// ВИЗУАЛЬНЫЙ ТИКЕР
+// TELEGRAM WEBAPP INIT
 // ============================================================
-let visualTickerInterval = null;
-
-function startVisualTicker() {
-    if (visualTickerInterval) clearInterval(visualTickerInterval);
-    
-    visualTickerInterval = setInterval(() => {
-        if (document.hidden || !state.user) return;
-        
-        const visualBalance = getVisualBalance();
-        
-        const balanceEl = document.getElementById('balanceDisplay');
-        if (balanceEl) balanceEl.textContent = formatBalance(visualBalance);
-        
-        const walletBalanceEl = document.getElementById('walletBalance');
-        if (walletBalanceEl) walletBalanceEl.textContent = formatBalance(visualBalance);
-    }, 1000);
-    
-    state.visualTicker = { cancel: () => clearInterval(visualTickerInterval) };
-}
-
-function startCollectIncomeLoop() {
+function clearAllIntervals() {
+    if (intervals.adsTimer) clearInterval(intervals.adsTimer);
+    if (intervals.specialQuests) clearInterval(intervals.specialQuests);
+    if (intervals.leaderboard) clearInterval(intervals.leaderboard);
+    if (intervals.marketplace) clearInterval(intervals.marketplace);
+    if (state.visualTicker) state.visualTicker.cancel();
     if (collectIncomeTimer) clearInterval(collectIncomeTimer);
-    collectIncomeTimer = setInterval(async () => {
-        if (document.hidden || !state.token) return;
-        try {
-            const res = await apiRequest('POST', '/api/game/collect-income');
-            if (res && res.success) {
-                updateServerSnapshot(res.balance, res.incomePerHour, res.lastPassiveIncome);
-                if (state.user) state.user.balance = res.balance;
-            }
-        } catch (e) {}
-    }, 5 * 60 * 1000);
+    collectIncomeTimer = null;
+    for (const timer of activeQuestTimers.values()) clearTimeout(timer);
+    activeQuestTimers.clear();
+    clearAllQuestTimers();
+    if (window.questTimerInterval) clearInterval(window.questTimerInterval);
 }
 
 function startOptimizedIntervals() {
@@ -531,6 +390,330 @@ function handleVisibilityChange() {
     }
 }
 
+async function refreshUserProfile() {
+    const res = await apiRequest('GET', '/api/user/profile');
+    if (res && res.success) {
+        state.user = res.user;
+        state.inventory = res.inventory || [];
+        state.incomePerHour = res.incomePerHour || 0;
+        
+        updateServerSnapshot(state.user.balance, state.incomePerHour, res.lastPassiveIncome);
+        
+        updateHeader();
+        renderCards();
+        updateFriendRewardButtons();
+        await loadUserStats();
+        
+        const friendCountDisplay = document.getElementById('friendCountDisplay');
+        if (friendCountDisplay && state.user) {
+            friendCountDisplay.textContent = `${state.user.referralCount || 0} друзей 5+ уровня`;
+        }
+        
+        if (res.offlineEarned > 10) {
+            setTimeout(() => showToast(`+${formatNum(res.offlineEarned)} MMO offline!`, '💤'), 1000);
+        }
+    }
+}
+
+async function initTelegramApp() {
+    clearAllIntervals();
+    showLoadingScreen(true);
+
+    const tg = window.Telegram?.WebApp;
+    
+    if (tg) {
+        tg.ready();
+        tg.expand();
+        
+        if (tg.enableClosingConfirmation) {
+            tg.enableClosingConfirmation();
+        }
+        
+        if (tg.requestFullscreen) {
+            try {
+                await tg.requestFullscreen();
+                console.log('✅ Fullscreen requested');
+            } catch (e) {
+                console.log('Fullscreen request failed:', e);
+            }
+        }
+        
+        setTimeout(() => {
+            const top = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tg-safe-area-inset-top')) || 55;
+            document.querySelector('.header').style.paddingTop = (top + 40) + 'px';
+        }, 400);
+        
+        if (tg.disableVerticalSwipes) {
+            tg.disableVerticalSwipes();
+        }
+        
+        setTimeout(() => {
+            if (tg && typeof tg.expand === 'function') {
+                tg.expand();
+            }
+        }, 500);
+        
+        tg.setHeaderColor('#080b14');
+        tg.setBackgroundColor('#080b14');
+        
+        console.log('✅ Telegram WebApp initialized');
+    } else {
+        console.warn('⚠️ Telegram WebApp not available');
+    }
+
+    let initData = tg?.initData || '';
+    let tgUser = tg?.initDataUnsafe?.user;
+    
+    let referralCode = null;
+    
+    if (tg?.initDataUnsafe?.start_param) {
+        referralCode = tg.initDataUnsafe.start_param;
+        console.log('📎 Реферальный код из start_param:', referralCode);
+    }
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    if (!referralCode && urlParams.get('startapp')) {
+        referralCode = urlParams.get('startapp');
+        console.log('📎 Реферальный код из startapp URL:', referralCode);
+    }
+    
+    if (!referralCode && urlParams.get('ref')) {
+        referralCode = urlParams.get('ref');
+        console.log('📎 Реферальный код из ref URL:', referralCode);
+    }
+
+    if (!initData && window.location.hostname === 'localhost') {
+        console.warn('⚠️ Dev mode: using mock Telegram user');
+        const mockUser = { id: 123456789, first_name: 'Test', username: 'testuser' };
+        initData = `user=${encodeURIComponent(JSON.stringify(mockUser))}&hash=devhash`;
+        tgUser = mockUser;
+    }
+
+    if (!initData) {
+        showLoadingScreen(false);
+        showToast('Открой игру через Telegram!', '⚠️');
+        return;
+    }
+
+    const loginRes = await apiRequest('POST', '/api/auth/login', { initData, referralCode });
+
+    if (!loginRes.success) {
+        showLoadingScreen(false);
+        showToast(loginRes.message || 'Ошибка авторизации', '❌');
+        return;
+    }
+
+    state.token = loginRes.token;
+    state.user = loginRes.user;
+    state.inventory = loginRes.inventory || [];
+
+    state.serverBalance = state.user.balance;
+    state.lastServerSync = Date.now();
+    state.incomePerHour = 0;
+    
+    console.log('📦 Логин успешен:');
+    console.log('   - Баланс:', state.user.balance);
+    console.log('   - serverBalance:', state.serverBalance);
+    console.log('   - Инвентарь:', state.inventory.length, 'предметов');
+
+    const profileRes = await apiRequest('GET', '/api/user/profile');
+    if (profileRes && profileRes.success) {
+        state.user = profileRes.user;
+        state.inventory = profileRes.inventory || [];
+        state.incomePerHour = profileRes.incomePerHour || 0;
+        state.serverBalance = state.user.balance;
+        state.lastServerSync = Date.now();
+        console.log('   - После профиля, баланс:', state.user.balance);
+        console.log('   - serverBalance:', state.serverBalance);
+    }
+
+    await loadGameConfig();
+    await loadCreaturesFromServer();
+    
+    loadQuestStatusesFromStorage();
+
+    updatePlayerInfo();
+
+    showLoadingScreen(false);
+    renderAll();
+
+    startVisualTicker();
+    startCollectIncomeLoop();
+    startOptimizedIntervals();
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    if (loginRes.isNewUser && referralCode) {
+        setTimeout(() => showToast('🎉 Добро пожаловать! Реферальный бонус: 2% от депозитов друга', '🎁'), 800);
+    } else if (loginRes.isNewUser) {
+        setTimeout(() => showToast('Open a DNA Capsule to start!', '🧬'), 800);
+    }
+    
+    if (state.user) {
+        console.log('👥 Referral info:', {
+            code: state.user.referralCode,
+            count: state.user.referralCount,
+            referredBy: state.user.referredBy
+        });
+    }
+    
+    setTimeout(() => {
+        checkActiveRequests();
+        loadUserStats();
+    }, 1000);
+    
+    updateAdsStatus();
+    
+    document.querySelectorAll('img').forEach(img => {
+        img.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            return false;
+        });
+        img.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 1) {
+                e.preventDefault();
+            }
+        });
+    });
+}
+
+// ============================================================
+// LOADING SCREEN
+// ============================================================
+function showLoadingScreen(show) {
+    let el = document.getElementById('loadingScreen');
+    
+    if (!el && show) {
+        el = document.createElement('div');
+        el.id = 'loadingScreen';
+        el.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100vh;
+            height: 100dvh;
+            background: url('load.webp') center/cover no-repeat;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            padding-bottom: 12vh;
+        `;
+        
+        el.innerHTML = `
+            <style>
+                .loading-bar-container {
+                    width: 200px;
+                    height: 4px;
+                    background: rgba(168,85,247,0.2);
+                    border-radius: 4px;
+                    overflow: hidden;
+                }
+                .loading-bar-fill {
+                    width: 0%;
+                    height: 100%;
+                    background: linear-gradient(90deg, #a855f7, #06b6d4);
+                    border-radius: 4px;
+                    transition: width 0.3s ease;
+                }
+                .loading-text {
+                    font-family: 'Orbitron', monospace;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #a855f7;
+                    text-transform: uppercase;
+                    letter-spacing: 3px;
+                    margin-top: 16px;
+                }
+                .loading-percent {
+                    font-family: 'Orbitron', monospace;
+                    font-size: 11px;
+                    color: #94a3b8;
+                    margin-top: 6px;
+                }
+            </style>
+            
+            <div class="loading-bar-container">
+                <div class="loading-bar-fill" id="loadingBarFill"></div>
+            </div>
+            <div class="loading-text">LOADING</div>
+            <div class="loading-percent" id="loadingPercent">0%</div>
+        `;
+        
+        document.body.appendChild(el);
+        
+        let percent = 0;
+        const fillEl = document.getElementById('loadingBarFill');
+        const percentEl = document.getElementById('loadingPercent');
+        
+        const interval = setInterval(() => {
+            if (percent < 90) {
+                percent += Math.random() * 10;
+                percent = Math.min(percent, 90);
+                if (fillEl) fillEl.style.width = percent + '%';
+                if (percentEl) percentEl.textContent = Math.floor(percent) + '%';
+            }
+        }, 200);
+        el.dataset.percentInterval = interval;
+    } 
+    else if (el && !show) {
+        if (el.dataset.percentInterval) {
+            clearInterval(parseInt(el.dataset.percentInterval));
+        }
+        const fillEl = document.getElementById('loadingBarFill');
+        const percentEl = document.getElementById('loadingPercent');
+        if (fillEl) fillEl.style.width = '100%';
+        if (percentEl) percentEl.textContent = '100%';
+        
+        setTimeout(() => {
+            el.style.transition = 'opacity 0.5s ease';
+            el.style.opacity = '0';
+            setTimeout(() => el.remove(), 500);
+        }, 200);
+    }
+}
+
+// ============================================================
+// PARTICLES
+// ============================================================
+(function initParticles() {
+    const canvas = document.getElementById('particles-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let W, H, particles = [];
+    function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+    resize();
+    window.addEventListener('resize', resize);
+    for (let i = 0; i < 40; i++) {
+        particles.push({
+            x: Math.random() * 1000, y: Math.random() * 1000,
+            r: Math.random() * 1.5 + 0.3,
+            vx: (Math.random() - 0.5) * 0.3, vy: -Math.random() * 0.4 - 0.1,
+            alpha: Math.random() * 0.4 + 0.1,
+            color: Math.random() > 0.5 ? '124,58,237' : '6,182,212'
+        });
+    }
+    function draw() {
+        ctx.clearRect(0, 0, W, H);
+        particles.forEach(p => {
+            p.x += p.vx; p.y += p.vy;
+            if (p.y < -5) { p.y = H + 5; p.x = Math.random() * W; }
+            if (p.x < -5) p.x = W + 5;
+            if (p.x > W + 5) p.x = -5;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${p.color},${p.alpha})`;
+            ctx.fill();
+        });
+        requestAnimationFrame(draw);
+    }
+    draw();
+})();
+
 // ============================================================
 // UPDATE UI
 // ============================================================
@@ -576,10 +759,8 @@ function updateHeader() {
     document.getElementById('xpFill').style.width = `${Math.min(100, (u.xp / needed) * 100)}%`;
     document.getElementById('playerLevelLabel').textContent = `LVL ${u.level} · ${getLevelTitle(u.level)}`;
 
-    document.getElementById('walletIncome').textContent = formatNum(state.incomePerHour);
     document.getElementById('walletCards').textContent = state.inventory.reduce((s, i) => s + i.count, 0);
     document.getElementById('walletMerges').textContent = u.mergeCount || 0;
-    document.getElementById('walletStorage').textContent = `${getUsedSlots()}/${u.inventorySlots}`;
 
     updateUpgradeButton();
     renderTransactions();
@@ -725,6 +906,7 @@ async function openCapsule(type) {
 
     updateHeader();
     renderCards();
+    await loadUserStats();
 
     setTimeout(() => showCapsulePopup(res.creature), 300);
 }
@@ -768,7 +950,7 @@ function onCardClick(creatureId) {
             <div class="popup-stat"><div class="popup-stat-val">${item ? item.count : 0}</div><div class="popup-stat-label">Owned</div></div>
         </div>
         ${canMerge(creatureId)
-            ? `<button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e)" onclick="closeOverlay();executeMerge('${creatureId}')">
+            ? `<button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e)" onclick="closeOverlay();showMergePreview('${creatureId}')">
                 <i class="fa-solid fa-code-merge"></i> MERGE x3
             </button>`
             : `<button class="popup-btn" onclick="closeOverlay()">CLOSE</button>`
@@ -872,6 +1054,7 @@ async function executeMerge(creatureId) {
 
     updateHeader();
     renderCards();
+    await loadUserStats();
     showMergeResultPopup(res.fromCreature, res.resultCreature, res.upgraded);
 }
 
@@ -933,27 +1116,51 @@ async function upgradeInventory() {
 }
 
 // ============================================================
-// ADS
+// ADS (ОБНОВЛЕННАЯ ВЕРСИЯ С 20 MMO)
 // ============================================================
 async function updateAdsStatus() {
     try {
         const res = await apiRequest('GET', '/api/game/ads-status');
         if (res && res.success) {
             const adsRemainingEl = document.getElementById('adsRemaining');
+            const adsTimerEl = document.getElementById('adsTimer');
+            
+            const available = res.adsAvailable !== undefined ? res.adsAvailable : (res.adsRemaining || 0);
+            const maxAds = res.maxAdsPerDay || res.maxAdsAvailable || 10;
+            
             if (adsRemainingEl) {
-                adsRemainingEl.textContent = `${res.adsRemaining}/${res.maxAdsPerDay}`;
+                adsRemainingEl.textContent = `${available}/${maxAds}`;
             }
-            if (res.adsRemaining === 0) {
-                const adsBtn = document.getElementById('adsBtn');
-                if (adsBtn) {
-                    adsBtn.style.opacity = '0.5';
-                    adsBtn.disabled = true;
+            
+            state.adsAvailable = available;
+            state.maxAdsPerDay = maxAds;
+            state.adsCooldown = res.cooldownSeconds || 0;
+            
+            if (available === 0 && res.nextRegenMinutes > 0) {
+                if (adsTimerEl) {
+                    adsTimerEl.textContent = `+1 через ${res.nextRegenMinutes}м`;
+                    adsTimerEl.style.color = '#f59e0b';
+                }
+            } else if (state.adsCooldown > 0) {
+                if (adsTimerEl) {
+                    adsTimerEl.textContent = `${state.adsCooldown}s`;
+                    adsTimerEl.style.color = '#94a3b8';
+                }
+            } else {
+                if (adsTimerEl) {
+                    adsTimerEl.textContent = 'Ready';
+                    adsTimerEl.style.color = '#22c55e';
                 }
             }
-            if (res.cooldownSeconds > 0 && res.cooldownSeconds < 100) {
-                const timerEl = document.getElementById('adsTimer');
-                if (timerEl) timerEl.textContent = `${res.cooldownSeconds}s`;
+            
+            const adsBtn = document.getElementById('adsBtn');
+            if (adsBtn) {
+                const canWatch = available > 0 && state.adsCooldown === 0;
+                adsBtn.style.opacity = canWatch ? '1' : '0.5';
+                adsBtn.disabled = !canWatch;
             }
+        } else {
+            console.error('Ads status error:', res);
         }
     } catch (e) {
         console.error('updateAdsStatus error:', e);
@@ -964,19 +1171,22 @@ async function watchAd() {
     if (state.isLoading) return;
 
     if (state.adsCooldown > 0) {
-        showToast(`Ad available in ${state.adsCooldown}s`, '⏳');
+        showToast(`Реклама доступна через ${state.adsCooldown}с`, '⏳');
+        return;
+    }
+    
+    if (state.adsAvailable <= 0) {
+        showToast(`Нет доступной рекламы. Восстановление через час.`, '📺');
         return;
     }
 
     const btn = document.getElementById('adsBtn');
     const timer = document.getElementById('adsTimer');
-    const reward = document.getElementById('adsReward');
     
     if (btn) { btn.style.opacity = '0.5'; btn.disabled = true; }
     if (timer) timer.textContent = '...';
-    if (reward) reward.textContent = '';
 
-    showToast('Loading ad...', '📺');
+    showToast('Загрузка рекламы...', '📺');
 
     try {
         let waited = 0;
@@ -986,7 +1196,7 @@ async function watchAd() {
         }
 
         if (typeof window.showGiga !== 'function') {
-            throw new Error('Giga Pub not loaded');
+            throw new Error('Рекламный SDK не загружен');
         }
 
         await window.showGiga();
@@ -994,46 +1204,40 @@ async function watchAd() {
         const res = await apiRequest('POST', '/api/game/watch-ad');
 
         if (!res.success) {
-            if (res.dailyLimitReached) {
-                showToast(res.message, '⚠️');
-                if (btn) { btn.style.opacity = '0.5'; btn.disabled = true; }
-                if (timer) timer.textContent = 'Limit';
-                state.isLoading = false;
-                return;
+            if (res.adsAvailable === 0 && res.nextRegenMinutes) {
+                showToast(`Нет рекламы. Следующая через ${res.nextRegenMinutes} мин.`, '⚠️');
+            } else {
+                showToast(res.message || 'Ошибка', '❌');
             }
-            throw new Error(res.message || 'Failed');
+            if (btn) { btn.style.opacity = '1'; btn.disabled = false; }
+            if (timer) timer.textContent = 'Ready';
+            return;
         }
 
         state.user = res.user;
         state.adsCooldown = res.cooldownSeconds || AD_COOLDOWN;
-        
-        const adsRemainingEl = document.getElementById('adsRemaining');
-        if (adsRemainingEl && res.adsRemaining !== undefined) {
-            adsRemainingEl.textContent = `${res.adsRemaining}/${res.maxAdsPerDay}`;
-        }
+        state.adsAvailable = res.adsAvailable;
         
         updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
         updateHeader();
-        showToast(`+${AD_REWARD} MMO! (${res.adsToday}/${res.maxAdsPerDay} today)`, '🎉');
+        await loadUserStats();
+        
+        const nextRegenText = res.nextRegenMinutes > 0 ? ` (ещё ${res.nextRegenMinutes} мин до +1)` : '';
+        showToast(`+${AD_REWARD} MMO! Осталось рекламы: ${res.adsAvailable}/${res.maxAdsPerDay}${nextRegenText}`, '🎉');
         spawnFloatingMMO(AD_REWARD);
         
-        if (res.adsRemaining === 0) {
-            if (btn) { btn.style.opacity = '0.5'; btn.disabled = true; }
-            if (timer) timer.textContent = 'Limit';
-        } else {
-            if (btn) { btn.style.opacity = '1'; btn.disabled = false; }
-            if (timer) timer.textContent = 'Ready';
+        updateAdsStatus();
+        
+        if (btn && res.adsAvailable > 0 && state.adsCooldown === 0) {
+            btn.style.opacity = '1';
+            btn.disabled = false;
         }
         
     } catch (e) {
         console.error('Ad error:', e);
-        showToast('Ad failed, try again', '❌');
-        
+        showToast('Реклама не загрузилась, попробуйте ещё раз', '❌');
         if (btn) { btn.style.opacity = '1'; btn.disabled = false; }
         if (timer) timer.textContent = 'Ready';
-        if (reward) reward.textContent = `+${AD_REWARD}`;
-        state.isLoading = false;
-        return;
     }
 
     state.isLoading = false;
@@ -1041,23 +1245,24 @@ async function watchAd() {
 
 function updateAdsTimer() {
     if (!state.user) return;
-    if (state.adsCooldown > 0) {
-        state.adsCooldown--;
-        const timerEl = document.getElementById('adsTimer');
-        if (timerEl) timerEl.textContent = `${state.adsCooldown}s`;
-        const btn = document.getElementById('adsBtn');
-        if (btn && state.adsCooldown > 0) {
-            btn.style.opacity = '0.5';
-            btn.disabled = true;
-        }
-    } else {
-        const timerEl = document.getElementById('adsTimer');
-        if (timerEl) timerEl.textContent = 'Ready';
-        const btn = document.getElementById('adsBtn');
-        if (btn) {
-            btn.style.opacity = '1';
-            btn.disabled = false;
-        }
+    
+    if (state.adsCooldown <= 0) {
+        updateAdsStatus();
+        return;
+    }
+    
+    state.adsCooldown--;
+    const timerEl = document.getElementById('adsTimer');
+    if (timerEl) timerEl.textContent = `${state.adsCooldown}s`;
+    
+    const btn = document.getElementById('adsBtn');
+    if (btn && state.adsCooldown > 0) {
+        btn.style.opacity = '0.5';
+        btn.disabled = true;
+    }
+    
+    if (state.adsCooldown === 0) {
+        updateAdsStatus();
     }
 }
 
@@ -1411,6 +1616,7 @@ async function buyFromMarketplace(listingId, price, creatureId) {
     const c = getCreature(creatureId);
     updateHeader();
     renderCards();
+    await loadUserStats();
     marketplaceCache.expiresAt = 0;
     renderMarketplaceBuy();
     showToast(`Bought ${c?.name || 'creature'} for ${price} MMO!`, '✅');
@@ -1580,6 +1786,9 @@ async function renderFriendsList() {
     }
 }
 
+// ============================================================
+// РЕФЕРАЛЬНЫЕ НАГРАДЫ
+// ============================================================
 async function claimFriendReward(requiredFriends, creatureId, creatureName, creatureIcon) {
     if (state.isLoading) return;
     
@@ -1619,6 +1828,7 @@ async function claimFriendReward(requiredFriends, creatureId, creatureName, crea
     updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
     updateHeader();
     renderCards();
+    await loadUserStats();
     updateFriendRewardButtons();
     renderSpecialQuests();
     
@@ -1690,7 +1900,7 @@ function updateFriendRewardButtons() {
 }
 
 // ============================================================
-// SPECIAL QUESTS
+// SPECIAL QUESTS (С СОХРАНЕНИЕМ В localStorage)
 // ============================================================
 
 function loadQuestStatusesFromStorage() {
@@ -1756,6 +1966,21 @@ function restartQuestTimer(questId, remainingSeconds) {
         questData.timerId = timerId;
         questStatuses.set(questId, questData);
     }
+}
+
+function clearAllQuestTimers() {
+    for (const [questId, data] of questStatuses.entries()) {
+        if (data.timerId) {
+            clearTimeout(data.timerId);
+        }
+    }
+    questStatuses.clear();
+    localStorage.removeItem(QUESTS_STORAGE_KEY);
+}
+
+function getQuestTitle(questId) {
+    const quest = SPECIAL_QUESTS.find(q => q.id === questId);
+    return quest ? quest.title : 'квест';
 }
 
 function updateQuestButton(questId, status) {
@@ -1922,11 +2147,6 @@ function openCustomLinkAndComplete(questId, link) {
     showToast('🔍 Проверка выполнения квеста... Подождите 60 секунд.', '⏳');
 }
 
-function getQuestTitle(questId) {
-    const quest = SPECIAL_QUESTS.find(q => q.id === questId);
-    return quest?.title || 'квест';
-}
-
 async function claimSpecialQuest(questId) {
     if (state.isLoading) return;
     
@@ -1962,6 +2182,7 @@ async function claimSpecialQuest(questId) {
     state.user = res.user;
     updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
     updateHeader();
+    await loadUserStats();
     
     const existing = questStatuses.get(questId);
     if (existing && existing.timerId) {
@@ -1973,6 +2194,43 @@ async function claimSpecialQuest(questId) {
     await renderSpecialQuests();
     showToast(`+${res.reward} MMO получено!`, '✅');
     spawnFloatingMMO(res.reward);
+}
+
+async function claimSpecialQuestSilent(questId) {
+    if (state.isLoading) return;
+    
+    const questStatus = questStatuses.get(questId);
+    if (questStatus && questStatus.status !== 'available') {
+        return;
+    }
+    
+    if (state.user?.completedSpecialQuests?.includes(questId)) {
+        return;
+    }
+    
+    state.isLoading = true;
+    const res = await apiRequest('POST', '/api/game/complete-special-quest', { questId });
+    state.isLoading = false;
+    
+    if (!res.success) {
+        console.log('Ошибка получения награды:', res.message);
+        return;
+    }
+    
+    state.user = res.user;
+    updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
+    updateHeader();
+    await loadUserStats();
+    
+    const existing = questStatuses.get(questId);
+    if (existing && existing.timerId) {
+        clearTimeout(existing.timerId);
+    }
+    questStatuses.delete(questId);
+    saveQuestStatusesToStorage();
+    
+    await renderSpecialQuests();
+    showToast(`+${res.reward} MMO получено за квест!`, '✅');
 }
 
 async function renderSpecialQuests() {
@@ -2085,6 +2343,11 @@ async function renderSpecialQuests() {
             }
         }
     }, 1000);
+}
+
+async function updateSpecialQuests() {
+    await loadGameConfig();
+    renderSpecialQuests();
 }
 
 // ============================================================
@@ -2345,820 +2608,516 @@ function copyToClipboard(text) {
 }
 
 // ============================================================
-// PVP СИСТЕМА - ПОЛНОСТЬЮ ПЕРЕРАБОТАННАЯ
+// ARENA MODULE
 // ============================================================
 
-async function getPvPStats() {
-    try {
-        const res = await apiRequest('GET', '/api/pvp/stats');
-        if (res && res.success) return res.stats;
-    } catch(e) {}
-    return { wins: 0, losses: 0, totalDamageDealt: 0, currentStreak: 0, bestStreak: 0 };
+function switchArenaTab(tab) {
+    document.querySelectorAll('.arena-subtab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.arena-tab-btn').forEach(b => b.classList.remove('active'));
+    
+    document.getElementById(`arena-${tab}-tab`).classList.add('active');
+    document.querySelector(`.arena-tab-btn[data-arena-tab="${tab}"]`).classList.add('active');
+    
+    if (tab === 'team') renderArenaTeamInventory();
+    if (tab === 'fight') renderArenaFightTab();
+    if (tab === 'ranking') renderArenaRanking();
 }
 
-async function loadPvPHistory() {
-    const res = await apiRequest('GET', '/api/pvp/history');
-    const listEl = document.getElementById('pvpHistoryList');
-    if (!listEl) return;
+async function renderArenaTeamInventory() {
+    const container = document.getElementById('arenaTeamInventory');
+    if (!container) return;
     
-    if (!res || !res.success || !res.history || !res.history.length) {
-        listEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3)">Нет боёв</div>';
+    const inventory = state.inventory;
+    
+    const teamRes = await apiRequest('GET', '/api/arena/team');
+    if (teamRes?.success && teamRes.teamIds) {
+        arenaState.selectedTeam = teamRes.teamIds;
+        renderSelectedTeam();
+    }
+    
+    container.innerHTML = inventory.map(item => {
+        const c = getCreature(item.creatureId);
+        if (!c) return '';
+        const isSelected = arenaState.selectedTeam.includes(c.id);
+        const isDisabled = !isSelected && arenaState.selectedTeam.length >= 3;
+        
+        return `<div class="arena-team-card ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}" 
+                    onclick="toggleArenaCreature('${c.id}')">
+                    <div class="arena-team-icon">${getIconHtml(c)}</div>
+                    <div class="arena-team-name">${escapeHtml(c.name)}</div>
+                    <div class="arena-team-stats">
+                        <span>💰 ${c.incomeBase}/hr</span>
+                    </div>
+                    ${isSelected ? '<div class="arena-team-check"><i class="fa-solid fa-check"></i></div>' : ''}
+                </div>`;
+    }).join('');
+}
+
+function toggleArenaCreature(creatureId) {
+    const index = arenaState.selectedTeam.indexOf(creatureId);
+    
+    if (index !== -1) {
+        arenaState.selectedTeam.splice(index, 1);
+    } else if (arenaState.selectedTeam.length < 3) {
+        arenaState.selectedTeam.push(creatureId);
+    } else {
+        showToast('Нельзя выбрать больше 3 питомцев', '⚠️');
         return;
     }
     
-    listEl.innerHTML = res.history.map(match => `
-        <div class="pvp-history-item ${match.isWinner ? 'pvp-history-win' : 'pvp-history-lose'}">
-            <div>
-                <div class="history-opponent">${escapeHtml(match.opponentName)}</div>
-                <div class="history-result ${match.isWinner ? 'history-result-win' : 'history-result-lose'}">
-                    ${match.isWinner ? '🏆 Победа' : '💀 Поражение'}
+    renderArenaTeamInventory();
+    renderSelectedTeam();
+}
+
+async function renderSelectedTeam() {
+    const container = document.getElementById('arenaSelectedTeam');
+    if (!container) return;
+    
+    if (arenaState.selectedTeam.length === 0) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;">Выберите 3 питомца для команды</div>';
+        return;
+    }
+    
+    const teamData = [];
+    for (const creatureId of arenaState.selectedTeam) {
+        const creature = getCreature(creatureId);
+        if (creature) {
+            const multiplier = RARITY_MULTIPLIERS[creature.rarity] || 1;
+            const level = state.user?.level || 1;
+            const hp = Math.ceil((50 + (creature.incomeBase * 2) + (level * 5)) * multiplier);
+            const atk = Math.ceil((10 + (creature.incomeBase / 2) + (level * 2)) * multiplier);
+            const def = Math.ceil((5 + (creature.incomeBase / 3) + (level * 1)) * multiplier);
+            const crit = Math.round(0.10 * 100);
+            teamData.push({ creature, hp, atk, def, crit });
+        }
+    }
+    
+    container.innerHTML = `<div class="arena-team-cards">
+        ${teamData.map(data => `
+            <div class="arena-selected-card">
+                <div class="arena-selected-icon">${getIconHtml(data.creature)}</div>
+                <div class="arena-selected-name">${escapeHtml(data.creature.name)}</div>
+                <div class="arena-selected-stats">
+                    <span>❤️ ${data.hp}</span>
+                    <span>⚔️ ${data.atk}</span>
+                    <span>🛡️ ${data.def}</span>
+                    <span>✨ ${data.crit}%</span>
                 </div>
             </div>
-            <div class="history-amount">${match.isWinner ? `+${match.winnerGets}` : `-${match.betAmount}`} MMO</div>
+        `).join('')}
+    </div>`;
+}
+
+async function saveArenaTeam() {
+    if (arenaState.selectedTeam.length !== 3) {
+        showToast('Нужно выбрать ровно 3 питомца', '⚠️');
+        return;
+    }
+    
+    const res = await apiRequest('POST', '/api/arena/team', { team: arenaState.selectedTeam });
+    
+    if (res?.success) {
+        showToast('Команда сохранена!', '✅');
+    } else {
+        showToast(res?.message || 'Ошибка сохранения', '❌');
+    }
+}
+
+async function renderArenaFightTab() {
+    const statusContainer = document.getElementById('arenaFightStatus');
+    const battleContainer = document.getElementById('arenaBattleContainer');
+    
+    const battleRes = await apiRequest('GET', '/api/arena/battle/status');
+    
+    if (battleRes?.hasBattle && battleRes.status !== 'finished') {
+        statusContainer.style.display = 'none';
+        battleContainer.style.display = 'block';
+        startBattlePolling();
+        renderBattleInterface(battleRes);
+    } else {
+        statusContainer.style.display = 'block';
+        battleContainer.style.display = 'none';
+        if (arenaState.battlePollingInterval) {
+            clearInterval(arenaState.battlePollingInterval);
+            arenaState.battlePollingInterval = null;
+        }
+        
+        const teamRes = await apiRequest('GET', '/api/arena/team');
+        if (teamRes?.success && teamRes.team) {
+            const teamContainer = document.getElementById('arenaCurrentTeam');
+            teamContainer.innerHTML = teamRes.team.map(creature => `
+                <div class="arena-current-creature">
+                    <div class="arena-current-icon">${getIconHtml(creature)}</div>
+                    <div class="arena-current-name">${escapeHtml(creature.name)}</div>
+                </div>
+            `).join('');
+        }
+        
+        const level = state.user?.level || 1;
+        let league = 'bronze';
+        let entryFee = 500;
+        let prizePool = 800;
+        
+        if (level >= 50) { league = 'diamond'; entryFee = 5000; prizePool = 8000; }
+        else if (level >= 30) { league = 'platinum'; entryFee = 2000; prizePool = 3200; }
+        else if (level >= 20) { league = 'gold'; entryFee = 1000; prizePool = 1600; }
+        else if (level >= 10) { league = 'silver'; entryFee = 500; prizePool = 800; }
+        
+        document.getElementById('arenaEntryFee').textContent = entryFee;
+        document.getElementById('arenaPrizePool').textContent = prizePool;
+        document.getElementById('arenaLeague').textContent = 
+            league === 'diamond' ? 'Алмазная' : 
+            league === 'platinum' ? 'Платиновая' : 
+            league === 'gold' ? 'Золотая' : 
+            league === 'silver' ? 'Серебряная' : 'Бронзовая';
+    }
+}
+
+async function findMatch() {
+    if (arenaState.isSearching) {
+        showToast('Поиск уже идёт...', '⏳');
+        return;
+    }
+    
+    const teamRes = await apiRequest('GET', '/api/arena/team');
+    if (!teamRes?.success || teamRes.teamIds?.length !== 3) {
+        showToast('Сначала сохраните команду из 3 питомцев', '⚠️');
+        return;
+    }
+    
+    arenaState.isSearching = true;
+    const findBtn = document.getElementById('findMatchBtn');
+    const searchStatus = document.getElementById('arenaSearchStatus');
+    
+    if (findBtn) {
+        findBtn.disabled = true;
+        findBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Поиск...';
+    }
+    if (searchStatus) searchStatus.innerHTML = '🔍 Поиск соперника...';
+    
+    const res = await apiRequest('POST', '/api/arena/find-match');
+    
+    if (res?.success) {
+        if (res.battle?.player2Id) {
+            if (searchStatus) searchStatus.innerHTML = '⚔️ Соперник найден! Ожидание подтверждения...';
+            startBattlePolling();
+        } else {
+            if (searchStatus) searchStatus.innerHTML = '⏳ В очереди поиска...';
+        }
+    } else {
+        showToast(res?.message || 'Ошибка поиска', '❌');
+        arenaState.isSearching = false;
+        if (findBtn) {
+            findBtn.disabled = false;
+            findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой';
+        }
+        if (searchStatus) searchStatus.innerHTML = '';
+    }
+}
+
+function startBattlePolling() {
+    if (arenaState.battlePollingInterval) clearInterval(arenaState.battlePollingInterval);
+    
+    arenaState.battlePollingInterval = setInterval(async () => {
+        const res = await apiRequest('GET', '/api/arena/battle/status');
+        
+        if (!res?.hasBattle) {
+            if (arenaState.battlePollingInterval) {
+                clearInterval(arenaState.battlePollingInterval);
+                arenaState.battlePollingInterval = null;
+            }
+            arenaState.isSearching = false;
+            
+            const findBtn = document.getElementById('findMatchBtn');
+            if (findBtn) {
+                findBtn.disabled = false;
+                findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой';
+            }
+            const searchStatus = document.getElementById('arenaSearchStatus');
+            if (searchStatus) searchStatus.innerHTML = '';
+            
+            renderArenaFightTab();
+            return;
+        }
+        
+        if (res.status === 'waiting') {
+            const searchStatus = document.getElementById('arenaSearchStatus');
+            if (searchStatus) searchStatus.innerHTML = '⏳ Поиск соперника...';
+        } else if (res.status === 'active') {
+            const searchStatus = document.getElementById('arenaSearchStatus');
+            if (searchStatus) searchStatus.innerHTML = '';
+            
+            if (!res.player1Confirmed || !res.player2Confirmed) {
+                showBattleConfirmation(res);
+            } else {
+                renderBattleInterface(res);
+            }
+        } else if (res.status === 'finished') {
+            showBattleResult(res);
+            if (arenaState.battlePollingInterval) {
+                clearInterval(arenaState.battlePollingInterval);
+                arenaState.battlePollingInterval = null;
+            }
+            arenaState.isSearching = false;
+            renderArenaFightTab();
+        }
+    }, 2000);
+}
+
+function showBattleConfirmation(battleData) {
+    const overlay = document.getElementById('overlay');
+    const popup = document.getElementById('popup');
+    
+    const opponent = battleData.opponent;
+    const prize = battleData.prizePool;
+    
+    popup.innerHTML = `
+        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
+        <div class="popup-title" style="color:var(--accent3)">⚔️ Бой найден!</div>
+        <div class="popup-subtitle">Противник: ${escapeHtml(opponent?.name || 'Игрок')} (УР ${opponent?.level || '?'})</div>
+        <div style="background:#0d1120;border-radius:12px;padding:12px;margin:12px 0;">
+            <div style="font-size:10px;color:#94a3b8;">Призовой фонд</div>
+            <div style="font-size:20px;font-weight:700;color:var(--legendary)">${prize} MMO</div>
+        </div>
+        <div class="modal-buttons" style="display:flex;gap:10px;">
+            <button class="popup-btn" style="flex:1;background:linear-gradient(135deg,#22c55e,#16a34a)" onclick="acceptBattle()">
+                <i class="fa-solid fa-check"></i> Принять
+            </button>
+            <button class="popup-btn" style="flex:1;background:#1a2540;color:#e2e8f0" onclick="rejectBattle()">
+                <i class="fa-solid fa-times"></i> Отклонить
+            </button>
+        </div>
+        <div style="font-size:10px;color:#94a3b8;text-align:center;margin-top:12px;">⏱ У вас 15 секунд на решение</div>
+    `;
+    
+    overlay.classList.add('show');
+    
+    setTimeout(() => {
+        if (overlay.classList.contains('show') && popup.innerHTML.includes('Бой найден')) {
+            rejectBattle();
+        }
+    }, 15000);
+}
+
+async function acceptBattle() {
+    closeOverlay();
+    const battleRes = await apiRequest('GET', '/api/arena/battle/status');
+    if (battleRes?.battleId) {
+        await apiRequest('POST', '/api/arena/accept-match', { battleId: battleRes.battleId });
+    }
+}
+
+async function rejectBattle() {
+    closeOverlay();
+    const battleRes = await apiRequest('GET', '/api/arena/battle/status');
+    if (battleRes?.battleId) {
+        await apiRequest('POST', '/api/arena/reject-match', { battleId: battleRes.battleId });
+    }
+    showToast('Бой отклонён', '⚠️');
+}
+
+function renderBattleInterface(battleData) {
+    const container = document.getElementById('arenaBattleContainer');
+    if (!container) return;
+    
+    const isMyTurn = (battleData.currentTurn === 'player1' && battleData.isPlayer1) ||
+                     (battleData.currentTurn === 'player2' && !battleData.isPlayer1);
+    
+    const myTeam = battleData.myTeam;
+    const enemyTeam = battleData.opponentTeam;
+    
+    container.innerHTML = `
+        <div class="arena-battle-container">
+            <div class="arena-team-side">
+                <div class="arena-side-title">⚔️ ВАША КОМАНДА</div>
+                <div class="arena-creatures-row" id="arenaMyCreatures">
+                    ${myTeam.map((creature, idx) => `
+                        <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-creature-index="${idx}">
+                            <div class="creature-icon">${getIconHtml(creature)}</div>
+                            <div class="creature-name">${escapeHtml(creature.name)}</div>
+                            <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
+                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            
+            <div class="arena-battle-vs">VS</div>
+            
+            <div class="arena-team-side">
+                <div class="arena-side-title">🛡️ КОМАНДА СОПЕРНИКА</div>
+                <div class="arena-creatures-row" id="arenaEnemyCreatures">
+                    ${enemyTeam.map((creature, idx) => `
+                        <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-enemy-index="${idx}">
+                            <div class="creature-icon">${getIconHtml(creature)}</div>
+                            <div class="creature-name">${escapeHtml(creature.name)}</div>
+                            <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
+                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
+                            ${isMyTurn && creature.isAlive ? `<button class="arena-attack-btn" onclick="makeAttack(${idx})">⚔️ Атаковать</button>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            
+            <div class="arena-battle-log" id="arenaBattleLog">
+                ${battleData.battleLog.map(log => `
+                    <div class="arena-log-entry ${log.isCrit ? 'crit' : ''}">
+                        Ход ${log.turn}: ${log.attackerName} → ${log.targetName}: ${log.damage} урона ${log.isCrit ? '💥 КРИТ!' : ''}
+                    </div>
+                `).join('')}
+                ${battleData.battleLog.length === 0 ? '<div class="arena-log-entry">Бой начинается...</div>' : ''}
+            </div>
+            
+            <div class="arena-battle-timer" id="arenaBattleTimer">⏱ 30</div>
+            
+            <button class="arena-surrender-btn" onclick="surrenderBattle()">
+                <i class="fa-solid fa-flag"></i> Сдаться
+            </button>
+        </div>
+    `;
+    
+    startBattleTimer();
+}
+
+async function makeAttack(targetIndex) {
+    const battleRes = await apiRequest('GET', '/api/arena/battle/status');
+    if (!battleRes?.battleId) return;
+    
+    const res = await apiRequest('POST', '/api/arena/move', { 
+        battleId: battleRes.battleId, 
+        targetIndex: targetIndex 
+    });
+    
+    if (res?.success) {
+        if (res.finished) {
+            showBattleResult(res);
+        } else {
+            if (res.lastMove) {
+                showDamageAnimation(targetIndex, res.lastMove.damage, res.lastMove.isCrit);
+            }
+            const newStatus = await apiRequest('GET', '/api/arena/battle/status');
+            if (newStatus) renderBattleInterface(newStatus);
+        }
+    } else {
+        showToast(res?.message || 'Ошибка атаки', '❌');
+    }
+}
+
+function showDamageAnimation(targetIndex, damage, isCrit) {
+    const enemyCreature = document.querySelector(`.arena-battle-creature[data-enemy-index="${targetIndex}"]`);
+    if (enemyCreature) {
+        const damageDiv = document.createElement('div');
+        damageDiv.className = `arena-damage-number ${isCrit ? 'crit' : ''}`;
+        damageDiv.textContent = `-${damage}`;
+        enemyCreature.style.position = 'relative';
+        enemyCreature.appendChild(damageDiv);
+        
+        setTimeout(() => damageDiv.remove(), 1000);
+        
+        if (isCrit) {
+            enemyCreature.style.animation = 'damageShake 0.3s ease';
+            setTimeout(() => enemyCreature.style.animation = '', 300);
+        }
+    }
+}
+
+function startBattleTimer() {
+    if (battleTimerInterval) clearInterval(battleTimerInterval);
+    
+    let timeLeft = 30;
+    const timerEl = document.getElementById('arenaBattleTimer');
+    
+    battleTimerInterval = setInterval(async () => {
+        timeLeft--;
+        if (timerEl) {
+            timerEl.textContent = `⏱ ${timeLeft}`;
+            if (timeLeft <= 5) timerEl.classList.add('warning');
+            else timerEl.classList.remove('warning');
+        }
+        
+        if (timeLeft <= 0) {
+            clearInterval(battleTimerInterval);
+            battleTimerInterval = null;
+        }
+    }, 1000);
+}
+
+async function surrenderBattle() {
+    if (!confirm('Вы уверены, что хотите сдаться? Вы потеряете MMO за вход.')) return;
+    
+    const battleRes = await apiRequest('GET', '/api/arena/battle/status');
+    if (battleRes?.battleId) {
+        const res = await apiRequest('POST', '/api/arena/surrender', { battleId: battleRes.battleId });
+        if (res?.success) {
+            showToast('Вы сдались', '⚠️');
+            renderArenaFightTab();
+        }
+    }
+}
+
+function showBattleResult(battleData) {
+    const isWin = battleData.winnerId === state.user?._id;
+    
+    const overlay = document.getElementById('overlay');
+    const popup = document.getElementById('popup');
+    
+    popup.innerHTML = `
+        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
+        <div class="popup-icon">${isWin ? '🏆' : '💀'}</div>
+        <div class="popup-title" style="color:${isWin ? 'var(--legendary)' : 'var(--mythic)'}">
+            ${isWin ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}
+        </div>
+        <div class="popup-subtitle">
+            ${isWin ? `Вы выиграли ${battleData.prizePool} MMO!` : 'В следующий раз повезёт!'}
+        </div>
+        <button class="popup-btn" onclick="closeOverlay(); renderArenaFightTab();">
+            Закрыть
+        </button>
+    `;
+    
+    overlay.classList.add('show');
+    
+    if (arenaState.battlePollingInterval) {
+        clearInterval(arenaState.battlePollingInterval);
+        arenaState.battlePollingInterval = null;
+    }
+    if (battleTimerInterval) clearInterval(battleTimerInterval);
+}
+
+async function renderArenaRanking() {
+    const res = await apiRequest('GET', '/api/arena/leaderboard');
+    if (!res?.success) return;
+    
+    document.getElementById('arenaMyRating').textContent = res.myStats?.rating || 1000;
+    document.getElementById('arenaMyWins').textContent = res.myStats?.wins || 0;
+    document.getElementById('arenaMyLosses').textContent = res.myStats?.losses || 0;
+    document.getElementById('arenaMyStreak').textContent = res.myStats?.streak || 0;
+    
+    const container = document.getElementById('arenaLeaderboardList');
+    container.innerHTML = res.leaders.map((player, idx) => `
+        <div class="lb-item ${player.rating === res.myStats?.rating ? 'me' : ''}">
+            <div class="lb-rank ${idx === 0 ? 'gold' : idx === 1 ? 'silver' : idx === 2 ? 'bronze' : ''}">
+                ${idx + 1}
+            </div>
+            <div class="lb-avatar" style="background: linear-gradient(135deg, var(--accent), var(--accent3));">
+                ${player.name[0]?.toUpperCase() || '?'}
+            </div>
+            <div class="lb-info">
+                <div class="lb-name">${escapeHtml(player.name)}</div>
+                <div class="lb-level">УР ${player.level}</div>
+            </div>
+            <div class="lb-score">
+                <span>${player.rating}</span>
+                <span style="font-size:9px;">${player.wins}/${player.losses}</span>
+            </div>
         </div>
     `).join('');
 }
 
-async function renderPvP() {
-    const container = document.getElementById('tab-pvp');
-    if (!container) return;
-    
-    const stats = await getPvPStats();
-    
-    container.innerHTML = `
-        <div style="padding: 12px;">
-            <div class="section-title"><i class="fa-solid fa-sword" style="color: var(--mythic);"></i> PvP Арена</div>
-            
-            <button class="pvp-find-btn" id="pvpMainBtn" onclick="openTeamSelection()">
-                <i class="fa-solid fa-sword"></i> ВЫБРАТЬ ОТРЯД
-            </button>
-            
-            <div id="pvpQueueStatus" style="display: none;" class="pvp-queue-status">
-                <div class="queue-spinner"></div>
-                <div>Поиск соперника...</div>
-                <div class="queue-timer" id="queueTimerDisplay">60</div>
-                <button class="queue-leave-btn" onclick="leaveQueue()">Отменить поиск</button>
-            </div>
-            
-            <div class="pvp-stats-grid">
-                <div class="pvp-stat-card"><div class="pvp-stat-value">${stats.wins || 0}</div><div class="pvp-stat-label">Побед</div></div>
-                <div class="pvp-stat-card"><div class="pvp-stat-value">${stats.losses || 0}</div><div class="pvp-stat-label">Поражений</div></div>
-                <div class="pvp-stat-card"><div class="pvp-stat-value">${stats.totalDamageDealt || 0}</div><div class="pvp-stat-label">Урона</div></div>
-                <div class="pvp-stat-card"><div class="pvp-stat-value">${stats.currentStreak || 0}</div><div class="pvp-stat-label">Серия</div></div>
-            </div>
-            
-            <div class="section-title">📜 История боёв</div>
-            <div class="pvp-history-list" id="pvpHistoryList">Загрузка...</div>
-        </div>
-    `;
-    
-    loadPvPHistory();
-    startMatchCheckLoop();
-}
-
-// ВЫБОР ОТРЯДА
-async function openTeamSelection() {
-    document.getElementById('overlay').classList.add('show');
-    const popup = document.getElementById('popup');
-    popup.style.maxWidth = '380px';
-    popup.innerHTML = `
-        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
-        <div id="teamSelectContent" style="padding: 4px;">
-            <div style="text-align:center;padding:20px;">
-                <i class="fa-solid fa-spinner fa-spin"></i> Загрузка...
-            </div>
-        </div>
-    `;
-    
-    await loadTeamData();
-}
-
-async function loadTeamData() {
-    const res = await apiRequest('GET', '/api/pvp/team-selection');
-    const container = document.getElementById('teamSelectContent');
-    
-    if (!res || !res.success) {
-        container.innerHTML = `<div style="text-align:center;padding:20px;color:red;">Ошибка загрузки<br><button onclick="closeOverlay()" style="margin-top:10px;padding:8px 20px;">Закрыть</button></div>`;
-        return;
-    }
-    
-    pvpState.availableCreatures = res.availableCreatures;
-    pvpState.selectedTeam = res.currentTeam;
-    pvpState.selectedCreatureIds = pvpState.selectedTeam?.creatures?.map(c => c.creatureId) || [];
-    
-    renderTeamSelection();
-}
-
-function renderTeamSelection() {
-    const container = document.getElementById('teamSelectContent');
-    if (!container) return;
-    
-    const slotsHtml = `
-        <div style="margin-bottom: 20px;">
-            <div style="font-size: 11px; color: var(--text2); margin-bottom: 8px;">⚔️ ВАШ ОТРЯД (3 существа)</div>
-            <div style="display: flex; gap: 10px;">
-                ${[0, 1, 2].map(pos => {
-                    const selected = pvpState.selectedTeam?.creatures?.find(c => c.position === pos);
-                    return `
-                        <div style="flex:1; aspect-ratio:1; background:${selected ? 'var(--surface)' : 'rgba(13,17,32,0.5)'}; border:2px solid ${selected ? 'var(--accent3)' : 'var(--border)'}; border-radius:16px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; cursor:${selected ? 'pointer' : 'default'}; padding:8px;" onclick="${selected ? `removeFromTeamSlot(${pos})` : ''}">
-                            ${selected ? `
-                                <img src="${selected.icon}" style="width:48px;height:48px;object-fit:contain;">
-                                <div style="font-size:10px;font-weight:600;">${selected.name}</div>
-                                <div style="font-size:8px;color:var(--mythic);">✖ Убрать</div>
-                            ` : `
-                                <i class="fa-solid fa-plus" style="font-size:24px;color:var(--text3);"></i>
-                                <div style="font-size:9px;color:var(--text3);">Слот ${pos+1}</div>
-                            `}
-                        </div>
-                    `;
-                }).join('')}
-            </div>
-        </div>
-    `;
-    
-    let creaturesHtml = '';
-    if (pvpState.availableCreatures.length === 0) {
-        creaturesHtml = `<div style="text-align:center;padding:20px;color:var(--text3);">У вас нет существ для битвы!<br>Откройте капсулы в игре.</div>`;
-    } else {
-        creaturesHtml = `
-            <div style="margin-bottom: 20px;">
-                <div style="font-size: 11px; color: var(--text2); margin-bottom: 8px;">📦 ДОСТУПНЫЕ СУЩЕСТВА</div>
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; max-height: 280px; overflow-y: auto; padding: 4px;">
-                    ${pvpState.availableCreatures.map(creature => {
-                        const isSelected = pvpState.selectedCreatureIds.includes(creature.creatureId);
-                        const isFull = pvpState.selectedCreatureIds.length >= 3 && !isSelected;
-                        return `
-                            <div class="creature-card ${creature.rarity}" style="opacity:${isFull ? '0.5' : '1'}; cursor:${isFull ? 'not-allowed' : 'pointer'}; padding:8px;" onclick="${!isFull ? `addToTeamSlot('${creature.creatureId}')` : ''}">
-                                <img src="${creature.icon}" style="width:48px;height:48px;object-fit:contain;">
-                                <div style="font-size:9px;font-weight:600;">${creature.name}</div>
-                                <div style="font-size:8px;">❤️ ${creature.stats.hp} ⚔️ ${creature.stats.atk}</div>
-                                ${isSelected ? '<div style="color:#22c55e;font-size:8px;">✓ В отряде</div>' : ''}
-                                ${creature.count > 1 ? `<div style="color:var(--text3);font-size:7px;">x${creature.count}</div>` : ''}
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            </div>
-        `;
-    }
-    
-    const power = pvpState.selectedTeam?.totalPower || 0;
-    const isTeamReady = pvpState.selectedCreatureIds.length === 3;
-    
-    container.innerHTML = `
-        ${slotsHtml}
-        ${creaturesHtml}
-        <div style="background: var(--surface); border-radius: 12px; padding: 12px; margin-top: 12px;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <span>⚔️ Сила отряда:</span>
-                <span style="font-weight: 700; color: var(--accent3);">${power}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-                <span>💰 Ставка:</span>
-                <select id="betSelect" style="background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; color: var(--text); font-size: 12px;">
-                    <option value="50">50 MMO</option>
-                    <option value="100" selected>100 MMO</option>
-                    <option value="200">200 MMO</option>
-                    <option value="500">500 MMO</option>
-                </select>
-            </div>
-        </div>
-        <button class="popup-btn" style="margin-top: 16px; background: linear-gradient(135deg, #22c55e, #16a34a); width: 100%;" 
-                onclick="saveTeamAndJoinQueue()" ${!isTeamReady ? 'disabled style="opacity: 0.5;"' : ''}>
-            ${isTeamReady ? 'НАЙТИ БОЙ' : 'ВЫБЕРИТЕ 3 СУЩЕСТВА'}
-        </button>
-    `;
-}
-
-function addToTeamSlot(creatureId) {
-    if (pvpState.selectedCreatureIds.length >= 3) {
-        showToast('Максимум 3 существа в отряде', '⚠️');
-        return;
-    }
-    if (pvpState.selectedCreatureIds.includes(creatureId)) {
-        showToast('Это существо уже в отряде', '⚠️');
-        return;
-    }
-    
-    const creature = pvpState.availableCreatures.find(c => c.creatureId === creatureId);
-    if (!creature) return;
-    
-    pvpState.selectedCreatureIds.push(creatureId);
-    if (!pvpState.selectedTeam) {
-        pvpState.selectedTeam = { creatures: [], totalPower: 0 };
-    }
-    const position = pvpState.selectedTeam.creatures.length;
-    pvpState.selectedTeam.creatures.push({
-        creatureId: creature.creatureId,
-        name: creature.name,
-        icon: creature.icon,
-        position: position
-    });
-    pvpState.selectedTeam.totalPower += creature.stats.atk;
-    
-    renderTeamSelection();
-}
-
-function removeFromTeamSlot(position) {
-    const index = pvpState.selectedTeam.creatures.findIndex(c => c.position === position);
-    if (index !== -1) {
-        const creatureId = pvpState.selectedTeam.creatures[index].creatureId;
-        const creature = pvpState.availableCreatures.find(c => c.creatureId === creatureId);
-        if (creature) pvpState.selectedTeam.totalPower -= creature.stats.atk;
-        pvpState.selectedTeam.creatures.splice(index, 1);
-        pvpState.selectedCreatureIds = pvpState.selectedCreatureIds.filter(id => id !== creatureId);
-        pvpState.selectedTeam.creatures.forEach((c, i) => c.position = i);
-        renderTeamSelection();
-    }
-}
-
-async function saveTeamAndJoinQueue() {
-    if (pvpState.selectedCreatureIds.length !== 3) {
-        showToast('Выберите 3 существа', '⚠️');
-        return;
-    }
-    
-    const saveRes = await apiRequest('POST', '/api/pvp/save-team', { creatureIds: pvpState.selectedCreatureIds });
-    if (!saveRes.success) {
-        showToast(saveRes.message || 'Ошибка сохранения отряда', '❌');
-        return;
-    }
-    
-    const betAmount = parseInt(document.getElementById('betSelect')?.value || 100);
-    
-    const queueRes = await apiRequest('POST', '/api/pvp/queue/join', { teamId: saveRes.team.id, betAmount });
-    if (!queueRes.success) {
-        showToast(queueRes.message || 'Ошибка входа в очередь', '❌');
-        return;
-    }
-    
-    closeOverlay();
-    startQueue();
-}
-
-// УПРАВЛЕНИЕ ОЧЕРЕДЬЮ
-function startQueue() {
-    pvpState.inQueue = true;
-    
-    const queueDiv = document.getElementById('pvpQueueStatus');
-    if (queueDiv) queueDiv.style.display = 'block';
-    
-    const mainBtn = document.getElementById('pvpMainBtn');
-    if (mainBtn) {
-        mainBtn.innerHTML = '<i class="fa-solid fa-clock"></i> В ОЧЕРЕДИ...';
-        mainBtn.classList.add('in-queue');
-        mainBtn.onclick = () => leaveQueue();
-    }
-    
-    let seconds = 60;
-    const timerDisplay = document.getElementById('queueTimerDisplay');
-    
-    if (pvpState.queueTimer) clearInterval(pvpState.queueTimer);
-    pvpState.queueTimer = setInterval(() => {
-        seconds--;
-        if (timerDisplay) timerDisplay.textContent = seconds;
-        if (seconds <= 0) {
-            clearInterval(pvpState.queueTimer);
-            leaveQueue();
-            showToast('Время поиска истекло', '⏳');
-        }
-    }, 1000);
-}
-
-async function leaveQueue() {
-    if (!pvpState.inQueue) return;
-    
-    const res = await apiRequest('POST', '/api/pvp/queue/leave');
-    
-    pvpState.inQueue = false;
-    if (pvpState.queueTimer) clearInterval(pvpState.queueTimer);
-    
-    const queueDiv = document.getElementById('pvpQueueStatus');
-    if (queueDiv) queueDiv.style.display = 'none';
-    
-    const mainBtn = document.getElementById('pvpMainBtn');
-    if (mainBtn) {
-        mainBtn.innerHTML = '<i class="fa-solid fa-sword"></i> ВЫБРАТЬ ОТРЯД';
-        mainBtn.classList.remove('in-queue');
-        mainBtn.onclick = () => openTeamSelection();
-    }
-    
-    if (res && res.success) showToast('Вы вышли из очереди', '✅');
-}
-
-// ПРОВЕРКА МАТЧА
-function startMatchCheckLoop() {
-    if (pvpState.matchCheckInterval) clearInterval(pvpState.matchCheckInterval);
-    
-    pvpState.matchCheckInterval = setInterval(async () => {
-        if (pvpState.currentBattle) return;
-        
-        const res = await apiRequest('GET', '/api/pvp/queue/status');
-        if (res && res.success) {
-            if (res.pendingMatch && !pvpState.currentMatch) {
-                pvpState.currentMatch = res.pendingMatch;
-                showMatchConfirmModal(res.pendingMatch);
-            }
-            if (res.inQueue !== pvpState.inQueue && !pvpState.currentMatch) {
-                if (res.inQueue) {
-                    startQueue();
-                } else {
-                    pvpState.inQueue = false;
-                    const queueDiv = document.getElementById('pvpQueueStatus');
-                    if (queueDiv) queueDiv.style.display = 'none';
-                    const mainBtn = document.getElementById('pvpMainBtn');
-                    if (mainBtn) {
-                        mainBtn.innerHTML = '<i class="fa-solid fa-sword"></i> ВЫБРАТЬ ОТРЯД';
-                        mainBtn.classList.remove('in-queue');
-                        mainBtn.onclick = () => openTeamSelection();
-                    }
-                }
-            }
-            if (res.activeBattle && !pvpState.currentBattle) {
-                loadBattle(res.activeBattle.battleId);
-            }
-        }
-    }, 2000);
-}
-
-// МОДАЛЬНОЕ ОКНО ПОДТВЕРЖДЕНИЯ
-function showMatchConfirmModal(match) {
-    const oldModal = document.getElementById('matchConfirmModal');
-    if (oldModal) oldModal.remove();
-    
-    let seconds = 15;
-    let timerInterval;
-    
-    const modalHtml = `
-        <div class="match-found-modal" id="matchConfirmModal">
-            <div class="match-found-card">
-                <div class="match-found-icon">⚔️</div>
-                <div class="match-found-title">СОПЕРНИК НАЙДЕН!</div>
-                <div class="match-bet">Ставка: <span class="match-bet-amount">${match.betAmount} MMO</span></div>
-                <div id="matchWaitingMessage" style="margin: 12px 0; color: var(--text2);">Ожидание подтверждения...</div>
-                <div class="match-timer" id="matchTimerDisplay">Принять бой за: <span id="matchSeconds">15</span> секунд</div>
-                <div class="match-actions" id="matchActions">
-                    <button class="match-accept-btn" onclick="acceptMatch('${match.matchId}')">
-                        <i class="fa-solid fa-check"></i> ПРИНЯТЬ БОЙ
-                    </button>
-                    <button class="match-decline-btn" onclick="declineMatch('${match.matchId}')">
-                        <i class="fa-solid fa-times"></i> ОТКАЗ
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
-    timerInterval = setInterval(() => {
-        seconds--;
-        const secondsEl = document.getElementById('matchSeconds');
-        if (secondsEl) secondsEl.textContent = seconds;
-        if (seconds <= 0) {
-            clearInterval(timerInterval);
-            const modal = document.getElementById('matchConfirmModal');
-            if (modal) modal.remove();
-            pvpState.currentMatch = null;
-            showToast('Время на принятие боя истекло', '⏳');
-        }
-    }, 1000);
-    
-    startMatchStatusCheck(match.matchId, timerInterval);
-}
-
-function startMatchStatusCheck(matchId, timerInterval) {
-    const checkInterval = setInterval(async () => {
-        const res = await apiRequest('GET', `/api/pvp/match-status?matchId=${matchId}`);
-        if (res && res.success) {
-            const waitingMsg = document.getElementById('matchWaitingMessage');
-            const actionsDiv = document.getElementById('matchActions');
-            
-            if (res.battle) {
-                clearInterval(checkInterval);
-                clearInterval(timerInterval);
-                const modal = document.getElementById('matchConfirmModal');
-                if (modal) modal.remove();
-                pvpState.currentMatch = null;
-                startBattle(res.battle);
-            }
-            else if (res.player1Confirmed || res.player2Confirmed) {
-                if (waitingMsg) {
-                    waitingMsg.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Противник подтвердил бой! Ожидание...';
-                    waitingMsg.style.color = '#22c55e';
-                }
-                if (actionsDiv) {
-                    actionsDiv.style.opacity = '0.5';
-                    actionsDiv.style.pointerEvents = 'none';
-                }
-            }
-            else if (res.status === 'expired' || res.status === 'cancelled') {
-                clearInterval(checkInterval);
-                clearInterval(timerInterval);
-                const modal = document.getElementById('matchConfirmModal');
-                if (modal) modal.remove();
-                pvpState.currentMatch = null;
-                showToast('Матч отменен', '❌');
-            }
-        }
-    }, 1000);
-}
-
-async function acceptMatch(matchId) {
-    showToast('Подтверждение боя...', '⚔️');
-    
-    const res = await apiRequest('POST', '/api/pvp/accept-match', { matchId });
-    if (res && res.success) {
-        if (res.waiting) {
-            const waitingMsg = document.getElementById('matchWaitingMessage');
-            if (waitingMsg) {
-                waitingMsg.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Ожидание подтверждения от противника...';
-                waitingMsg.style.color = '#f59e0b';
-            }
-            const actionsDiv = document.getElementById('matchActions');
-            if (actionsDiv) {
-                actionsDiv.style.opacity = '0.5';
-                actionsDiv.style.pointerEvents = 'none';
-            }
-        } else if (res.battle) {
-            const modal = document.getElementById('matchConfirmModal');
-            if (modal) modal.remove();
-            pvpState.currentMatch = null;
-            startBattle(res.battle);
-        }
-    } else {
-        showToast(res?.message || 'Ошибка', '❌');
-    }
-}
-
-async function declineMatch(matchId) {
-    const modal = document.getElementById('matchConfirmModal');
-    if (modal) modal.remove();
-    pvpState.currentMatch = null;
-    
-    const res = await apiRequest('POST', '/api/pvp/cancel-match', { matchId });
-    if (res && res.success) {
-        showToast(res.message, '⚠️');
-    }
-}
-
-// БОЕВАЯ СИСТЕМА
-async function loadBattle(battleId) {
-    const res = await apiRequest('GET', `/api/pvp/battle-status?battleId=${battleId}`);
-    if (res && res.success && res.battle && res.battle.status === 'active') {
-        startBattle(res.battle);
-    }
-}
-
-function startBattle(battleData) {
-    pvpState.currentBattle = battleData;
-    
-    if (pvpState.matchCheckInterval) clearInterval(pvpState.matchCheckInterval);
-    if (pvpState.queueTimer) clearInterval(pvpState.queueTimer);
-    
-    renderBattleScreen(battleData);
-    startBattlePolling(battleData.id);
-}
-
-function renderBattleScreen(battleData) {
-    const isMyTurn = battleData.isMyTurn;
-    const myTeam = battleData.myTeam;
-    const opponentTeam = battleData.opponentTeam;
-    
-    const battleHtml = `
-        <div class="battle-screen" id="battleScreen">
-            <div class="battle-header">
-                <div class="battle-title">⚔️ ПОЕДИНОК ⚔️</div>
-                <div class="battle-turn-indicator" id="turnIndicator" style="color: ${isMyTurn ? '#22c55e' : '#f59e0b'}">
-                    ${isMyTurn ? '🔥 ВАШ ХОД!' : '⏳ ХОД ПРОТИВНИКА...'}
-                </div>
-                <div class="battle-timer" id="battleTimer">⏱️ 30с</div>
-            </div>
-            
-            <div style="padding: 16px;">
-                <div style="margin-bottom: 20px;">
-                    <div class="section-title">👤 Противник</div>
-                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-                        ${opponentTeam.map((creature, idx) => `
-                            <div class="battle-opponent-creature" data-opp-pos="${idx}" style="
-                                background: var(--surface);
-                                border-radius: 12px;
-                                padding: 8px;
-                                text-align: center;
-                                opacity: ${creature.isAlive ? '1' : '0.4'};
-                                cursor: pointer;
-                                border: ${pvpState.selectedTargetPos === idx ? '2px solid #f59e0b' : '1px solid transparent'};
-                            " onclick="selectTargetCreature(${idx})">
-                                <img src="${creature.icon}" style="width: 48px; height: 48px; object-fit: contain;">
-                                <div style="font-size: 10px; font-weight: 600;">${creature.name}</div>
-                                <div class="battle-hp-bar" style="height: 4px; background: var(--border); border-radius: 2px; margin: 4px 0;">
-                                    <div style="width: ${(creature.currentHp / creature.maxHp) * 100}%; height: 100%; background: #ef4444; border-radius: 2px;"></div>
-                                </div>
-                                <div style="font-size: 9px;">${creature.currentHp}/${creature.maxHp} HP</div>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-                
-                <div style="margin-bottom: 20px;">
-                    <div class="section-title">👤 Ваш отряд</div>
-                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-                        ${myTeam.map((creature, idx) => `
-                            <div class="battle-my-creature" data-my-pos="${idx}" style="
-                                background: var(--surface);
-                                border-radius: 12px;
-                                padding: 8px;
-                                text-align: center;
-                                opacity: ${creature.isAlive ? '1' : '0.4'};
-                            ">
-                                <img src="${creature.icon}" style="width: 48px; height: 48px; object-fit: contain;">
-                                <div style="font-size: 10px; font-weight: 600;">${creature.name}</div>
-                                <div class="battle-hp-bar" style="height: 4px; background: var(--border); border-radius: 2px; margin: 4px 0;">
-                                    <div style="width: ${(creature.currentHp / creature.maxHp) * 100}%; height: 100%; background: #22c55e; border-radius: 2px;"></div>
-                                </div>
-                                <div style="font-size: 9px;">${creature.currentHp}/${creature.maxHp} HP</div>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-                
-                <div class="battle-log" id="battleLog">
-                    <div class="battle-log-title">📜 ХОД БОЯ</div>
-                    <div class="battle-log-messages" id="battleLogMessages">
-                        <div>⚔️ Бой начался!</div>
-                        ${isMyTurn ? '<div>🔥 Ваш ход! Выберите цель и нажмите АТАКОВАТЬ</div>' : '<div>⏳ Ожидание хода противника...</div>'}
-                    </div>
-                </div>
-                
-                <div class="battle-actions">
-                    <button class="battle-attack-btn" id="battleAttackBtn" ${!isMyTurn ? 'disabled' : ''} onclick="executeAttack()">
-                        <i class="fa-solid fa-sword"></i> АТАКОВАТЬ
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    const oldScreen = document.getElementById('battleScreen');
-    if (oldScreen) oldScreen.remove();
-    document.body.insertAdjacentHTML('beforeend', battleHtml);
-    document.body.style.overflow = 'hidden';
-    
-    pvpState.selectedTargetPos = null;
-    
-    if (battleData.turnStartTime) {
-        startTurnTimer(battleData.turnStartTime);
-    }
-}
-
-function selectTargetCreature(position) {
-    pvpState.selectedTargetPos = position;
-    document.querySelectorAll('.battle-opponent-creature').forEach((el, idx) => {
-        if (idx === position) {
-            el.style.border = '2px solid #f59e0b';
-        } else {
-            el.style.border = '1px solid transparent';
-        }
-    });
-    showToast(`Цель выбрана!`, '🎯');
-}
-
-async function executeAttack() {
-    if (pvpState.selectedTargetPos === undefined) {
-        showToast('Сначала выберите цель (нажмите на существо противника)', '⚠️');
-        return;
-    }
-    
-    const attackBtn = document.getElementById('battleAttackBtn');
-    if (attackBtn) {
-        attackBtn.disabled = true;
-        attackBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> АТАКА...';
-    }
-    
-    const res = await apiRequest('POST', '/api/pvp/attack', { 
-        battleId: pvpState.currentBattle.id, 
-        targetCreaturePosition: pvpState.selectedTargetPos 
-    });
-    
-    if (res && res.success) {
-        if (res.action.isGameOver) {
-            endBattle(res.action);
-        } else {
-            updateBattleAfterAttack(res.action);
-            if (!res.action.isMyTurn) {
-                pvpState.selectedTargetPos = undefined;
-                document.querySelectorAll('.battle-opponent-creature').forEach(el => {
-                    el.style.border = '1px solid transparent';
-                });
-            }
-            if (res.action.turnStartTime) {
-                startTurnTimer(res.action.turnStartTime);
-            }
-        }
-    } else {
-        showToast(res?.message || 'Ошибка атаки', '❌');
-        if (attackBtn) {
-            attackBtn.disabled = false;
-            attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> АТАКОВАТЬ';
-        }
-    }
-}
-
-function updateBattleAfterAttack(action) {
-    if (action.yourTeam) {
-        action.yourTeam.forEach(creature => {
-            const creatureEl = document.querySelector(`.battle-my-creature[data-my-pos="${creature.position}"]`);
-            if (creatureEl) {
-                const hpFill = creatureEl.querySelector('.battle-hp-bar div');
-                const hpText = creatureEl.querySelector('div:last-child');
-                if (hpFill) hpFill.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
-                if (hpText) hpText.textContent = `${creature.currentHp}/${creature.maxHp} HP`;
-                if (!creature.isAlive) creatureEl.style.opacity = '0.4';
-            }
-        });
-    }
-    
-    if (action.opponentTeam) {
-        action.opponentTeam.forEach((creature, idx) => {
-            const creatureEl = document.querySelector(`.battle-opponent-creature[data-opp-pos="${idx}"]`);
-            if (creatureEl) {
-                const hpFill = creatureEl.querySelector('.battle-hp-bar div');
-                const hpText = creatureEl.querySelector('div:last-child');
-                if (hpFill) hpFill.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
-                if (hpText) hpText.textContent = `${creature.currentHp}/${creature.maxHp} HP`;
-                if (!creature.isAlive) creatureEl.style.opacity = '0.4';
-            }
-        });
-    }
-    
-    const logContainer = document.getElementById('battleLogMessages');
-    if (logContainer && action.message) {
-        const logEntry = document.createElement('div');
-        logEntry.className = `battle-log-entry ${action.isCrit ? 'crit' : ''}`;
-        logEntry.innerHTML = action.message;
-        logContainer.appendChild(logEntry);
-        logContainer.scrollTop = logContainer.scrollHeight;
-    }
-    
-    const turnIndicator = document.getElementById('turnIndicator');
-    const attackBtn = document.getElementById('battleAttackBtn');
-    
-    if (action.isMyTurn !== undefined) {
-        if (turnIndicator) {
-            turnIndicator.textContent = action.isMyTurn ? '🔥 ВАШ ХОД!' : '⏳ ХОД ПРОТИВНИКА...';
-            turnIndicator.style.color = action.isMyTurn ? '#22c55e' : '#f59e0b';
-        }
-        if (attackBtn) {
-            attackBtn.disabled = !action.isMyTurn;
-            attackBtn.style.opacity = action.isMyTurn ? '1' : '0.5';
-            if (action.isMyTurn) attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> АТАКОВАТЬ';
-        }
-    }
-}
-
-function startTurnTimer(turnStartTime) {
-    if (pvpState.turnTimer) clearInterval(pvpState.turnTimer);
-    
-    pvpState.turnTimer = setInterval(() => {
-        const elapsed = (Date.now() - new Date(turnStartTime).getTime()) / 1000;
-        const remaining = Math.max(0, 30 - Math.floor(elapsed));
-        const timerEl = document.getElementById('battleTimer');
-        if (timerEl) {
-            timerEl.textContent = `⏱️ ${remaining}с`;
-            if (remaining <= 5) timerEl.style.color = '#ef4444';
-            else timerEl.style.color = '#f59e0b';
-        }
-        if (remaining <= 0) {
-            clearInterval(pvpState.turnTimer);
-        }
-    }, 1000);
-}
-
-function startBattlePolling(battleId) {
-    if (pvpState.battleInterval) clearInterval(pvpState.battleInterval);
-    
-    pvpState.battleInterval = setInterval(async () => {
-        const res = await apiRequest('GET', `/api/pvp/battle-status?battleId=${battleId}`);
-        if (res && res.success && res.battle) {
-            pvpState.currentBattle = res.battle;
-            
-            if (res.battle.status === 'finished') {
-                clearInterval(pvpState.battleInterval);
-                clearInterval(pvpState.turnTimer);
-                endBattle(res.battle);
-            } else {
-                if (res.battle.isMyTurn !== undefined) {
-                    const turnIndicator = document.getElementById('turnIndicator');
-                    const attackBtn = document.getElementById('battleAttackBtn');
-                    if (turnIndicator) {
-                        turnIndicator.textContent = res.battle.isMyTurn ? '🔥 ВАШ ХОД!' : '⏳ ХОД ПРОТИВНИКА...';
-                        turnIndicator.style.color = res.battle.isMyTurn ? '#22c55e' : '#f59e0b';
-                    }
-                    if (attackBtn) {
-                        attackBtn.disabled = !res.battle.isMyTurn;
-                        if (res.battle.isMyTurn) attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> АТАКОВАТЬ';
-                    }
-                    if (res.battle.turnStartTime) {
-                        startTurnTimer(res.battle.turnStartTime);
-                    }
-                }
-                if (res.battle.myTeam) {
-                    res.battle.myTeam.forEach(creature => {
-                        const creatureEl = document.querySelector(`.battle-my-creature[data-my-pos="${creature.position}"]`);
-                        if (creatureEl) {
-                            const hpFill = creatureEl.querySelector('.battle-hp-bar div');
-                            const hpText = creatureEl.querySelector('div:last-child');
-                            if (hpFill) hpFill.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
-                            if (hpText) hpText.textContent = `${creature.currentHp}/${creature.maxHp} HP`;
-                        }
-                    });
-                }
-                if (res.battle.opponentTeam) {
-                    res.battle.opponentTeam.forEach((creature, idx) => {
-                        const creatureEl = document.querySelector(`.battle-opponent-creature[data-opp-pos="${idx}"]`);
-                        if (creatureEl) {
-                            const hpFill = creatureEl.querySelector('.battle-hp-bar div');
-                            const hpText = creatureEl.querySelector('div:last-child');
-                            if (hpFill) hpFill.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
-                            if (hpText) hpText.textContent = `${creature.currentHp}/${creature.maxHp} HP`;
-                        }
-                    });
-                }
-                if (res.battle.recentActions && res.battle.recentActions.length > 0) {
-                    const logContainer = document.getElementById('battleLogMessages');
-                    if (logContainer && res.battle.recentActions.length > (logContainer.dataset.lastCount || 0)) {
-                        const newActions = res.battle.recentActions.slice(logContainer.dataset.lastCount || 0);
-                        newActions.forEach(action => {
-                            const logEntry = document.createElement('div');
-                            logEntry.className = 'battle-log-entry';
-                            logEntry.innerHTML = action;
-                            logContainer.appendChild(logEntry);
-                        });
-                        logContainer.dataset.lastCount = res.battle.recentActions.length;
-                        logContainer.scrollTop = logContainer.scrollHeight;
-                    }
-                }
-            }
-        }
-    }, 2000);
-}
-
-function endBattle(battleResult) {
-    const isWinner = battleResult.winnerId === state.user._id;
-    const winnerGets = battleResult.winnerGets || 0;
-    
-    const resultHtml = `
-        <div class="battle-result-overlay" id="battleResultOverlay">
-            <div class="battle-result-card ${isWinner ? 'win' : 'lose'}">
-                <div class="battle-result-icon">${isWinner ? '🏆' : '💀'}</div>
-                <div class="battle-result-title">${isWinner ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}</div>
-                <div class="battle-result-subtitle">
-                    ${isWinner ? `Вы выиграли ${winnerGets} MMO!` : 'В следующий раз повезёт больше!'}
-                </div>
-                <button class="battle-result-btn" onclick="closeBattleResult()">ПРОДОЛЖИТЬ</button>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', resultHtml);
-    
-    if (pvpState.battleInterval) clearInterval(pvpState.battleInterval);
-    if (pvpState.turnTimer) clearInterval(pvpState.turnTimer);
-    
-    refreshUserProfile();
-    
-    pvpState.currentBattle = null;
-    startMatchCheckLoop();
-}
-
-function closeBattleResult() {
-    const overlay = document.getElementById('battleResultOverlay');
-    if (overlay) overlay.remove();
-    
-    const battleScreen = document.getElementById('battleScreen');
-    if (battleScreen) battleScreen.remove();
-    
-    document.body.style.overflow = '';
-    pvpState.currentBattle = null;
-    
-    renderPvP();
-}
-
 // ============================================================
-// НАВИГАЦИЯ
+// NAVIGATION
 // ============================================================
 function switchTab(tab) {
-    if (tab !== 'pvp') {
-        if (pvpState.matchCheckInterval) clearInterval(pvpState.matchCheckInterval);
-        if (pvpState.battleInterval) clearInterval(pvpState.battleInterval);
-        if (pvpState.queueTimer) clearInterval(pvpState.queueTimer);
-        if (pvpState.turnTimer) clearInterval(pvpState.turnTimer);
-        pvpState.matchCheckInterval = null;
-        pvpState.battleInterval = null;
-        pvpState.queueTimer = null;
-        pvpState.turnTimer = null;
-    }
-    
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.getElementById(`tab-${tab}`).classList.add('active');
@@ -3175,30 +3134,38 @@ function switchTab(tab) {
     if (tab === 'wallet') {
         updateHeader();
         checkActiveRequests();
+        loadUserStats();
     }
     if (tab === 'shop') renderMarketplaceBuy();
     if (tab === 'friends') renderFriendsList();
-    if (tab === 'pvp') renderPvP();
+    if (tab === 'arena') {
+        renderArenaTeamInventory();
+        renderArenaFightTab();
+        renderArenaRanking();
+    }
 }
 
+// ============================================================
+// OVERLAY
+// ============================================================
 function closeOverlay(e) {
     if (e && e.target !== document.getElementById('overlay')) return;
     document.getElementById('overlay').classList.remove('show');
 }
 
+// ============================================================
+// TOAST
+// ============================================================
 function showToast(msg, icon = '') {
-    let t = document.getElementById('toast');
-    if (!t) {
-        t = document.createElement('div');
-        t.id = 'toast';
-        t.className = 'toast';
-        document.body.appendChild(t);
-    }
+    const t = document.getElementById('toast');
     t.textContent = (icon ? icon + ' ' : '') + msg;
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 2500);
 }
 
+// ============================================================
+// EFFECTS
+// ============================================================
 function spawnStars(rarity) {
     const count = rarity === 'legendary' || rarity === 'mythic' ? 8 : rarity === 'epic' ? 5 : 3;
     const icons = ['✨', '⭐', '🌟', '💫', '✦'];
@@ -3227,8 +3194,16 @@ function spawnFloatingMMO(amount) {
 }
 
 // ============================================================
-// ЭКСПОРТ ФУНКЦИЙ
+// INIT
 // ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+    initTelegramApp();
+});
+
+// ============================================================
+// ЭКСПОРТ ФУНКЦИЙ ДЛЯ ГЛОБАЛЬНОГО ДОСТУПА
+// ============================================================
+
 window.updateHeader = updateHeader;
 window.renderCards = renderCards;
 window.renderLeaderboard = renderLeaderboard;
@@ -3272,22 +3247,14 @@ window.showWithdrawModal = showWithdrawModal;
 window.createWithdrawRequest = createWithdrawRequest;
 window.copyToClipboard = copyToClipboard;
 window.checkActiveRequests = checkActiveRequests;
-
-// PVP функции
-window.openTeamSelection = openTeamSelection;
-window.addToTeamSlot = addToTeamSlot;
-window.removeFromTeamSlot = removeFromTeamSlot;
-window.saveTeamAndJoinQueue = saveTeamAndJoinQueue;
-window.leaveQueue = leaveQueue;
-window.acceptMatch = acceptMatch;
-window.declineMatch = declineMatch;
-window.selectTargetCreature = selectTargetCreature;
-window.executeAttack = executeAttack;
-window.closeBattleResult = closeBattleResult;
-
-// ============================================================
-// ЗАПУСК
-// ============================================================
-document.addEventListener('DOMContentLoaded', () => {
-    initTelegramApp();
-});
+window.loadUserStats = loadUserStats;
+window.refreshUserProfile = refreshUserProfile;
+// ARENA exports
+window.switchArenaTab = switchArenaTab;
+window.toggleArenaCreature = toggleArenaCreature;
+window.saveArenaTeam = saveArenaTeam;
+window.findMatch = findMatch;
+window.acceptBattle = acceptBattle;
+window.rejectBattle = rejectBattle;
+window.makeAttack = makeAttack;
+window.surrenderBattle = surrenderBattle;
