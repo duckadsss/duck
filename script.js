@@ -563,7 +563,6 @@ async function initTelegramApp() {
     }, 1000);
     
     updateAdsStatus();
-window.lastAdsUpdate = Date.now();  // ← ДОБАВИТЬ ЭТУ СТРОКУ
     
     document.querySelectorAll('img').forEach(img => {
         img.addEventListener('contextmenu', (e) => {
@@ -1120,10 +1119,6 @@ async function upgradeInventory() {
 // ADS (ОБНОВЛЕННАЯ ВЕРСИЯ С 20 MMO)
 // ============================================================
 async function updateAdsStatus() {
-    // Защита от слишком частых запросов
-    if (window._adsUpdating) return;
-    window._adsUpdating = true;
-    
     try {
         const res = await apiRequest('GET', '/api/game/ads-status');
         if (res && res.success) {
@@ -1164,13 +1159,11 @@ async function updateAdsStatus() {
                 adsBtn.style.opacity = canWatch ? '1' : '0.5';
                 adsBtn.disabled = !canWatch;
             }
-            
-            window.lastAdsUpdate = Date.now();
+        } else {
+            console.error('Ads status error:', res);
         }
     } catch (e) {
         console.error('updateAdsStatus error:', e);
-    } finally {
-        window._adsUpdating = false;
     }
 }
 
@@ -1253,39 +1246,23 @@ async function watchAd() {
 function updateAdsTimer() {
     if (!state.user) return;
     
-    // Обновляем отображение таймера без запроса к серверу
-    if (state.adsCooldown > 0) {
-        state.adsCooldown--;
-        const timerEl = document.getElementById('adsTimer');
-        if (timerEl) timerEl.textContent = `${state.adsCooldown}s`;
-        
-        const btn = document.getElementById('adsBtn');
-        if (btn && state.adsCooldown > 0) {
-            btn.style.opacity = '0.5';
-            btn.disabled = true;
-        }
+    if (state.adsCooldown <= 0) {
+        updateAdsStatus();
+        return;
     }
     
-    // Обновляем статус ТОЛЬКО когда кулдаун закончился или раз в минуту
+    state.adsCooldown--;
+    const timerEl = document.getElementById('adsTimer');
+    if (timerEl) timerEl.textContent = `${state.adsCooldown}s`;
+    
+    const btn = document.getElementById('adsBtn');
+    if (btn && state.adsCooldown > 0) {
+        btn.style.opacity = '0.5';
+        btn.disabled = true;
+    }
+    
     if (state.adsCooldown === 0) {
-        // Не делаем запрос каждую секунду, а только когда нужно
-        if (!window.lastAdsUpdate || Date.now() - window.lastAdsUpdate > 60000) {
-            updateAdsStatus();
-            window.lastAdsUpdate = Date.now();
-        }
-        
-        // Обновляем UI для готовности
-        const timerEl = document.getElementById('adsTimer');
-        if (timerEl) {
-            timerEl.textContent = 'Ready';
-            timerEl.style.color = '#22c55e';
-        }
-        
-        const btn = document.getElementById('adsBtn');
-        if (btn && state.adsAvailable > 0) {
-            btn.style.opacity = '1';
-            btn.disabled = false;
-        }
+        updateAdsStatus();
     }
 }
 
@@ -2652,10 +2629,13 @@ async function renderArenaTeamInventory() {
     
     const inventory = state.inventory;
     
-    const teamRes = await apiRequest('GET', '/api/arena/team');
-    if (teamRes?.success && teamRes.teamIds) {
-        arenaState.selectedTeam = teamRes.teamIds;
-        renderSelectedTeam();
+    // Загружаем сохраненную команду только один раз, если selectedTeam пуст
+    if (arenaState.selectedTeam.length === 0) {
+        const teamRes = await apiRequest('GET', '/api/arena/team');
+        if (teamRes?.success && teamRes.teamIds) {
+            arenaState.selectedTeam = teamRes.teamIds;
+            renderSelectedTeam();
+        }
     }
     
     container.innerHTML = inventory.map(item => {
@@ -2688,10 +2668,9 @@ function toggleArenaCreature(creatureId) {
         return;
     }
     
-    renderArenaTeamInventory();
-    renderSelectedTeam();
+    renderArenaTeamInventory(); // Перерисовываем только инвентарь
+    renderSelectedTeam();       // Обновляем отображение выбранной команды
 }
-
 async function renderSelectedTeam() {
     const container = document.getElementById('arenaSelectedTeam');
     if (!container) return;
