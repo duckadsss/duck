@@ -2324,7 +2324,8 @@ async function renderSpecialQuests() {
                     break;
                 case 'custom_link':
                     actionHtml = `<button class="special-quest-btn" onclick="openCustomLinkAndComplete('${quest.id}', '${quest.link}')">
-                        <i class="fa-solid fa-globe"></i> ВЫПОЛНИТЬ                    </button>`;
+                        <i class="fa-solid fa-globe"></i> ВЫПОЛНИТЬ
+                    </button>`;
                     break;
                 case 'referral_count':
                     const currentFriends = state.user?.referralCount || 0;
@@ -2653,7 +2654,6 @@ function initArenaWebhooks() {
     
     const tg = window.Telegram.WebApp;
     
-    // Устанавливаем обработчик для кнопок в попапах
     tg.onEvent('popupClosed', (event) => {
         console.log('📱 Popup closed:', event);
         if (event.button_id === 'accept') {
@@ -2663,7 +2663,6 @@ function initArenaWebhooks() {
         }
     });
     
-    // Настройка главной кнопки
     tg.MainButton.setText('⚔️ НАЙТИ БОЯ');
     tg.MainButton.onClick(() => {
         const activeTab = document.querySelector('.tab-content.active')?.id;
@@ -2677,7 +2676,6 @@ function initArenaWebhooks() {
     tg.MainButton.hide();
 }
 
-// Активация главной кнопки в зависимости от вкладки
 function activateArenaMainButton() {
     if (!window.Telegram?.WebApp) return;
     
@@ -2701,7 +2699,6 @@ function activateArenaMainButton() {
     });
 }
 
-// Показ нативного попапа для подтверждения боя
 function showNativeBattleConfirmation(battleData) {
     if (!window.Telegram?.WebApp) {
         showBattleConfirmationHTML(battleData);
@@ -2723,7 +2720,6 @@ function showNativeBattleConfirmation(battleData) {
     });
 }
 
-// Fallback HTML модалка
 function showBattleConfirmationHTML(battleData) {
     const overlay = document.getElementById('overlay');
     const popup = document.getElementById('popup');
@@ -2756,7 +2752,6 @@ function showBattleConfirmationHTML(battleData) {
     }, 15000);
 }
 
-// Показ результата боя
 function showNativeBattleResult(isWin, prizePool) {
     if (!window.Telegram?.WebApp) {
         const overlay = document.getElementById('overlay');
@@ -2823,7 +2818,6 @@ async function findMatch() {
             if (searchStatus) searchStatus.innerHTML = '⏳ В очереди поиска...';
         }
         
-        // Запускаем SSE
         startArenaSSE();
     } else {
         showToast(res?.message || 'Ошибка поиска', '❌');
@@ -2836,23 +2830,19 @@ async function findMatch() {
     }
 }
 
-// Принятие боя
-async function acceptBattleWebhook() {
+function acceptBattleWebhook() {
     const battleRes = await apiRequest('GET', '/api/arena/battle/status');
     if (battleRes?.battleId) {
-        const res = await apiRequest('POST', '/api/arena/accept-match', { battleId: battleRes.battleId });
-        if (res?.success) {
-            closeOverlay();
-            arenaState.confirmationShown = false;
-        }
+        apiRequest('POST', '/api/arena/accept-match', { battleId: battleRes.battleId });
+        closeOverlay();
+        arenaState.confirmationShown = false;
     }
 }
 
-// Отклонение боя
-async function rejectBattleWebhook() {
+function rejectBattleWebhook() {
     const battleRes = await apiRequest('GET', '/api/arena/battle/status');
     if (battleRes?.battleId) {
-        await apiRequest('POST', '/api/arena/reject-match', { battleId: battleRes.battleId });
+        apiRequest('POST', '/api/arena/reject-match', { battleId: battleRes.battleId });
         arenaState.confirmationShown = false;
         closeOverlay();
         showToast('Бой отклонён', '⚠️');
@@ -2861,12 +2851,7 @@ async function rejectBattleWebhook() {
     }
 }
 
-// Отмена поиска
-async function cancelBattleSearch() {
-    const battleRes = await apiRequest('GET', '/api/arena/battle/status');
-    if (battleRes?.battleId && battleRes.status === 'waiting') {
-        await apiRequest('POST', '/api/arena/surrender', { battleId: battleRes.battleId });
-    }
+function cancelBattleSearch() {
     stopArenaSSE();
     arenaState.isSearching = false;
     arenaState.confirmationShown = false;
@@ -2884,7 +2869,6 @@ async function cancelBattleSearch() {
     showToast('Поиск отменён', '⚠️');
 }
 
-// Функция переключения вкладок арены
 function switchArenaTab(tab) {
     document.querySelectorAll('.arena-subtab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.arena-tab-btn').forEach(b => b.classList.remove('active'));
@@ -2901,8 +2885,6 @@ async function renderArenaTeamInventory() {
     const container = document.getElementById('arenaTeamInventory');
     if (!container) return;
     
-    const inventory = state.inventory;
-    
     if (arenaState.selectedTeam.length === 0) {
         const teamRes = await apiRequest('GET', '/api/arena/team');
         if (teamRes?.success && teamRes.teamIds) {
@@ -2911,7 +2893,7 @@ async function renderArenaTeamInventory() {
         }
     }
     
-    container.innerHTML = inventory.map(item => {
+    container.innerHTML = state.inventory.map(item => {
         const c = getCreature(item.creatureId);
         if (!c) return '';
         const isSelected = arenaState.selectedTeam.includes(c.id);
@@ -3017,7 +2999,6 @@ function startArenaSSE() {
         console.log('✅ SSE подключён');
     });
     
-    // Матч найден — показываем модалку подтверждения
     sse.addEventListener('match_found', (e) => {
         const data = JSON.parse(e.data);
         console.log('⚔️ SSE match_found:', data);
@@ -3034,7 +3015,6 @@ function startArenaSSE() {
         }
     });
     
-    // Один из игроков подтвердил — обновляем статус
     sse.addEventListener('confirmation_update', (e) => {
         const data = JSON.parse(e.data);
         console.log('📋 SSE confirmation_update:', data);
@@ -3045,7 +3025,6 @@ function startArenaSSE() {
         }
     });
     
-    // Оба подтвердили — запускаем бой
     sse.addEventListener('battle_start', (e) => {
         const data = JSON.parse(e.data);
         console.log('🚀 SSE battle_start:', data);
@@ -3064,7 +3043,6 @@ function startArenaSSE() {
         });
     });
     
-    // Соперник сделал ход — обновляем интерфейс
     sse.addEventListener('move_update', (e) => {
         const data = JSON.parse(e.data);
         console.log('🗡️ SSE move_update:', data);
@@ -3093,7 +3071,6 @@ function startArenaSSE() {
         }
     });
     
-    // Бой завершён
     sse.addEventListener('battle_end', (e) => {
         const data = JSON.parse(e.data);
         console.log('🏁 SSE battle_end:', data);
@@ -3124,7 +3101,6 @@ function stopArenaSSE() {
     }
 }
 
-// Обновление боя (для move_update)
 function updateBattleInterface(battleData) {
     if (battleData.status === 'finished') {
         arenaState.battleActive = false;
@@ -3137,7 +3113,6 @@ function updateBattleInterface(battleData) {
     const isMyTurn = (battleData.currentTurn === 'player1' && battleData.isPlayer1) ||
                      (battleData.currentTurn === 'player2' && !battleData.isPlayer1);
     
-    // Обновляем HP своих существ
     battleData.myTeam?.forEach((creature, idx) => {
         const el = document.querySelector(`#arenaMyCreatures .arena-battle-creature:nth-child(${idx + 1})`);
         if (!el) return;
@@ -3148,7 +3123,6 @@ function updateBattleInterface(battleData) {
         if (!creature.isAlive) el.classList.add('dead');
     });
     
-    // Обновляем HP врагов и кнопки атаки
     battleData.opponentTeam?.forEach((creature, idx) => {
         const el = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature:nth-child(${idx + 1})`);
         if (!el) return;
@@ -3172,7 +3146,6 @@ function updateBattleInterface(battleData) {
         }
     });
     
-    // Обновляем лог
     const logEl = document.getElementById('arenaBattleLog');
     if (logEl && battleData.battleLog?.length) {
         const lastLog = battleData.battleLog[battleData.battleLog.length - 1];
@@ -3362,10 +3335,6 @@ async function renderArenaFightTab() {
         statusContainer.style.display = 'none';
         battleContainer.style.display = 'block';
         
-        if (!arenaState.battlePollingInterval) {
-            startArenaSSE();
-        }
-        
         if (battleRes.status === 'waiting') {
             battleContainer.innerHTML = `
                 <div class="arena-battle-container" style="text-align:center;padding:40px;">
@@ -3420,10 +3389,6 @@ async function renderArenaFightTab() {
     } else {
         statusContainer.style.display = 'block';
         battleContainer.style.display = 'none';
-        if (arenaState.battlePollingInterval) {
-            clearInterval(arenaState.battlePollingInterval);
-            arenaState.battlePollingInterval = null;
-        }
         
         const teamRes = await apiRequest('GET', '/api/arena/team');
         if (teamRes?.success && teamRes.team) {
