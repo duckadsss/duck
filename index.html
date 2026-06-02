@@ -404,12 +404,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
-<script>
-    // Глобальная конфигурация (до загрузки всех скриптов)
-    window.API_URL = 'https://serv-production-765e.up.railway.app';
-    // Дублируем для обратной совместимости
-    const API_URL = window.API_URL;
-</script>
+
 <!-- SCRIPTS -->
 <script src="script.js"></script>
 <script src="localization.js"></script>
@@ -434,15 +429,6 @@
 // DEBUG CONSOLE
 // ============================================
 
-function escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/&/g, '&amp;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;')
-              .replace(/"/g, '&quot;')
-              .replace(/'/g, '&#39;');
-}
-
 let debugLogs = [];
 let debugConsoleShown = false;
 
@@ -454,6 +440,7 @@ function addDebugLog(message, type = 'info') {
     
     updateDebugDisplay();
     
+    // Также выводим в браузерную консоль
     if (type === 'error') {
         console.error(`[DEBUG] ${message}`);
     } else if (type === 'warn') {
@@ -493,6 +480,7 @@ function toggleDebugConsole() {
     }
 }
 
+// Перехват ошибок
 window.addEventListener('error', (e) => {
     addDebugLog(`Ошибка: ${e.message} в ${e.filename}:${e.lineno}`, 'error');
 });
@@ -501,6 +489,7 @@ window.addEventListener('unhandledrejection', (e) => {
     addDebugLog(`Promise ошибка: ${e.reason}`, 'error');
 });
 
+// Перехват fetch запросов (для отладки)
 const originalFetch = window.fetch;
 window.fetch = async function(...args) {
     const url = args[0];
@@ -520,20 +509,14 @@ window.fetch = async function(...args) {
     }
 };
 
+// Функция для проверки соединения с сервером
 async function testConnection() {
     addDebugLog('🔍 Проверка соединения с сервером...', 'info');
-    
-    // Получаем API_URL из разных источников
-    const apiUrl = typeof API_URL !== 'undefined' ? API_URL : 
-                   (window.API_URL || 'https://serv-production-765e.up.railway.app');
-    
-    addDebugLog(`📡 API_URL: ${apiUrl}`, 'info');
-    
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000);
         
-        const response = await fetch(`${apiUrl}/health`, { signal: controller.signal });
+        const response = await fetch(`${API_URL}/health`, { signal: controller.signal });
         clearTimeout(timeoutId);
         
         if (response.ok) {
@@ -544,10 +527,11 @@ async function testConnection() {
         }
     } catch (error) {
         if (error.name === 'AbortError') {
-            addDebugLog(`❌ Таймаут соединения! Сервер не отвечает.`, 'error');
+            addDebugLog(`❌ Таймаут соединения с сервером! Сервер не отвечает.`, 'error');
         } else {
-            addDebugLog(`❌ Не могу соединиться: ${error.message}`, 'error');
+            addDebugLog(`❌ Не могу соединиться с сервером: ${error.message}`, 'error');
         }
+        addDebugLog(`   Проверь: сервер запущен и API_URL правильный: ${API_URL}`, 'error');
     }
 }
 
@@ -558,7 +542,9 @@ testBtn.style.cssText = 'position: fixed; bottom: 130px; right: 50px; background
 testBtn.onclick = testConnection;
 document.body.appendChild(testBtn);
 
+// Добавляем информацию о версии
 addDebugLog(`🚀 DNA MMO v5.0 (с ареной)`, 'success');
+addDebugLog(`📡 API_URL: ${API_URL}`, 'info');
 addDebugLog(`🌐 Frontend: ${window.location.href}`, 'info');
 setTimeout(() => {
     testConnection();

@@ -2830,12 +2830,6 @@ async function findMatch() {
     }
 }
 
-// ============================================================
-// ARENA MODULE С SSE (ИСПРАВЛЕННЫЙ)
-// ============================================================
-
-// ... (предыдущий код до этих функций)
-
 async function acceptBattleWebhook() {
     const battleRes = await apiRequest('GET', '/api/arena/battle/status');
     if (battleRes?.battleId) {
