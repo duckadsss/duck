@@ -1,11 +1,11 @@
 // ============================================================
-// DNA MMO - ПОЛНАЯ КЛИЕНТСКАЯ ЧАСТЬ (С АРЕНОЙ И ВЕБХУКАМИ)
+// DNA MMO - ПОЛНАЯ КЛИЕНТСКАЯ ЧАСТЬ (С ПОЧАСОВОЙ РЕКЛАМОЙ)
 // ============================================================
 
 // ============================================================
 // CONFIG
 // ============================================================
-const API_URL = 'https://serv-production-765e.up.railway.app';
+const API_URL = 'https://serv-production-dbf3.up.railway.app';
 
 // ============================================================
 // ЗАПРЕТ КОНТЕКСТНОГО МЕНЮ И ВЫДЕЛЕНИЯ
@@ -66,32 +66,18 @@ let questStatuses = new Map();
 const QUESTS_STORAGE_KEY = 'dna_mmo_quests_status';
 
 // ============================================================
-// ARENA STATE
-// ============================================================
-let arenaState = {
-    selectedTeam: [],
-    currentBattle: null,
-    battlePollingInterval: null,
-    isSearching: false,
-    battleMoveTimeout: null,
-    confirmationShown: false
-};
-
-let battleTimerInterval = null;
-
-// ============================================================
 // GAME DATA
 // ============================================================
 let CREATURES = [];
-let CAPSULE_COSTS = { basic: 500, premium: 2000 };
+let CAPSULE_COSTS = { basic: 1000, premium: 6000 };
 let RARITY_WEIGHTS = {
-    basic: { common: 80, uncommon: 20, rare: 0, epic: 0, legendary: 0 },
-    premium: { common: 60, uncommon: 30, rare: 10, epic: 2, legendary: 1 }
+    basic: { common: 100, uncommon: 0, rare: 0, epic: 0, legendary: 0 },
+    premium: { common: 70, uncommon: 20, rare: 10, epic: 0, legendary: 0 }
 };
-let AD_REWARD = 20;
+let AD_REWARD = 50;
 let AD_COOLDOWN = 60;
 let UPGRADE_BASE_COST = 300;
-let UPGRADE_MULTIPLIER = 1.5;
+let UPGRADE_MULTIPLIER = 1.2;
 let MAX_INVENTORY_SLOTS = 50;
 let SPECIAL_QUESTS = [];
 
@@ -100,15 +86,6 @@ const RARITY_COLORS = {
     epic: '#a855f7', legendary: '#f59e0b', mythic: '#ef4444'
 };
 const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
-
-const RARITY_MULTIPLIERS = {
-    common: 1.0,
-    uncommon: 1.05,
-    rare: 1.10,
-    epic: 1.15,
-    legendary: 1.25,
-    mythic: 1.40
-};
 
 // ============================================================
 // ВИЗУАЛЬНЫЙ ТИКЕР
@@ -264,9 +241,9 @@ async function loadGameConfig() {
     const res = await apiRequest('GET', '/api/game/config');
     if (res && res.success) {
         const cfg = res.config;
-        CAPSULE_COSTS = cfg.capsuleCosts || { basic: 500, premium: 2000 };
+        CAPSULE_COSTS = cfg.capsuleCosts || { basic: 1000, premium: 8000 };
         RARITY_WEIGHTS = cfg.capsuleRarities || RARITY_WEIGHTS;
-        AD_REWARD = cfg.adReward || 20;
+        AD_REWARD = cfg.adReward || 50;
         AD_COOLDOWN = cfg.adCooldown || 60;
         UPGRADE_BASE_COST = cfg.upgradeBaseCost || 300;
         UPGRADE_MULTIPLIER = cfg.upgradeMultiplier || 1.5;
@@ -281,7 +258,6 @@ async function loadCreaturesFromServer() {
     const res = await apiRequest('GET', '/api/game/creatures');
     if (res && res.success && res.creatures) {
         CREATURES = res.creatures;
-        console.log(`✅ Загружено ${CREATURES.length} существ`);
         return true;
     }
     return false;
@@ -355,7 +331,7 @@ function startOptimizedIntervals() {
         if (!document.hidden && isMarketplaceTabActive) {
             renderMarketplaceBuy();
         }
-    }, 10 * 1000);
+    }, 60 * 1000);
     
     intervals.adsTimer = setInterval(updateAdsTimer, 1000);
 }
@@ -386,7 +362,7 @@ function handleVisibilityChange() {
                 if (!document.hidden && isMarketplaceTabActive) {
                     renderMarketplaceBuy();
                 }
-            }, 10 * 1000);
+            }, 60 * 1000);
         }
     }
 }
@@ -508,6 +484,8 @@ async function initTelegramApp() {
     state.user = loginRes.user;
     state.inventory = loginRes.inventory || [];
 
+    // ========== ГЛАВНОЕ ИСПРАВЛЕНИЕ ==========
+    // ИНИЦИАЛИЗИРУЕМ serverBalance и lastServerSync СРАЗУ
     state.serverBalance = state.user.balance;
     state.lastServerSync = Date.now();
     state.incomePerHour = 0;
@@ -517,6 +495,7 @@ async function initTelegramApp() {
     console.log('   - serverBalance:', state.serverBalance);
     console.log('   - Инвентарь:', state.inventory.length, 'предметов');
 
+    // ЗАГРУЖАЕМ ПРОФИЛЬ ДЛЯ ПОЛУЧЕНИЯ incomePerHour
     const profileRes = await apiRequest('GET', '/api/user/profile');
     if (profileRes && profileRes.success) {
         state.user = profileRes.user;
@@ -564,10 +543,6 @@ async function initTelegramApp() {
     }, 1000);
     
     updateAdsStatus();
-    
-    // Инициализация вебхуков арены
-    initArenaWebhooks();
-    activateArenaMainButton();
     
     document.querySelectorAll('img').forEach(img => {
         img.addEventListener('contextmenu', (e) => {
@@ -1121,9 +1096,10 @@ async function upgradeInventory() {
 }
 
 // ============================================================
-// ADS
+// ADS (ОБНОВЛЕННАЯ ВЕРСИЯ С 20 MMO)
 // ============================================================
 async function updateAdsStatus() {
+    // Защита от слишком частых запросов
     if (window._adsUpdating) return;
     window._adsUpdating = true;
     
@@ -1237,6 +1213,7 @@ async function watchAd() {
         spawnFloatingMMO(AD_REWARD);
         
         updateAdsStatus();
+
         
         if (btn && res.adsAvailable > 0 && state.adsCooldown === 0) {
             btn.style.opacity = '1';
@@ -1256,6 +1233,7 @@ async function watchAd() {
 function updateAdsTimer() {
     if (!state.user) return;
     
+    // Обновляем отображение таймера без запроса к серверу
     if (state.adsCooldown > 0) {
         state.adsCooldown--;
         const timerEl = document.getElementById('adsTimer');
@@ -1268,12 +1246,15 @@ function updateAdsTimer() {
         }
     }
     
+    // Обновляем статус ТОЛЬКО когда кулдаун закончился или раз в минуту
     if (state.adsCooldown === 0) {
+        // Не делаем запрос каждую секунду, а только когда нужно
         if (!window.lastAdsUpdate || Date.now() - window.lastAdsUpdate > 60000) {
             updateAdsStatus();
             window.lastAdsUpdate = Date.now();
         }
         
+        // Обновляем UI для готовности
         const timerEl = document.getElementById('adsTimer');
         if (timerEl) {
             timerEl.textContent = 'Ready';
@@ -2376,7 +2357,7 @@ async function updateSpecialQuests() {
 // ДЕПОЗИТЫ И ВЫВОДЫ
 // ============================================================
 
-const MIN_TRANSACTION_AMOUNT = 5000;
+const MIN_TRANSACTION_AMOUNT = 10000;
 const MAX_ACTIVE_REQUESTS = 2;
 
 async function showDepositModal() {
@@ -2431,52 +2412,53 @@ async function getPaymentDetails() {
 }
 
 function showPaymentDetails(wallet, memo, amount) {
-    const amountInTON = (amount / 1000).toFixed(2);
-    
     document.getElementById('popup').innerHTML = `
         <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
         <div class="popup-title">💎 Оплатите депозит</div>
-        <div class="popup-subtitle">Сумма: ${amount.toLocaleString()} MMO</div>
         
-        <div style="background:#0d1120;border:1px solid #1e2d4a;border-radius:16px;padding:16px;margin-bottom:16px">
-            <div style="margin-bottom:12px">
-                <div style="font-size:10px;color:#94a3b8;margin-bottom:4px">💰 Сумма в TON (примерно)</div>
-                <div style="font-family:'Orbitron',monospace;font-size:18px;font-weight:700;color:#f59e0b">≈ ${amountInTON} TON</div>
+        <div style="background:#0d1120;border:1px solid #1e2d4a;border-radius:16px;padding:20px;margin-bottom:16px">
+            <div style="text-align:center;margin-bottom:16px">
+                <div style="font-size:12px;color:#94a3b8;margin-bottom:8px">Сумма к оплате</div>
+                <div style="font-family:'Orbitron',monospace;font-size:32px;font-weight:900;color:#f59e0b">${amount.toLocaleString()} <span style="font-size:16px">MMO</span></div>
             </div>
             
-            <div style="margin-bottom:12px">
-                <div style="font-size:10px;color:#94a3b8;margin-bottom:4px">🏦 Кошелек TON</div>
-                <div style="background:#080b14;padding:10px;border-radius:10px;font-family:monospace;font-size:11px;word-break:break-all;border:1px solid #1e2d4a">
+            <div style="margin-bottom:16px">
+                <div style="font-size:11px;color:#94a3b8;margin-bottom:6px">🏦 Кошелек для оплаты</div>
+                <div style="background:#080b14;padding:12px;border-radius:10px;font-family:monospace;font-size:11px;word-break:break-all;border:1px solid #1e2d4a">
                     ${wallet}
                 </div>
-                <button onclick="copyToClipboard('${wallet}')" style="margin-top:6px;padding:4px 10px;background:#1a2540;border:none;border-radius:6px;color:#94a3b8;font-size:10px;cursor:pointer">
-                    <i class="fa-regular fa-copy"></i> Копировать кошелек
+                <button onclick="copyToClipboard('${wallet}')" style="margin-top:8px;padding:5px 12px;background:#1a2540;border:none;border-radius:6px;color:#94a3b8;font-size:11px;cursor:pointer;width:100%">
+                    <i class="fa-regular fa-copy"></i> Скопировать кошелек
                 </button>
             </div>
             
-            <div style="margin-bottom:12px">
-                <div style="font-size:10px;color:#94a3b8;margin-bottom:4px">📝 Мемо (ОБЯЗАТЕЛЬНО!)</div>
-                <div style="background:#080b14;padding:10px;border-radius:10px;font-family:monospace;font-size:11px;font-weight:700;color:#06b6d4;border:1px solid #1e2d4a">
+            <div style="margin-bottom:16px">
+                <div style="font-size:11px;color:#94a3b8;margin-bottom:6px">📝 Мемо (ОБЯЗАТЕЛЬНО!)</div>
+                <div style="background:#080b14;padding:12px;border-radius:10px;font-family:monospace;font-size:13px;font-weight:700;color:#06b6d4;border:1px solid #1e2d4a;text-align:center">
                     ${memo}
                 </div>
-                <button onclick="copyToClipboard('${memo}')" style="margin-top:6px;padding:4px 10px;background:#1a2540;border:none;border-radius:6px;color:#94a3b8;font-size:10px;cursor:pointer">
-                    <i class="fa-regular fa-copy"></i> Копировать мемо
+                <button onclick="copyToClipboard('${memo}')" style="margin-top:8px;padding:5px 12px;background:#1a2540;border:none;border-radius:6px;color:#94a3b8;font-size:11px;cursor:pointer;width:100%">
+                    <i class="fa-regular fa-copy"></i> Скопировать мемо
                 </button>
             </div>
             
-            <div style="font-size:10px;color:#ef4444;background:rgba(239,68,68,0.1);padding:8px;border-radius:8px;margin-top:8px">
-                ⚠️ <b>Важно!</b> Укажите мемо в комментарии к переводу!\nПосле оплаты нажмите "Я ОПЛАТИЛ".
+            <div style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:10px">
+                <div style="font-size:11px;color:#ef4444;font-weight:600;margin-bottom:6px">⚠️ ВАЖНО!</div>
+                <div style="font-size:10px;color:#94a3b8">
+                    • Отправьте ровно <b>${amount.toLocaleString()} MMO</b><br>
+                    • <b>Обязательно укажите мемо</b> в комментарии к переводу<br>
+                    • Без мемо платеж не будет зачислен<br>
+                    • После перевода нажмите кнопку ниже
+                </div>
             </div>
         </div>
         
-        <div style="display:flex;gap:10px">
-            <button class="popup-btn" style="flex:1;background:linear-gradient(135deg,#22c55e,#16a34a)" onclick="createDepositRequestAfterPayment()">
-                <i class="fa-solid fa-check"></i> Я ОПЛАТИЛ
-            </button>
-            <button class="popup-btn" style="flex:1;background:#1a2540;color:#e2e8f0" onclick="closeOverlay()">
-                <i class="fa-solid fa-times"></i> ОТМЕНИТЬ
-            </button>
-        </div>
+        <button class="popup-btn" style="background:linear-gradient(135deg,#22c55e,#16a34a);margin-bottom:8px" onclick="createDepositRequestAfterPayment()">
+            <i class="fa-solid fa-check-circle"></i> Я ОПЛАТИЛ ${amount.toLocaleString()} MMO
+        </button>
+        <button class="popup-btn" style="background:#1a2540;color:#e2e8f0" onclick="closeOverlay()">
+            <i class="fa-solid fa-times"></i> ОТМЕНА
+        </button>
     `;
     document.getElementById('overlay').classList.add('show');
 }
@@ -2630,807 +2612,6 @@ function copyToClipboard(text) {
 }
 
 // ============================================================
-// ARENA MODULE С ВЕБХУКАМИ
-// ============================================================
-
-// Инициализация вебхуков арены
-function initArenaWebhooks() {
-    if (!window.Telegram?.WebApp) return;
-    
-    const tg = window.Telegram.WebApp;
-    
-    // Устанавливаем обработчик для кнопок в попапах
-    tg.onEvent('popupClosed', (event) => {
-        console.log('📱 Popup closed:', event);
-        if (event.button_id === 'accept') {
-            acceptBattleWebhook();
-        } else if (event.button_id === 'reject') {
-            rejectBattleWebhook();
-        }
-    });
-    
-    // Настройка главной кнопки
-    tg.MainButton.setText('⚔️ НАЙТИ БОЯ');
-    tg.MainButton.onClick(() => {
-        const activeTab = document.querySelector('.tab-content.active')?.id;
-        if (activeTab === 'tab-arena') {
-            findMatch();
-        } else {
-            switchTab('arena');
-            setTimeout(() => findMatch(), 500);
-        }
-    });
-    tg.MainButton.hide();
-}
-
-// Активация главной кнопки в зависимости от вкладки
-function activateArenaMainButton() {
-    if (!window.Telegram?.WebApp) return;
-    
-    const tg = window.Telegram.WebApp;
-    
-    const observer = new MutationObserver(() => {
-        const activeTab = document.querySelector('.tab-content.active')?.id;
-        if (activeTab === 'tab-arena') {
-            tg.MainButton.setText('⚔️ НАЙТИ БОЯ');
-            tg.MainButton.show();
-            tg.MainButton.enable();
-        } else {
-            tg.MainButton.hide();
-        }
-    });
-    
-    observer.observe(document.getElementById('mainContent'), {
-        attributes: true,
-        attributeFilter: ['class'],
-        subtree: true
-    });
-}
-
-// Показ нативного попапа для подтверждения боя
-function showNativeBattleConfirmation(battleData) {
-    if (!window.Telegram?.WebApp) {
-        showBattleConfirmationHTML(battleData);
-        return;
-    }
-    
-    const tg = window.Telegram.WebApp;
-    
-    tg.showPopup({
-        title: '⚔️ БОЙ НАЙДЕН!',
-        message: `Противник: ${battleData.opponent?.name || 'Игрок'} (УР ${battleData.opponent?.level || '?'})\n` +
-                 `🏆 Приз: ${battleData.prizePool} MMO\n` +
-                 `💰 Ваша ставка: ${battleData.entryFee} MMO\n\n` +
-                 `Принять бой?`,
-        buttons: [
-            { id: 'accept', type: 'default', text: '✅ ПРИНЯТЬ', color: '#22c55e' },
-            { id: 'reject', type: 'destructive', text: '❌ ОТКЛОНИТЬ' }
-        ]
-    });
-}
-
-// Fallback HTML модалка
-function showBattleConfirmationHTML(battleData) {
-    const overlay = document.getElementById('overlay');
-    const popup = document.getElementById('popup');
-    
-    popup.innerHTML = `
-        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
-        <div class="popup-title" style="color:var(--accent3)">⚔️ Бой найден!</div>
-        <div class="popup-subtitle">Противник: ${escapeHtml(battleData.opponent?.name || 'Игрок')} (УР ${battleData.opponent?.level || '?'})</div>
-        <div style="background:#0d1120;border-radius:12px;padding:12px;margin:12px 0;">
-            <div style="font-size:10px;color:#94a3b8;">Призовой фонд</div>
-            <div style="font-size:20px;font-weight:700;color:var(--legendary)">${battleData.prizePool} MMO</div>
-        </div>
-        <div class="modal-buttons" style="display:flex;gap:10px;">
-            <button class="popup-btn" style="flex:1;background:linear-gradient(135deg,#22c55e,#16a34a)" onclick="acceptBattleWebhook()">
-                <i class="fa-solid fa-check"></i> Принять
-            </button>
-            <button class="popup-btn" style="flex:1;background:#1a2540;color:#e2e8f0" onclick="rejectBattleWebhook()">
-                <i class="fa-solid fa-times"></i> Отклонить
-            </button>
-        </div>
-        <div style="font-size:10px;color:#94a3b8;text-align:center;margin-top:12px;">⏱ У вас 15 секунд на решение</div>
-    `;
-    
-    overlay.classList.add('show');
-    
-    setTimeout(() => {
-        if (overlay.classList.contains('show') && popup.innerHTML.includes('Бой найден')) {
-            rejectBattleWebhook();
-        }
-    }, 15000);
-}
-
-// Показ уведомления о ходе боя
-function showBattleNotification(message, isCritical = false) {
-    if (!window.Telegram?.WebApp) return;
-    
-    if (isCritical) {
-        window.Telegram.WebApp.showAlert(message);
-    } else {
-        window.Telegram.WebApp.showPopup({
-            title: '⚔️ БОЙ',
-            message: message,
-            buttons: [{ id: 'ok', type: 'ok' }]
-        });
-    }
-}
-
-// Показ результата боя
-function showNativeBattleResult(isWin, prizePool) {
-    if (!window.Telegram?.WebApp) {
-        // Fallback на HTML
-        const overlay = document.getElementById('overlay');
-        const popup = document.getElementById('popup');
-        popup.innerHTML = `
-            <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
-            <div class="popup-icon">${isWin ? '🏆' : '💀'}</div>
-            <div class="popup-title" style="color:${isWin ? 'var(--legendary)' : 'var(--mythic)'}">
-                ${isWin ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}
-            </div>
-            <div class="popup-subtitle">
-                ${isWin ? `Вы выиграли ${prizePool} MMO!` : 'В следующий раз повезёт!'}
-            </div>
-            <button class="popup-btn" onclick="closeOverlay(); renderArenaFightTab();">
-                Закрыть
-            </button>
-        `;
-        overlay.classList.add('show');
-        return;
-    }
-    
-    const tg = window.Telegram.WebApp;
-    const title = isWin ? '🏆 ПОБЕДА!' : '💀 ПОРАЖЕНИЕ';
-    const message = isWin 
-        ? `Вы выиграли ${prizePool} MMO! 🎉\nВаш рейтинг повышается!`
-        : `Вы проиграли бой.\nВ следующий раз повезёт!`;
-    
-    tg.showPopup({
-        title: title,
-        message: message,
-        buttons: [{ id: 'ok', type: 'default', text: 'ОК' }]
-    });
-}
-
-// Принятие боя
-async function acceptBattleWebhook() {
-    const battleRes = await apiRequest('GET', '/api/arena/battle/status');
-    if (battleRes?.battleId) {
-        const res = await apiRequest('POST', '/api/arena/accept-match', { battleId: battleRes.battleId });
-        if (res?.success) {
-            closeOverlay();
-            renderBattleInterface(await apiRequest('GET', '/api/arena/battle/status'));
-        }
-    }
-}
-
-// Отклонение боя
-async function rejectBattleWebhook() {
-    const battleRes = await apiRequest('GET', '/api/arena/battle/status');
-    if (battleRes?.battleId) {
-        await apiRequest('POST', '/api/arena/reject-match', { battleId: battleRes.battleId });
-        arenaState.confirmationShown = false;
-        closeOverlay();
-        
-        if (window.Telegram?.WebApp) {
-            window.Telegram.WebApp.showToast({ text: 'Бой отклонён' });
-        } else {
-            showToast('Бой отклонён', '⚠️');
-        }
-        
-        renderArenaFightTab();
-    }
-}
-
-// Поиск противника
-async function renderArenaFightTab() {
-    console.log('🎮 renderArenaFightTab вызвана');
-    
-    const statusContainer = document.getElementById('arenaFightStatus');
-    const battleContainer = document.getElementById('arenaBattleContainer');
-    
-    const battleRes = await apiRequest('GET', '/api/arena/battle/status');
-    console.log('📡 Статус боя при загрузке вкладки:', battleRes);
-    
-    if (battleRes?.hasBattle && battleRes.status !== 'finished') {
-        statusContainer.style.display = 'none';
-        battleContainer.style.display = 'block';
-        
-        if (!arenaState.battlePollingInterval) {
-            startBattlePolling();
-        }
-        
-        // ✅ Если оба подтвердили — сразу показываем бой
-        if (battleRes.status === 'active' && battleRes.player1Confirmed && battleRes.player2Confirmed) {
-            renderBattleInterface(battleRes);
-        }
-        // Если активный бой но не подтверждён
-        else if (battleRes.status === 'active') {
-            const needConfirmation = (battleRes.isPlayer1 && !battleRes.player1Confirmed) || 
-                                     (!battleRes.isPlayer1 && !battleRes.player2Confirmed);
-            if (needConfirmation && !arenaState.confirmationShown) {
-                showNativeBattleConfirmation(battleRes);
-            }
-            // Показываем интерфейс ожидания
-            battleContainer.innerHTML = `
-                <div class="arena-battle-container" style="text-align:center;padding:40px;">
-                    <div class="popup-icon" style="font-size:48px;">⚔️</div>
-                    <div class="popup-title" style="font-size:18px;margin-top:10px;">Соперник найден!</div>
-                    <div class="popup-subtitle" style="margin-bottom:20px;">Ожидание подтверждения от ${battleRes.isPlayer1 ? 'соперника' : 'вас'}...</div>
-                    <div style="background:#0d1120;border-radius:12px;padding:12px;margin-bottom:20px;">
-                        <div>👤 Противник: ${battleRes.opponent?.name || 'Игрок'}</div>
-                        <div>🏆 Приз: ${battleRes.prizePool} MMO</div>
-                    </div>
-                    ${!battleRes.isPlayer1 && !battleRes.player2Confirmed ? `
-                        <button class="arena-find-btn" onclick="acceptBattleWebhook()" style="background:linear-gradient(135deg,#22c55e,#16a34a);margin-bottom:10px;">
-                            <i class="fa-solid fa-check"></i> Принять бой
-                        </button>
-                        <button class="arena-surrender-btn" onclick="rejectBattleWebhook()">
-                            <i class="fa-solid fa-times"></i> Отклонить
-                        </button>
-                    ` : `
-                        <div style="color:var(--accent2);">⏳ Ожидание подтверждения...</div>
-                    `}
-                </div>
-            `;
-        }
-        else if (battleRes.status === 'waiting') {
-            battleContainer.innerHTML = `
-                <div class="arena-battle-container" style="text-align:center;padding:40px;">
-                    <div class="popup-icon" style="font-size:48px;">⏳</div>
-                    <div class="popup-title" style="font-size:18px;margin-top:10px;">Поиск соперника...</div>
-                    <div class="popup-subtitle" style="margin-bottom:20px;">Ожидание игрока</div>
-                    <div style="background:#0d1120;border-radius:12px;padding:12px;margin-bottom:20px;">
-                        <div>💰 Ставка: ${battleRes.entryFee} MMO</div>
-                        <div>🏆 Приз: ${battleRes.prizePool} MMO</div>
-                    </div>
-                    <button class="arena-surrender-btn" onclick="cancelBattleSearch()" style="background:#ef4444;color:#fff;">
-                        <i class="fa-solid fa-times"></i> Отменить поиск
-                    </button>
-                </div>
-            `;
-        }
-    } else {
-        statusContainer.style.display = 'block';
-        battleContainer.style.display = 'none';
-        if (arenaState.battlePollingInterval) {
-            clearInterval(arenaState.battlePollingInterval);
-            arenaState.battlePollingInterval = null;
-        }
-        // ... остальной код без изменений
-        const teamRes = await apiRequest('GET', '/api/arena/team');
-        if (teamRes?.success && teamRes.team) {
-            const teamContainer = document.getElementById('arenaCurrentTeam');
-            if (teamContainer) {
-                teamContainer.innerHTML = teamRes.team.map(creature => `
-                    <div class="arena-current-creature">
-                        <div class="arena-current-icon">${getIconHtml(creature)}</div>
-                        <div class="arena-current-name">${escapeHtml(creature.name)}</div>
-                    </div>
-                `).join('');
-            }
-        }
-        
-        const level = state.user?.level || 1;
-        let league = 'bronze';
-        let entryFee = 500;
-        let prizePool = 800;
-        
-        if (level >= 50) { league = 'diamond'; entryFee = 5000; prizePool = 8000; }
-        else if (level >= 30) { league = 'platinum'; entryFee = 2000; prizePool = 3200; }
-        else if (level >= 20) { league = 'gold'; entryFee = 1000; prizePool = 1600; }
-        else if (level >= 10) { league = 'silver'; entryFee = 500; prizePool = 800; }
-        
-        const entryFeeEl = document.getElementById('arenaEntryFee');
-        const prizePoolEl = document.getElementById('arenaPrizePool');
-        const leagueEl = document.getElementById('arenaLeague');
-        if (entryFeeEl) entryFeeEl.textContent = entryFee;
-        if (prizePoolEl) prizePoolEl.textContent = prizePool;
-        if (leagueEl) leagueEl.textContent = league === 'diamond' ? 'Алмазная' : 
-                                              league === 'platinum' ? 'Платиновая' : 
-                                              league === 'gold' ? 'Золотая' : 
-                                              league === 'silver' ? 'Серебряная' : 'Бронзовая';
-    }
-}
-
-// Отмена поиска
-async function cancelBattleSearch() {
-    const battleRes = await apiRequest('GET', '/api/arena/battle/status');
-    if (battleRes?.battleId && battleRes.status === 'waiting') {
-        await apiRequest('POST', '/api/arena/surrender', { battleId: battleRes.battleId });
-    }
-    arenaState.isSearching = false;
-    arenaState.confirmationShown = false;
-    const findBtn = document.getElementById('findMatchBtn');
-    if (findBtn) {
-        findBtn.disabled = false;
-        findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой';
-    }
-    const searchStatus = document.getElementById('arenaSearchStatus');
-    if (searchStatus) searchStatus.innerHTML = '';
-    if (window.Telegram?.WebApp) {
-        window.Telegram.WebApp.MainButton.setText('⚔️ НАЙТИ БОЯ');
-        window.Telegram.WebApp.MainButton.enable();
-    }
-    showToast('Поиск отменён', '⚠️');
-}
-
-// Функция переключения вкладок арены
-function switchArenaTab(tab) {
-    document.querySelectorAll('.arena-subtab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.arena-tab-btn').forEach(b => b.classList.remove('active'));
-    
-    document.getElementById(`arena-${tab}-tab`).classList.add('active');
-    document.querySelector(`.arena-tab-btn[data-arena-tab="${tab}"]`).classList.add('active');
-    
-    if (tab === 'team') renderArenaTeamInventory();
-    if (tab === 'fight') renderArenaFightTab();
-    if (tab === 'ranking') renderArenaRanking();
-}
-
-async function renderArenaTeamInventory() {
-    const container = document.getElementById('arenaTeamInventory');
-    if (!container) return;
-    
-    const inventory = state.inventory;
-    
-    if (arenaState.selectedTeam.length === 0) {
-        const teamRes = await apiRequest('GET', '/api/arena/team');
-        if (teamRes?.success && teamRes.teamIds) {
-            arenaState.selectedTeam = teamRes.teamIds;
-            renderSelectedTeam();
-        }
-    }
-    
-    container.innerHTML = inventory.map(item => {
-        const c = getCreature(item.creatureId);
-        if (!c) return '';
-        const isSelected = arenaState.selectedTeam.includes(c.id);
-        const isDisabled = !isSelected && arenaState.selectedTeam.length >= 3;
-        
-        return `<div class="arena-team-card ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}" 
-                    onclick="toggleArenaCreature('${c.id}')">
-                    <div class="arena-team-icon">${getIconHtml(c)}</div>
-                    <div class="arena-team-name">${escapeHtml(c.name)}</div>
-                    <div class="arena-team-stats">
-                        <span>💰 ${c.incomeBase}/hr</span>
-                    </div>
-                    ${isSelected ? '<div class="arena-team-check"><i class="fa-solid fa-check"></i></div>' : ''}
-                </div>`;
-    }).join('');
-}
-
-function toggleArenaCreature(creatureId) {
-    const index = arenaState.selectedTeam.indexOf(creatureId);
-    
-    if (index !== -1) {
-        arenaState.selectedTeam.splice(index, 1);
-    } else if (arenaState.selectedTeam.length < 3) {
-        arenaState.selectedTeam.push(creatureId);
-    } else {
-        showToast('Нельзя выбрать больше 3 питомцев', '⚠️');
-        return;
-    }
-    
-    renderArenaTeamInventory();
-    renderSelectedTeam();
-}
-
-async function renderSelectedTeam() {
-    const container = document.getElementById('arenaSelectedTeam');
-    if (!container) return;
-    
-    if (arenaState.selectedTeam.length === 0) {
-        container.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;">Выберите 3 питомца для команды</div>';
-        return;
-    }
-    
-    const teamData = [];
-    for (const creatureId of arenaState.selectedTeam) {
-        const creature = getCreature(creatureId);
-        if (creature) {
-            const multiplier = RARITY_MULTIPLIERS[creature.rarity] || 1;
-            const level = state.user?.level || 1;
-            const hp = Math.ceil((50 + (creature.incomeBase * 2) + (level * 5)) * multiplier);
-            const atk = Math.ceil((10 + (creature.incomeBase / 2) + (level * 2)) * multiplier);
-            const def = Math.ceil((5 + (creature.incomeBase / 3) + (level * 1)) * multiplier);
-            const crit = Math.round(0.10 * 100);
-            teamData.push({ creature, hp, atk, def, crit });
-        }
-    }
-    
-    container.innerHTML = `<div class="arena-team-cards">
-        ${teamData.map(data => `
-            <div class="arena-selected-card">
-                <div class="arena-selected-icon">${getIconHtml(data.creature)}</div>
-                <div class="arena-selected-name">${escapeHtml(data.creature.name)}</div>
-                <div class="arena-selected-stats">
-                    <span>❤️ ${data.hp}</span>
-                    <span>⚔️ ${data.atk}</span>
-                    <span>🛡️ ${data.def}</span>
-                    <span>✨ ${data.crit}%</span>
-                </div>
-            </div>
-        `).join('')}
-    </div>`;
-}
-
-async function saveArenaTeam() {
-    if (arenaState.selectedTeam.length !== 3) {
-        showToast('Нужно выбрать ровно 3 питомца', '⚠️');
-        return;
-    }
-    
-    const res = await apiRequest('POST', '/api/arena/team', { team: arenaState.selectedTeam });
-    
-    if (res?.success) {
-        showToast('Команда сохранена!', '✅');
-    } else {
-        showToast(res?.message || 'Ошибка сохранения', '❌');
-    }
-}
-
-async function renderArenaFightTab() {
-    console.log('🎮 renderArenaFightTab вызвана');
-    
-    const statusContainer = document.getElementById('arenaFightStatus');
-    const battleContainer = document.getElementById('arenaBattleContainer');
-    
-    const battleRes = await apiRequest('GET', '/api/arena/battle/status');
-    console.log('📡 Статус боя при загрузке вкладки:', battleRes);
-    
-    if (battleRes?.hasBattle && battleRes.status !== 'finished') {
-        statusContainer.style.display = 'none';
-        battleContainer.style.display = 'block';
-        
-        if (!arenaState.battlePollingInterval) {
-            startBattlePolling();
-        }
-        
-        if (battleRes.status === 'waiting') {
-            battleContainer.innerHTML = `
-                <div class="arena-battle-container" style="text-align:center;padding:40px;">
-                    <div class="popup-icon" style="font-size:48px;">⏳</div>
-                    <div class="popup-title" style="font-size:18px;margin-top:10px;">Поиск соперника...</div>
-                    <div class="popup-subtitle" style="margin-bottom:20px;">Ожидание игрока</div>
-                    <div style="background:#0d1120;border-radius:12px;padding:12px;margin-bottom:20px;">
-                        <div>💰 Ставка: ${battleRes.entryFee} MMO</div>
-                        <div>🏆 Приз: ${battleRes.prizePool} MMO</div>
-                    </div>
-                    <button class="arena-surrender-btn" onclick="cancelBattleSearch()" style="background:#ef4444;color:#fff;">
-                        <i class="fa-solid fa-times"></i> Отменить поиск
-                    </button>
-                </div>
-            `;
-        } else if (battleRes.status === 'active') {
-            const needConfirmation = (battleRes.isPlayer1 && !battleRes.player1Confirmed) || 
-                                     (!battleRes.isPlayer1 && !battleRes.player2Confirmed);
-            
-            if (needConfirmation && !arenaState.confirmationShown) {
-                showNativeBattleConfirmation(battleRes);
-            } else if (battleRes.player1Confirmed && battleRes.player2Confirmed) {
-                renderBattleInterface(battleRes);
-            } else {
-                battleContainer.innerHTML = `
-                    <div class="arena-battle-container" style="text-align:center;padding:40px;">
-                        <div class="popup-icon" style="font-size:48px;">⚔️</div>
-                        <div class="popup-title" style="font-size:18px;margin-top:10px;">Соперник найден!</div>
-                        <div class="popup-subtitle" style="margin-bottom:20px;">Ожидание подтверждения от ${battleRes.isPlayer1 ? 'соперника' : 'вас'}...</div>
-                        <div style="background:#0d1120;border-radius:12px;padding:12px;margin-bottom:20px;">
-                            <div>👤 Противник: ${battleRes.opponent?.name || 'Игрок'}</div>
-                            <div>🏆 Приз: ${battleRes.prizePool} MMO</div>
-                        </div>
-                        ${!battleRes.isPlayer1 && !battleRes.player2Confirmed ? `
-                            <button class="arena-find-btn" onclick="acceptBattleWebhook()" style="background:linear-gradient(135deg,#22c55e,#16a34a);margin-bottom:10px;">
-                                <i class="fa-solid fa-check"></i> Принять бой
-                            </button>
-                            <button class="arena-surrender-btn" onclick="rejectBattleWebhook()">
-                                <i class="fa-solid fa-times"></i> Отклонить
-                            </button>
-                        ` : `
-                            <div style="color:var(--accent2);">⏳ Ожидание подтверждения...</div>
-                        `}
-                    </div>
-                `;
-            }
-        } else {
-            renderBattleInterface(battleRes);
-        }
-    } else {
-        statusContainer.style.display = 'block';
-        battleContainer.style.display = 'none';
-        if (arenaState.battlePollingInterval) {
-            clearInterval(arenaState.battlePollingInterval);
-            arenaState.battlePollingInterval = null;
-        }
-        
-        const teamRes = await apiRequest('GET', '/api/arena/team');
-        if (teamRes?.success && teamRes.team) {
-            const teamContainer = document.getElementById('arenaCurrentTeam');
-            if (teamContainer) {
-                teamContainer.innerHTML = teamRes.team.map(creature => `
-                    <div class="arena-current-creature">
-                        <div class="arena-current-icon">${getIconHtml(creature)}</div>
-                        <div class="arena-current-name">${escapeHtml(creature.name)}</div>
-                    </div>
-                `).join('');
-            }
-        }
-        
-        const level = state.user?.level || 1;
-        let league = 'bronze';
-        let entryFee = 500;
-        let prizePool = 800;
-        
-        if (level >= 50) { league = 'diamond'; entryFee = 5000; prizePool = 8000; }
-        else if (level >= 30) { league = 'platinum'; entryFee = 2000; prizePool = 3200; }
-        else if (level >= 20) { league = 'gold'; entryFee = 1000; prizePool = 1600; }
-        else if (level >= 10) { league = 'silver'; entryFee = 500; prizePool = 800; }
-        
-        const entryFeeEl = document.getElementById('arenaEntryFee');
-        const prizePoolEl = document.getElementById('arenaPrizePool');
-        const leagueEl = document.getElementById('arenaLeague');
-        if (entryFeeEl) entryFeeEl.textContent = entryFee;
-        if (prizePoolEl) prizePoolEl.textContent = prizePool;
-        if (leagueEl) leagueEl.textContent = league === 'diamond' ? 'Алмазная' : 
-                                              league === 'platinum' ? 'Платиновая' : 
-                                              league === 'gold' ? 'Золотая' : 
-                                              league === 'silver' ? 'Серебряная' : 'Бронзовая';
-    }
-}
-
-function startBattlePolling() {
-    if (arenaState.battlePollingInterval) clearInterval(arenaState.battlePollingInterval);
-    
-    arenaState.battlePollingInterval = setInterval(async () => {
-        const res = await apiRequest('GET', '/api/arena/battle/status');
-        
-        console.log('🔄 Polling статус:', res?.status, 'confirmed:', res?.player1Confirmed, res?.player2Confirmed);
-        
-        if (!res?.hasBattle) {
-            if (arenaState.battlePollingInterval) {
-                clearInterval(arenaState.battlePollingInterval);
-                arenaState.battlePollingInterval = null;
-            }
-            arenaState.isSearching = false;
-            arenaState.confirmationShown = false;
-            const findBtn = document.getElementById('findMatchBtn');
-            if (findBtn) {
-                findBtn.disabled = false;
-                findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой';
-            }
-            if (window.Telegram?.WebApp) {
-                window.Telegram.WebApp.MainButton.setText('⚔️ НАЙТИ БОЯ');
-                window.Telegram.WebApp.MainButton.enable();
-            }
-            renderArenaFightTab();
-            return;
-        }
-        
-        // ✅ ВАЖНО: Если оба подтвердили — показываем бой
-        if (res.status === 'active' && res.player1Confirmed && res.player2Confirmed) {
-            console.log('⚔️ Оба подтвердили! Показываем бой');
-            arenaState.confirmationShown = false;
-            // Закрываем любые открытые попапы
-            const overlay = document.getElementById('overlay');
-            if (overlay.classList.contains('show')) {
-                closeOverlay();
-            }
-            // Показываем интерфейс боя
-            renderBattleInterface(res);
-            return; // Важно: выходим, чтобы не показывать другие интерфейсы
-        }
-        
-        if (res.status === 'waiting') {
-            const searchStatus = document.getElementById('arenaSearchStatus');
-            if (searchStatus) {
-                searchStatus.innerHTML = '⏳ Ожидание соперника...';
-            }
-        }
-        
-        if (res.status === 'active') {
-            const needConfirmation = (res.isPlayer1 && !res.player1Confirmed) || 
-                                     (!res.isPlayer1 && !res.player2Confirmed);
-            
-            if (needConfirmation && !arenaState.confirmationShown) {
-                console.log('🔔 Показываем модалку подтверждения');
-                arenaState.confirmationShown = true;
-                showNativeBattleConfirmation(res);
-            }
-        } else if (res.status === 'finished') {
-            arenaState.confirmationShown = false;
-            const isWin = res.winnerId === state.user?._id;
-            showNativeBattleResult(isWin, res.prizePool);
-            
-            if (arenaState.battlePollingInterval) {
-                clearInterval(arenaState.battlePollingInterval);
-                arenaState.battlePollingInterval = null;
-            }
-            arenaState.isSearching = false;
-            renderArenaFightTab();
-        }
-    }, 1000);
-}
-
-function renderBattleInterface(battleData) {
-    const container = document.getElementById('arenaBattleContainer');
-    if (!container) return;
-    
-    const isMyTurn = (battleData.currentTurn === 'player1' && battleData.isPlayer1) ||
-                     (battleData.currentTurn === 'player2' && !battleData.isPlayer1);
-    
-    const myTeam = battleData.myTeam;
-    const enemyTeam = battleData.opponentTeam;
-    
-    container.innerHTML = `
-        <div class="arena-battle-container">
-            <div class="arena-team-side">
-                <div class="arena-side-title">⚔️ ВАША КОМАНДА</div>
-                <div class="arena-creatures-row" id="arenaMyCreatures">
-                    ${myTeam.map((creature, idx) => `
-                        <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-creature-index="${idx}">
-                            <div class="creature-icon">${getIconHtml(creature)}</div>
-                            <div class="creature-name">${escapeHtml(creature.name)}</div>
-                            <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
-                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-            
-            <div class="arena-battle-vs">VS</div>
-            
-            <div class="arena-team-side">
-                <div class="arena-side-title">🛡️ КОМАНДА СОПЕРНИКА</div>
-                <div class="arena-creatures-row" id="arenaEnemyCreatures">
-                    ${enemyTeam.map((creature, idx) => `
-                        <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-enemy-index="${idx}">
-                            <div class="creature-icon">${getIconHtml(creature)}</div>
-                            <div class="creature-name">${escapeHtml(creature.name)}</div>
-                            <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
-                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
-                            ${isMyTurn && creature.isAlive ? `<button class="arena-attack-btn" onclick="makeAttack(${idx})">⚔️ Атаковать</button>` : ''}
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-            
-            <div class="arena-battle-log" id="arenaBattleLog">
-                ${battleData.battleLog.map(log => `
-                    <div class="arena-log-entry ${log.isCrit ? 'crit' : ''}">
-                        Ход ${log.turn}: ${log.attackerName} → ${log.targetName}: ${log.damage} урона ${log.isCrit ? '💥 КРИТ!' : ''}
-                    </div>
-                `).join('')}
-                ${battleData.battleLog.length === 0 ? '<div class="arena-log-entry">Бой начинается...</div>' : ''}
-            </div>
-            
-            <div class="arena-battle-timer" id="arenaBattleTimer">⏱ 30</div>
-            
-            <button class="arena-surrender-btn" onclick="surrenderBattle()">
-                <i class="fa-solid fa-flag"></i> Сдаться
-            </button>
-        </div>
-    `;
-    
-    startBattleTimer();
-}
-
-async function makeAttack(targetIndex) {
-    const battleRes = await apiRequest('GET', '/api/arena/battle/status');
-    if (!battleRes?.battleId) return;
-    
-    const res = await apiRequest('POST', '/api/arena/move', { 
-        battleId: battleRes.battleId, 
-        targetIndex: targetIndex 
-    });
-    
-    if (res?.success) {
-        if (res.finished) {
-            showNativeBattleResult(true, battleRes.prizePool);
-            renderArenaFightTab();
-        } else {
-            if (res.lastMove) {
-                showDamageAnimation(targetIndex, res.lastMove.damage, res.lastMove.isCrit);
-            }
-            const newStatus = await apiRequest('GET', '/api/arena/battle/status');
-            if (newStatus) renderBattleInterface(newStatus);
-        }
-    } else {
-        showToast(res?.message || 'Ошибка атаки', '❌');
-    }
-}
-
-function showDamageAnimation(targetIndex, damage, isCrit) {
-    const enemyCreature = document.querySelector(`.arena-battle-creature[data-enemy-index="${targetIndex}"]`);
-    if (enemyCreature) {
-        const damageDiv = document.createElement('div');
-        damageDiv.className = `arena-damage-number ${isCrit ? 'crit' : ''}`;
-        damageDiv.textContent = `-${damage}`;
-        enemyCreature.style.position = 'relative';
-        enemyCreature.appendChild(damageDiv);
-        
-        setTimeout(() => damageDiv.remove(), 1000);
-        
-        if (isCrit) {
-            enemyCreature.style.animation = 'damageShake 0.3s ease';
-            setTimeout(() => enemyCreature.style.animation = '', 300);
-        }
-    }
-}
-
-function startBattleTimer() {
-    if (battleTimerInterval) clearInterval(battleTimerInterval);
-    
-    let timeLeft = 30;
-    const timerEl = document.getElementById('arenaBattleTimer');
-    
-    battleTimerInterval = setInterval(async () => {
-        timeLeft--;
-        if (timerEl) {
-            timerEl.textContent = `⏱ ${timeLeft}`;
-            if (timeLeft <= 5) timerEl.classList.add('warning');
-            else timerEl.classList.remove('warning');
-        }
-        
-        if (timeLeft <= 0) {
-            clearInterval(battleTimerInterval);
-            battleTimerInterval = null;
-        }
-    }, 1000);
-}
-
-async function surrenderBattle() {
-    if (!confirm('Вы уверены, что хотите сдаться? Вы потеряете MMO за вход.')) return;
-    
-    const battleRes = await apiRequest('GET', '/api/arena/battle/status');
-    if (battleRes?.battleId) {
-        const res = await apiRequest('POST', '/api/arena/surrender', { battleId: battleRes.battleId });
-        if (res?.success) {
-            showToast('Вы сдались', '⚠️');
-            renderArenaFightTab();
-        }
-    }
-}
-
-async function renderArenaRanking() {
-    const res = await apiRequest('GET', '/api/arena/leaderboard');
-    if (!res?.success) return;
-    
-    const myRatingEl = document.getElementById('arenaMyRating');
-    const myWinsEl = document.getElementById('arenaMyWins');
-    const myLossesEl = document.getElementById('arenaMyLosses');
-    const myStreakEl = document.getElementById('arenaMyStreak');
-    
-    if (myRatingEl) myRatingEl.textContent = res.myStats?.rating || 1000;
-    if (myWinsEl) myWinsEl.textContent = res.myStats?.wins || 0;
-    if (myLossesEl) myLossesEl.textContent = res.myStats?.losses || 0;
-    if (myStreakEl) myStreakEl.textContent = res.myStats?.streak || 0;
-    
-    const container = document.getElementById('arenaLeaderboardList');
-    if (container) {
-        container.innerHTML = res.leaders.map((player, idx) => `
-            <div class="lb-item ${player.rating === res.myStats?.rating ? 'me' : ''}">
-                <div class="lb-rank ${idx === 0 ? 'gold' : idx === 1 ? 'silver' : idx === 2 ? 'bronze' : ''}">
-                    ${idx + 1}
-                </div>
-                <div class="lb-avatar" style="background: linear-gradient(135deg, var(--accent), var(--accent3));">
-                    ${player.name[0]?.toUpperCase() || '?'}
-                </div>
-                <div class="lb-info">
-                    <div class="lb-name">${escapeHtml(player.name)}</div>
-                    <div class="lb-level">УР ${player.level}</div>
-                </div>
-                <div class="lb-score">
-                    <span>${player.rating}</span>
-                    <span style="font-size:9px;">${player.wins}/${player.losses}</span>
-                </div>
-            </div>
-        `).join('');
-    }
-}
-
-// ============================================================
 // NAVIGATION
 // ============================================================
 function switchTab(tab) {
@@ -3454,11 +2635,6 @@ function switchTab(tab) {
     }
     if (tab === 'shop') renderMarketplaceBuy();
     if (tab === 'friends') renderFriendsList();
-    if (tab === 'arena') {
-        renderArenaTeamInventory();
-        renderArenaFightTab();
-        renderArenaRanking();
-    }
 }
 
 // ============================================================
@@ -3565,13 +2741,3 @@ window.copyToClipboard = copyToClipboard;
 window.checkActiveRequests = checkActiveRequests;
 window.loadUserStats = loadUserStats;
 window.refreshUserProfile = refreshUserProfile;
-// ARENA exports
-window.switchArenaTab = switchArenaTab;
-window.toggleArenaCreature = toggleArenaCreature;
-window.saveArenaTeam = saveArenaTeam;
-window.findMatch = findMatch;
-window.acceptBattleWebhook = acceptBattleWebhook;
-window.rejectBattleWebhook = rejectBattleWebhook;
-window.makeAttack = makeAttack;
-window.surrenderBattle = surrenderBattle;
-window.cancelBattleSearch = cancelBattleSearch;
