@@ -74,7 +74,8 @@ let arenaState = {
     battlePollingInterval: null,
     isSearching: false,
     battleMoveTimeout: null,
-    confirmationShown: false
+    confirmationShown: false,
+    battleActive: false  // ✅ флаг: бой идёт, polling остановлен, интерфейс не перерисовываем
 };
 
 let battleTimerInterval = null;
@@ -2159,237 +2160,238 @@ function openChannelAndStartTimer(questId, channelLink) {
         }
     }, 60000);
     
-    const questData = questStatuses.get(questId);
-    questData.timerId = timerId;
-    questStatuses.set(questId, questData);
-    
-    showToast('🔍 Проверка выполнения квеста... Подождите 60 секунд.', '⏳');
-}
-
-function openCustomLinkAndComplete(questId, link) {
-    if (link) {
-        window.open(link, '_blank');
-    }
-    
-    if (state.user?.completedSpecialQuests?.includes(questId)) {
-        showToast('Вы уже получили награду за этот квест', 'ℹ️');
-        return;
-    }
-    
-    const existingStatus = questStatuses.get(questId);
-    if (existingStatus && existingStatus.status === 'pending') {
-        const remainingTime = existingStatus.expiresAt ? Math.ceil((existingStatus.expiresAt - Date.now()) / 1000) : 0;
-        if (remainingTime > 0) {
-            showToast(`Квест уже на проверке! Осталось ${remainingTime} секунд.`, '⏳');
-            return;
-        }
-    }
-    
-    if (existingStatus && existingStatus.status === 'available') {
-        showToast('Квест уже выполнен! Нажмите "ЗАБРАТЬ НАГРАДУ".', '🎁');
-        updateQuestButton(questId, 'available');
-        return;
-    }
-    
-    const expiresAt = Date.now() + 60000;
-    questStatuses.set(questId, { 
-        status: 'pending', 
-        expiresAt: expiresAt,
-        timerId: null 
-    });
-    saveQuestStatusesToStorage();
-    
-    updateQuestButton(questId, 'pending');
-    
-    const timerId = setTimeout(async () => {
-        const questData = questStatuses.get(questId);
-        if (questData && questData.status === 'pending') {
-            questStatuses.set(questId, { status: 'available', expiresAt: null, timerId: null });
-            saveQuestStatusesToStorage();
-            updateQuestButton(questId, 'available');
-            
-            showToast(`✅ Квест "${getQuestTitle(questId)}" выполнен! Нажмите "ЗАБРАТЬ" для получения награды.`, '🎁');
-        }
-    }, 60000);
-    
-    const questData = questStatuses.get(questId);
-    questData.timerId = timerId;
-    questStatuses.set(questId, questData);
-    
-    showToast('🔍 Проверка выполнения квеста... Подождите 60 секунд.', '⏳');
-}
-
-async function claimSpecialQuest(questId) {
-    if (state.isLoading) return;
-    
-    const questStatus = questStatuses.get(questId);
-    if (questStatus && questStatus.status !== 'available') {
-        if (questStatus && questStatus.status === 'pending') {
-            const remainingTime = questStatus.expiresAt ? Math.ceil((questStatus.expiresAt - Date.now()) / 1000) : 0;
-            if (remainingTime > 0) {
-                showToast(`Квест ещё на проверке! Осталось ${remainingTime} секунд.`, '⏳');
-            } else {
-                showToast('Квест ещё на проверке! Подождите немного.', '⏳');
-            }
-        } else {
-            showToast('Сначала выполните квест!', '⚠️');
-        }
-        return;
-    }
-    
-    if (state.user?.completedSpecialQuests?.includes(questId)) {
-        showToast('Вы уже получили награду за этот квест', 'ℹ️');
-        return;
-    }
-    
-    state.isLoading = true;
-    const res = await apiRequest('POST', '/api/game/complete-special-quest', { questId });
-    state.isLoading = false;
-    
-    if (!res.success) {
-        showToast(res.message || 'Ошибка', '❌');
-        return;
-    }
-    
-    state.user = res.user;
-    updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
-    updateHeader();
-    await loadUserStats();
-    
-    const existing = questStatuses.get(questId);
-    if (existing && existing.timerId) {
-        clearTimeout(existing.timerId);
-    }
-    questStatuses.delete(questId);
-    saveQuestStatusesToStorage();
-    
-    await renderSpecialQuests();
-    showToast(`+${res.reward} MMO получено!`, '✅');
-    spawnFloatingMMO(res.reward);
-}
-async function claimSpecialQuestSilent(questId) {
-    if (state.isLoading) return;
-    
-    const questStatus = questStatuses.get(questId);
-    if (questStatus && questStatus.status !== 'available') {
-        return;
-    }
-    
-    if (state.user?.completedSpecialQuests?.includes(questId)) {
-        return;
-    }
-    
-    state.isLoading = true;
-    const res = await apiRequest('POST', '/api/game/complete-special-quest', { questId });
-    state.isLoading = false;
-    
-    if (!res.success) {
-        console.log('Ошибка получения награды:', res.message);
-        return;
-    }
-    
-    state.user = res.user;
-    updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
-    updateHeader();
-    await loadUserStats();
-    
-    const existing = questStatuses.get(questId);
-    if (existing && existing.timerId) {
-        clearTimeout(existing.timerId);
-    }
-    questStatuses.delete(questId);
-    saveQuestStatusesToStorage();
-    
-    await renderSpecialQuests();
-    showToast(`+${res.reward} MMO получено за квест!`, '✅');
-}
-
-async function renderSpecialQuests() {
-    const container = document.getElementById('specialQuestsList');
-    if (!container) return;
-
-    if (!SPECIAL_QUESTS.length) {
-        container.innerHTML = `<div class="empty-grid" style="padding:40px;text-align:center">📢 Нет активных спец-квестов</div>`;
-        return;
-    }
-
-    const completedQuests = new Set(state.user?.completedSpecialQuests || []);
-    
-    const filteredQuests = SPECIAL_QUESTS.filter(q => 
-        q.type === 'telegram_channel' || q.type === 'referral_count' || q.type === 'custom_link'
-    );
-    
-    if (filteredQuests.length === 0) {
-        container.innerHTML = `<div class="empty-grid" style="padding:40px;text-align:center">📢 Скоро появятся новые квесты!</div>`;
-        return;
-    }
-    
-    for (const [questId, data] of questStatuses.entries()) {
-        if (data.status === 'pending' && data.expiresAt && data.expiresAt <= Date.now()) {
-            questStatuses.set(questId, { status: 'available', expiresAt: null, timerId: null });
-            saveQuestStatusesToStorage();
-        }
-    }
-    
-    container.innerHTML = filteredQuests.map(quest => {
-        const isCompleted = completedQuests.has(quest.id);
-        const questStatus = questStatuses.get(quest.id);
-        
-        let actionHtml = '';
-        
-        if (isCompleted) {
-            actionHtml = `<button class="special-quest-btn completed" disabled><i class="fa-solid fa-check"></i> ВЫПОЛНЕНО</button>`;
-        } else if (questStatus && questStatus.status === 'pending') {
-            const remainingTime = questStatus.expiresAt ? Math.ceil((questStatus.expiresAt - Date.now()) / 1000) : 60;
-            const remainingText = remainingTime > 0 ? ` (${remainingTime}с)` : '';
-            actionHtml = `<button class="special-quest-btn pending" disabled style="background: #f59e0b; animation: pulse 1.5s infinite;">
-                <i class="fa-solid fa-clock"></i> ⏳ НА ПРОВЕРКЕ${remainingText}
-            </button>`;
-        } else if (questStatus && questStatus.status === 'available') {
-            actionHtml = `<button class="special-quest-btn claim" onclick="claimSpecialQuest('${quest.id}')" style="background: linear-gradient(135deg, #eab308, #ca8a04); animation: pulse 1.5s infinite;">
-                <i class="fa-solid fa-gift"></i> 🎁 ЗАБРАТЬ НАГРАДУ
-            </button>`;
-        } else {
-            switch (quest.type) {
-                case 'telegram_channel':
-                    actionHtml = `<button class="special-quest-btn" onclick="openChannelAndStartTimer('${quest.id}', '${quest.link}')">
-                        <i class="fa-brands fa-telegram"></i> ВЫПОЛНИТЬ
-                    </button>`;
-                    break;
-                case 'custom_link':
-                    actionHtml = `<button class="special-quest-btn" onclick="openCustomLinkAndComplete('${quest.id}', '${quest.link}')">
-                        <i class="fa-solid fa-globe"></i> ВЫПОЛНИТЬ
-                    </button>`;
-                    break;
-                case 'referral_count':
-                    const currentFriends = state.user?.referralCount || 0;
-                    const required = quest.required_count || 1;
-                    if (currentFriends >= required) {
-                        actionHtml = `<button class="special-quest-btn claim" onclick="claimSpecialQuest('${quest.id}')">
-                            <i class="fa-solid fa-gift"></i> ЗАБРАТЬ (${currentFriends}/${required})
-                        </button>`;
-                    } else {
-                        actionHtml = `<button class="special-quest-btn locked" disabled>
-                            <i class="fa-solid fa-lock"></i> НУЖНО ${required} ДРУЗЕЙ 5+ (${currentFriends})
-                        </button>`;
-                    }
-                    break;
-            }
-        }
-        
-        return `<div class="special-quest-card" data-quest-id="${quest.id}">
-            <div class="special-quest-header">
-                <div class="special-quest-icon">${quest.icon || '🎯'}</div>
-                <div class="special-quest-info">
-                    <div class="special-quest-title">${escapeHtml(quest.title)}</div>
-                    <div class="special-quest-desc">${escapeHtml(quest.description || '')}</div>
-                </div>
-                <div class="special-quest-reward">+${quest.reward} MMO</div>
-            </div>
-            <div class="special-quest-footer">${actionHtml}</div>
-        </div>`;
-    }).join('');
-    
+    const questData = questStatuses.get(questId);
+    questData.timerId = timerId;
+    questStatuses.set(questId, questData);
+    
+    showToast('🔍 Проверка выполнения квеста... Подождите 60 секунд.', '⏳');
+}
+
+function openCustomLinkAndComplete(questId, link) {
+    if (link) {
+        window.open(link, '_blank');
+    }
+    
+    if (state.user?.completedSpecialQuests?.includes(questId)) {
+        showToast('Вы уже получили награду за этот квест', 'ℹ️');
+        return;
+    }
+    
+    const existingStatus = questStatuses.get(questId);
+    if (existingStatus && existingStatus.status === 'pending') {
+        const remainingTime = existingStatus.expiresAt ? Math.ceil((existingStatus.expiresAt - Date.now()) / 1000) : 0;
+        if (remainingTime > 0) {
+            showToast(`Квест уже на проверке! Осталось ${remainingTime} секунд.`, '⏳');
+            return;
+        }
+    }
+    
+    if (existingStatus && existingStatus.status === 'available') {
+        showToast('Квест уже выполнен! Нажмите "ЗАБРАТЬ НАГРАДУ".', '🎁');
+        updateQuestButton(questId, 'available');
+        return;
+    }
+    
+    const expiresAt = Date.now() + 60000;
+    questStatuses.set(questId, { 
+        status: 'pending', 
+        expiresAt: expiresAt,
+        timerId: null 
+    });
+    saveQuestStatusesToStorage();
+    
+    updateQuestButton(questId, 'pending');
+    
+    const timerId = setTimeout(async () => {
+        const questData = questStatuses.get(questId);
+        if (questData && questData.status === 'pending') {
+            questStatuses.set(questId, { status: 'available', expiresAt: null, timerId: null });
+            saveQuestStatusesToStorage();
+            updateQuestButton(questId, 'available');
+            
+            showToast(`✅ Квест "${getQuestTitle(questId)}" выполнен! Нажмите "ЗАБРАТЬ" для получения награды.`, '🎁');
+        }
+    }, 60000);
+    
+    const questData = questStatuses.get(questId);
+    questData.timerId = timerId;
+    questStatuses.set(questId, questData);
+    
+    showToast('🔍 Проверка выполнения квеста... Подождите 60 секунд.', '⏳');
+}
+
+async function claimSpecialQuest(questId) {
+    if (state.isLoading) return;
+    
+    const questStatus = questStatuses.get(questId);
+    if (questStatus && questStatus.status !== 'available') {
+        if (questStatus && questStatus.status === 'pending') {
+            const remainingTime = questStatus.expiresAt ? Math.ceil((questStatus.expiresAt - Date.now()) / 1000) : 0;
+            if (remainingTime > 0) {
+                showToast(`Квест ещё на проверке! Осталось ${remainingTime} секунд.`, '⏳');
+            } else {
+                showToast('Квест ещё на проверке! Подождите немного.', '⏳');
+            }
+        } else {
+            showToast('Сначала выполните квест!', '⚠️');
+        }
+        return;
+    }
+    
+    if (state.user?.completedSpecialQuests?.includes(questId)) {
+        showToast('Вы уже получили награду за этот квест', 'ℹ️');
+        return;
+    }
+    
+    state.isLoading = true;
+    const res = await apiRequest('POST', '/api/game/complete-special-quest', { questId });
+    state.isLoading = false;
+    
+    if (!res.success) {
+        showToast(res.message || 'Ошибка', '❌');
+        return;
+    }
+    
+    state.user = res.user;
+    updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
+    updateHeader();
+    await loadUserStats();
+    
+    const existing = questStatuses.get(questId);
+    if (existing && existing.timerId) {
+        clearTimeout(existing.timerId);
+    }
+    questStatuses.delete(questId);
+    saveQuestStatusesToStorage();
+    
+    await renderSpecialQuests();
+    showToast(`+${res.reward} MMO получено!`, '✅');
+    spawnFloatingMMO(res.reward);
+}
+
+async function claimSpecialQuestSilent(questId) {
+    if (state.isLoading) return;
+    
+    const questStatus = questStatuses.get(questId);
+    if (questStatus && questStatus.status !== 'available') {
+        return;
+    }
+    
+    if (state.user?.completedSpecialQuests?.includes(questId)) {
+        return;
+    }
+    
+    state.isLoading = true;
+    const res = await apiRequest('POST', '/api/game/complete-special-quest', { questId });
+    state.isLoading = false;
+    
+    if (!res.success) {
+        console.log('Ошибка получения награды:', res.message);
+        return;
+    }
+    
+    state.user = res.user;
+    updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
+    updateHeader();
+    await loadUserStats();
+    
+    const existing = questStatuses.get(questId);
+    if (existing && existing.timerId) {
+        clearTimeout(existing.timerId);
+    }
+    questStatuses.delete(questId);
+    saveQuestStatusesToStorage();
+    
+    await renderSpecialQuests();
+    showToast(`+${res.reward} MMO получено за квест!`, '✅');
+}
+
+async function renderSpecialQuests() {
+    const container = document.getElementById('specialQuestsList');
+    if (!container) return;
+
+    if (!SPECIAL_QUESTS.length) {
+        container.innerHTML = `<div class="empty-grid" style="padding:40px;text-align:center">📢 Нет активных спец-квестов</div>`;
+        return;
+    }
+
+    const completedQuests = new Set(state.user?.completedSpecialQuests || []);
+    
+    const filteredQuests = SPECIAL_QUESTS.filter(q => 
+        q.type === 'telegram_channel' || q.type === 'referral_count' || q.type === 'custom_link'
+    );
+    
+    if (filteredQuests.length === 0) {
+        container.innerHTML = `<div class="empty-grid" style="padding:40px;text-align:center">📢 Скоро появятся новые квесты!</div>`;
+        return;
+    }
+    
+    for (const [questId, data] of questStatuses.entries()) {
+        if (data.status === 'pending' && data.expiresAt && data.expiresAt <= Date.now()) {
+            questStatuses.set(questId, { status: 'available', expiresAt: null, timerId: null });
+            saveQuestStatusesToStorage();
+        }
+    }
+    
+    container.innerHTML = filteredQuests.map(quest => {
+        const isCompleted = completedQuests.has(quest.id);
+        const questStatus = questStatuses.get(quest.id);
+        
+        let actionHtml = '';
+        
+        if (isCompleted) {
+            actionHtml = `<button class="special-quest-btn completed" disabled><i class="fa-solid fa-check"></i> ВЫПОЛНЕНО</button>`;
+        } else if (questStatus && questStatus.status === 'pending') {
+            const remainingTime = questStatus.expiresAt ? Math.ceil((questStatus.expiresAt - Date.now()) / 1000) : 60;
+            const remainingText = remainingTime > 0 ? ` (${remainingTime}с)` : '';
+            actionHtml = `<button class="special-quest-btn pending" disabled style="background: #f59e0b; animation: pulse 1.5s infinite;">
+                <i class="fa-solid fa-clock"></i> ⏳ НА ПРОВЕРКЕ${remainingText}
+            </button>`;
+        } else if (questStatus && questStatus.status === 'available') {
+            actionHtml = `<button class="special-quest-btn claim" onclick="claimSpecialQuest('${quest.id}')" style="background: linear-gradient(135deg, #eab308, #ca8a04); animation: pulse 1.5s infinite;">
+                <i class="fa-solid fa-gift"></i> 🎁 ЗАБРАТЬ НАГРАДУ
+            </button>`;
+        } else {
+            switch (quest.type) {
+                case 'telegram_channel':
+                    actionHtml = `<button class="special-quest-btn" onclick="openChannelAndStartTimer('${quest.id}', '${quest.link}')">
+                        <i class="fa-brands fa-telegram"></i> ВЫПОЛНИТЬ
+                    </button>`;
+                    break;
+                case 'custom_link':
+                    actionHtml = `<button class="special-quest-btn" onclick="openCustomLinkAndComplete('${quest.id}', '${quest.link}')">
+                        <i class="fa-solid fa-globe"></i> ВЫПОЛНИТЬ
+                    </button>`;
+                    break;
+                case 'referral_count':
+                    const currentFriends = state.user?.referralCount || 0;
+                    const required = quest.required_count || 1;
+                    if (currentFriends >= required) {
+                        actionHtml = `<button class="special-quest-btn claim" onclick="claimSpecialQuest('${quest.id}')">
+                            <i class="fa-solid fa-gift"></i> ЗАБРАТЬ (${currentFriends}/${required})
+                        </button>`;
+                    } else {
+                        actionHtml = `<button class="special-quest-btn locked" disabled>
+                            <i class="fa-solid fa-lock"></i> НУЖНО ${required} ДРУЗЕЙ 5+ (${currentFriends})
+                        </button>`;
+                    }
+                    break;
+            }
+        }
+        
+        return `<div class="special-quest-card" data-quest-id="${quest.id}">
+            <div class="special-quest-header">
+                <div class="special-quest-icon">${quest.icon || '🎯'}</div>
+                <div class="special-quest-info">
+                    <div class="special-quest-title">${escapeHtml(quest.title)}</div>
+                    <div class="special-quest-desc">${escapeHtml(quest.description || '')}</div>
+                </div>
+                <div class="special-quest-reward">+${quest.reward} MMO</div>
+            </div>
+            <div class="special-quest-footer">${actionHtml}</div>
+        </div>`;
+    }).join('');
+    
     if (window.questTimerInterval) clearInterval(window.questTimerInterval);
     window.questTimerInterval = setInterval(() => {
         const pendingButtons = document.querySelectorAll('.special-quest-btn.pending');
@@ -2529,6 +2531,7 @@ function showPaymentDetails(wallet, memo, amount) {
     `;
     document.getElementById('overlay').classList.add('show');
 }
+
 async function createDepositRequestAfterPayment() {
     if (!currentPaymentMemo) {
         showToast('Ошибка: данные оплаты утеряны. Начните заново.', '❌');
@@ -2668,7 +2671,6 @@ async function checkActiveRequests() {
     }
     return 0;
 }
-
 function copyToClipboard(text) {
     navigator.clipboard.writeText(text).then(() => {
         showToast('Скопировано!', '📋');
@@ -2789,7 +2791,6 @@ function showBattleConfirmationHTML(battleData) {
         }
     }, 15000);
 }
-
 // Показ уведомления о ходе боя
 function showBattleNotification(message, isCritical = false) {
     if (!window.Telegram?.WebApp) return;
@@ -2848,7 +2849,21 @@ async function acceptBattleWebhook() {
         const res = await apiRequest('POST', '/api/arena/accept-match', { battleId: battleRes.battleId });
         if (res?.success) {
             closeOverlay();
-            renderBattleInterface(await apiRequest('GET', '/api/arena/battle/status'));
+            arenaState.confirmationShown = false;
+            // ✅ FIX: Проверяем — если оба подтвердили, показываем бой сразу.
+            // Если только я — polling сам подхватит когда соперник подтвердит.
+            const newStatus = await apiRequest('GET', '/api/arena/battle/status');
+            if (newStatus?.player1Confirmed && newStatus?.player2Confirmed) {
+                arenaState.battleActive = true;
+                if (arenaState.battlePollingInterval) {
+                    clearInterval(arenaState.battlePollingInterval);
+                    arenaState.battlePollingInterval = null;
+                }
+                renderBattleInterface(newStatus);
+            } else {
+                // Жду подтверждения соперника — показываю статус ожидания
+                showToast('Ждём подтверждения соперника...', '⏳');
+            }
         }
     }
 }
@@ -2960,7 +2975,6 @@ async function renderArenaFightTab() {
                 `).join('');
             }
         }
-        
         const level = state.user?.level || 1;
         let league = 'bronze';
         let entryFee = 500;
@@ -3104,6 +3118,7 @@ async function renderSelectedTeam() {
         `).join('')}
     </div>`;
 }
+
 async function saveArenaTeam() {
     if (arenaState.selectedTeam.length !== 3) {
         showToast('Нужно выбрать ровно 3 питомца', '⚠️');
@@ -3244,6 +3259,7 @@ function startBattlePolling() {
             }
             arenaState.isSearching = false;
             arenaState.confirmationShown = false;
+            arenaState.battleActive = false;  // ✅ сброс
             const findBtn = document.getElementById('findMatchBtn');
             if (findBtn) {
                 findBtn.disabled = false;
@@ -3257,20 +3273,24 @@ function startBattlePolling() {
             return;
         }
         
-        // ✅ ВАЖНО: Если оба подтвердили — показываем бой
+        // ✅ Если оба подтвердили — останавливаем polling и показываем бой
         if (res.status === 'active' && res.player1Confirmed && res.player2Confirmed) {
-            console.log('⚔️ Оба подтвердили! Показываем бой');
+            console.log('⚔️ Оба подтвердили! Показываем бой, останавливаем polling');
             arenaState.confirmationShown = false;
+            arenaState.battleActive = true;
+            // ✅ FIX: останавливаем polling — иначе он каждую секунду перерисовывал бой
+            if (arenaState.battlePollingInterval) {
+                clearInterval(arenaState.battlePollingInterval);
+                arenaState.battlePollingInterval = null;
+            }
             // Закрываем любые открытые попапы
             const overlay = document.getElementById('overlay');
-            if (overlay.classList.contains('show')) {
+            if (overlay && overlay.classList.contains('show')) {
                 closeOverlay();
             }
-            // Показываем интерфейс боя
             renderBattleInterface(res);
-            return; // Важно: выходим, чтобы не показывать другие интерфейсы
+            return;
         }
-        
         if (res.status === 'waiting') {
             const searchStatus = document.getElementById('arenaSearchStatus');
             if (searchStatus) {
@@ -3297,6 +3317,7 @@ function startBattlePolling() {
             }
         } else if (res.status === 'finished') {
             arenaState.confirmationShown = false;
+            arenaState.battleActive = false;  // ✅ сброс
             const isWin = res.winnerId === state.user?._id;
             showNativeBattleResult(isWin, res.prizePool);
             
@@ -3310,9 +3331,76 @@ function startBattlePolling() {
     }, 1000);
 }
 
+// ✅ Обновление боя без полной перерисовки DOM (нет мигания)
+function updateBattleInterface(battleData) {
+    if (battleData.status === 'finished') {
+        arenaState.battleActive = false;
+        const isWin = battleData.winnerId === state.user?._id?.toString();
+        showNativeBattleResult(isWin, battleData.prizePool);
+        renderArenaFightTab();
+        return;
+    }
+    
+    const isMyTurn = (battleData.currentTurn === 'player1' && battleData.isPlayer1) ||
+                     (battleData.currentTurn === 'player2' && !battleData.isPlayer1);
+    
+    // Обновляем HP своих существ
+    battleData.myTeam?.forEach((creature, idx) => {
+        const el = document.querySelector(`#arenaMyCreatures .arena-battle-creature:nth-child(${idx + 1})`);
+        if (!el) return;
+        const hpEl = el.querySelector('.creature-hp');
+        const barEl = el.querySelector('.arena-hp-fill');
+        if (hpEl) hpEl.textContent = `❤️ ${creature.currentHp}/${creature.maxHp}`;
+        if (barEl) barEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
+        if (!creature.isAlive) el.classList.add('dead');
+    });
+    
+    // Обновляем HP врагов и кнопки атаки
+    battleData.opponentTeam?.forEach((creature, idx) => {
+        const el = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature:nth-child(${idx + 1})`);
+        if (!el) return;
+        const hpEl = el.querySelector('.creature-hp');
+        const barEl = el.querySelector('.arena-hp-fill');
+        if (hpEl) hpEl.textContent = `❤️ ${creature.currentHp}/${creature.maxHp}`;
+        if (barEl) barEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
+        if (!creature.isAlive) el.classList.add('dead');
+        
+        // Обновляем кнопку атаки
+        const existingBtn = el.querySelector('.arena-attack-btn');
+        if (isMyTurn && creature.isAlive) {
+            if (!existingBtn) {
+                const btn = document.createElement('button');
+                btn.className = 'arena-attack-btn';
+                btn.textContent = '⚔️ Атаковать';
+                btn.onclick = () => makeAttack(idx);
+                el.appendChild(btn);
+            }
+        } else {
+            if (existingBtn) existingBtn.remove();
+        }
+    });
+    
+    // Обновляем лог (добавляем только новые записи)
+    const logEl = document.getElementById('arenaBattleLog');
+    if (logEl && battleData.battleLog?.length) {
+        const lastLog = battleData.battleLog[battleData.battleLog.length - 1];
+        const logEntry = document.createElement('div');
+        logEntry.className = `arena-log-entry ${lastLog.isCrit ? 'crit' : ''}`;
+        logEntry.textContent = `Ход ${lastLog.turn}: ${lastLog.attackerName} → ${lastLog.targetName}: ${lastLog.damage} урона ${lastLog.isCrit ? '💥 КРИТ!' : ''}`;
+        logEl.appendChild(logEntry);
+        logEl.scrollTop = logEl.scrollHeight;
+    }
+    
+    // Сбрасываем таймер хода
+    startBattleTimer();
+}
+
 function renderBattleInterface(battleData) {
     const container = document.getElementById('arenaBattleContainer');
     if (!container) return;
+    
+    // ✅ FIX: Устанавливаем флаг что бой активен
+    arenaState.battleActive = true;
     
     const isMyTurn = (battleData.currentTurn === 'player1' && battleData.isPlayer1) ||
                      (battleData.currentTurn === 'player2' && !battleData.isPlayer1);
@@ -3384,14 +3472,16 @@ async function makeAttack(targetIndex) {
     
     if (res?.success) {
         if (res.finished) {
+            arenaState.battleActive = false;
             showNativeBattleResult(true, battleRes.prizePool);
             renderArenaFightTab();
         } else {
             if (res.lastMove) {
                 showDamageAnimation(targetIndex, res.lastMove.damage, res.lastMove.isCrit);
             }
+            // ✅ FIX: Обновляем только данные, не перерисовываем весь DOM
             const newStatus = await apiRequest('GET', '/api/arena/battle/status');
-            if (newStatus) renderBattleInterface(newStatus);
+            if (newStatus) updateBattleInterface(newStatus);
         }
     } else {
         showToast(res?.message || 'Ошибка атаки', '❌');
@@ -3436,7 +3526,6 @@ function startBattleTimer() {
         }
     }, 1000);
 }
-
 async function surrenderBattle() {
     if (!confirm('Вы уверены, что хотите сдаться? Вы потеряете MMO за вход.')) return;
     
@@ -3444,11 +3533,13 @@ async function surrenderBattle() {
     if (battleRes?.battleId) {
         const res = await apiRequest('POST', '/api/arena/surrender', { battleId: battleRes.battleId });
         if (res?.success) {
+            arenaState.battleActive = false;
             showToast('Вы сдались', '⚠️');
             renderArenaFightTab();
         }
     }
 }
+
 async function renderArenaRanking() {
     const res = await apiRequest('GET', '/api/arena/leaderboard');
     if (!res?.success) return;
