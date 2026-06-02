@@ -429,6 +429,16 @@
 // DEBUG CONSOLE
 // ============================================
 
+// Добавить функцию escapeHtml ПЕРВОЙ!
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&#39;');
+}
+
 let debugLogs = [];
 let debugConsoleShown = false;
 
@@ -440,7 +450,6 @@ function addDebugLog(message, type = 'info') {
     
     updateDebugDisplay();
     
-    // Также выводим в браузерную консоль
     if (type === 'error') {
         console.error(`[DEBUG] ${message}`);
     } else if (type === 'warn') {
@@ -489,7 +498,7 @@ window.addEventListener('unhandledrejection', (e) => {
     addDebugLog(`Promise ошибка: ${e.reason}`, 'error');
 });
 
-// Перехват fetch запросов (для отладки)
+// Перехват fetch запросов
 const originalFetch = window.fetch;
 window.fetch = async function(...args) {
     const url = args[0];
@@ -509,7 +518,6 @@ window.fetch = async function(...args) {
     }
 };
 
-// Функция для проверки соединения с сервером
 async function testConnection() {
     addDebugLog('🔍 Проверка соединения с сервером...', 'info');
     try {
