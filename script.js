@@ -1611,6 +1611,53 @@ async function cancelMarketplaceListing(listingId) {
     showToast('Listing cancelled, card returned', '✅');
 }
 
+// ============================================================
+// ПОИСК БОЯ
+// ============================================================
+async function findMatch() {
+    if (arenaState.isSearching) {
+        showToast('Поиск уже идёт...', '⏳');
+        return;
+    }
+    
+    const teamRes = await apiRequest('GET', '/api/arena/team');
+    if (!teamRes?.success || teamRes.teamIds?.length !== 3) {
+        showToast('Сначала сохраните команду из 3 питомцев', '⚠️');
+        return;
+    }
+    
+    arenaState.isSearching = true;
+    const findBtn = document.getElementById('findMatchBtn');
+    const searchStatus = document.getElementById('arenaSearchStatus');
+    
+    if (findBtn) {
+        findBtn.disabled = true;
+        findBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Поиск...';
+    }
+    if (searchStatus) searchStatus.innerHTML = '🔍 Поиск соперника...';
+    
+    const res = await apiRequest('POST', '/api/arena/find-match');
+    
+    if (res?.success) {
+        if (res.battle?.player2Id) {
+            if (searchStatus) searchStatus.innerHTML = '⚔️ Соперник найден! Ожидание подтверждения...';
+            if (!arenaState.battlePollingInterval) {
+                startBattlePolling();
+            }
+        } else {
+            if (searchStatus) searchStatus.innerHTML = '⏳ В очереди поиска...';
+        }
+    } else {
+        showToast(res?.message || 'Ошибка поиска', '❌');
+        arenaState.isSearching = false;
+        if (findBtn) {
+            findBtn.disabled = false;
+            findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой';
+        }
+        if (searchStatus) searchStatus.innerHTML = '';
+    }
+}
+
 async function buyFromMarketplace(listingId, price, creatureId) {
     if (state.isLoading) return;
     if (state.serverBalance < price) {
