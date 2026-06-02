@@ -2830,19 +2830,25 @@ async function findMatch() {
     }
 }
 
-function acceptBattleWebhook() {
+// ============================================================
+// ARENA MODULE С SSE (ИСПРАВЛЕННЫЙ)
+// ============================================================
+
+// ... (предыдущий код до этих функций)
+
+async function acceptBattleWebhook() {
     const battleRes = await apiRequest('GET', '/api/arena/battle/status');
     if (battleRes?.battleId) {
-        apiRequest('POST', '/api/arena/accept-match', { battleId: battleRes.battleId });
+        await apiRequest('POST', '/api/arena/accept-match', { battleId: battleRes.battleId });
         closeOverlay();
         arenaState.confirmationShown = false;
     }
 }
 
-function rejectBattleWebhook() {
+async function rejectBattleWebhook() {
     const battleRes = await apiRequest('GET', '/api/arena/battle/status');
     if (battleRes?.battleId) {
-        apiRequest('POST', '/api/arena/reject-match', { battleId: battleRes.battleId });
+        await apiRequest('POST', '/api/arena/reject-match', { battleId: battleRes.battleId });
         arenaState.confirmationShown = false;
         closeOverlay();
         showToast('Бой отклонён', '⚠️');
