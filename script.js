@@ -572,7 +572,7 @@ async function initTelegramApp() {
     initArenaWebhooks();
     activateArenaMainButton();
     // Подключаем SSE для арены
-startArenaSSE();
+    startArenaSSE();
     
     document.querySelectorAll('img').forEach(img => {
         img.addEventListener('contextmenu', (e) => {
@@ -3492,6 +3492,12 @@ function switchTab(tab) {
         renderArenaTeamInventory();
         renderArenaFightTab();
         renderArenaRanking();
+        
+        // Переподключаем SSE если его нет
+        if (!arenaState.sseConnection && state.token) {
+            console.log('🔄 Переподключаем SSE при входе в арену');
+            startArenaSSE();
+        }
     }
 }
 
@@ -3548,6 +3554,14 @@ function spawnFloatingMMO(amount) {
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
     initTelegramApp();
+    
+    window.checkSSE = () => {
+        console.log('🔍 Проверка SSE:');
+        console.log('   connection exists:', !!arenaState.sseConnection);
+        console.log('   readyState:', arenaState.sseConnection?.readyState);
+        console.log('   isSearching:', arenaState.isSearching);
+        console.log('   battleActive:', arenaState.battleActive);
+    };
 });
 
 // ============================================================
