@@ -43,27 +43,31 @@ class ArenaClient {
     getBattleLog() { return this.state.battleLog; }
     
     // ============================================================
-    // SETTERS
-    // ============================================================
-    
-    setSelectedTeam(team) { 
-        this.state.selectedTeam = [...team];
-        this.saveTeamToStorage();
+// SETTERS
+// ============================================================
+
+setSelectedTeam(team) { 
+    this.state.selectedTeam = [...team];
+    this.saveTeamToStorage();
+}
+
+setConfirmationShown(value) {
+    this.state.confirmationShown = value;
+}
+
+saveTeamToStorage() {
+    localStorage.setItem('arena_selected_team', JSON.stringify(this.state.selectedTeam));
+}
+
+loadTeamFromStorage() {
+    const saved = localStorage.getItem('arena_selected_team');
+    if (saved) {
+        try {
+            this.state.selectedTeam = JSON.parse(saved);
+        } catch(e) {}
     }
-    
-    saveTeamToStorage() {
-        localStorage.setItem('arena_selected_team', JSON.stringify(this.state.selectedTeam));
-    }
-    
-    loadTeamFromStorage() {
-        const saved = localStorage.getItem('arena_selected_team');
-        if (saved) {
-            try {
-                this.state.selectedTeam = JSON.parse(saved);
-            } catch(e) {}
-        }
-        return this.state.selectedTeam;
-    }
+    return this.state.selectedTeam;
+}
     
     // ============================================================
     // БОЙ
