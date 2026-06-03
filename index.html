@@ -242,20 +242,25 @@
         </button>
     </div>
     
-    <!-- Вкладка Команда -->
-    <div class="arena-subtab active" id="arena-team-tab">
-        <div class="section-title"><i class="fa-solid fa-paw"></i> <span>Выберите 3 питомца</span></div>
-        
-        <div id="arenaTeamInventory" class="cards-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 20px;"></div>
-        
-        <div class="arena-selected-team">
-            <div class="section-title"><i class="fa-solid fa-check-circle"></i> <span>Ваша команда</span></div>
-            <div id="arenaSelectedTeam" class="arena-team-cards"></div>
-            <button class="arena-save-btn" onclick="saveArenaTeam()" id="saveTeamBtn">
+<!-- Вкладка Команда -->
+<div class="arena-subtab active" id="arena-team-tab">
+    <div class="section-title"><i class="fa-solid fa-paw"></i> <span>Выберите 3 питомца</span></div>
+    
+    <div id="arenaTeamInventory" class="cards-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 20px;"></div>
+    
+    <div class="arena-selected-team">
+        <div class="section-title"><i class="fa-solid fa-check-circle"></i> <span>Ваша команда</span></div>
+        <div id="arenaSelectedTeam" class="arena-team-cards"></div>
+        <div style="display: flex; gap: 12px; margin-top: 12px;">
+            <button class="arena-save-btn" onclick="saveArenaTeam()" id="saveTeamBtn" style="flex: 1;">
                 <i class="fa-solid fa-save"></i> <span>Сохранить команду</span>
+            </button>
+            <button class="arena-reset-btn" onclick="resetArenaTeam()" id="resetTeamBtn" style="flex: 1; background: linear-gradient(135deg, #ef4444, #dc2626);">
+                <i class="fa-solid fa-trash-alt"></i> <span>Сбросить команду</span>
             </button>
         </div>
     </div>
+</div>
     
     <!-- Вкладка Бой -->
     <div class="arena-subtab" id="arena-fight-tab">

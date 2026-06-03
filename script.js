@@ -2040,6 +2040,19 @@ async function saveArenaTeam() {
     else showToast(res?.message || 'Ошибка сохранения', '❌');
 }
 
+// Сбросить выбранную команду
+function resetArenaTeam() {
+    if (arenaClient) {
+        arenaClient.setSelectedTeam([]);
+        renderArenaTeamInventory();
+        renderSelectedTeam();
+        showToast('Команда сброшена', '🗑️');
+        
+        // Также сбрасываем на сервере
+        apiRequest('POST', '/api/arena/team', { team: [] }).catch(() => {});
+    }
+}
+
 async function findMatch() {
     if (findingMatch) { 
         showToast('Поиск уже запущен...', '⏳'); 
