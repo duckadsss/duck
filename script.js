@@ -571,6 +571,8 @@ async function initTelegramApp() {
     // Инициализация вебхуков арены
     initArenaWebhooks();
     activateArenaMainButton();
+    // Подключаем SSE для арены
+startArenaSSE();
     
     document.querySelectorAll('img').forEach(img => {
         img.addEventListener('contextmenu', (e) => {
@@ -2994,7 +2996,17 @@ function startArenaSSE() {
     const url = `${API_URL}/api/arena/events?token=${encodeURIComponent(state.token)}`;
     const sse = new EventSource(url);
     arenaState.sseConnection = sse;
-    
+    sse.onerror = (e) => {
+    console.warn('⚠️ SSE ошибка, переподключаемся через 3с...', e);
+    stopArenaSSE();
+    if (arenaState.isSearching || arenaState.battleActive) {
+        setTimeout(startArenaSSE, 3000);
+    }
+};
+
+sse.onmessage = (event) => {
+    console.log('📨 SSE onmessage получено:', event.data);
+};
     sse.addEventListener('connected', () => {
         console.log('✅ SSE подключён');
     });
@@ -3487,12 +3499,16 @@ function switchTab(tab) {
     if (tab === 'shop') renderMarketplaceBuy();
     if (tab === 'friends') renderFriendsList();
     if (tab === 'arena') {
-        renderArenaTeamInventory();
-        renderArenaFightTab();
-        renderArenaRanking();
+    renderArenaTeamInventory();
+    renderArenaFightTab();
+    renderArenaRanking();
+    
+    // Переподключаем SSE если его нет
+    if (!arenaState.sseConnection && state.token) {
+        console.log('🔄 Переподключаем SSE при входе в арену');
+        startArenaSSE();
     }
 }
-
 // ============================================================
 // OVERLAY
 // ============================================================
@@ -3546,6 +3562,14 @@ function spawnFloatingMMO(amount) {
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
     initTelegramApp();
+    
+    window.checkSSE = () => {
+    console.log('🔍 Проверка SSE:');
+    console.log('   connection exists:', !!arenaState.sseConnection);
+    console.log('   readyState:', arenaState.sseConnection?.readyState);
+    console.log('   isSearching:', arenaState.isSearching);
+    console.log('   battleActive:', arenaState.battleActive);
+};
 });
 
 // ============================================================
