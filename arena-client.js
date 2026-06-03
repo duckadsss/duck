@@ -22,11 +22,16 @@ class ArenaClient {
             searchTimer: null
         };
         
+        // Все возможные колбэки
         this.callbacks = {
             onBattleStart: null,
             onBattleUpdate: null,
             onBattleEnd: null,
-            onMatchFound: null
+            onMatchFound: null,
+            onBattleStartUI: null,
+            onTimerTick: null,
+            onSearchTimeout: null,
+            onConfirmationUpdate: null
         };
     }
     
@@ -41,33 +46,34 @@ class ArenaClient {
     getMyTeam() { return this.state.myTeam; }
     getEnemyTeam() { return this.state.enemyTeam; }
     getBattleLog() { return this.state.battleLog; }
+    getConfirmationShown() { return this.state.confirmationShown; }
     
     // ============================================================
-// SETTERS
-// ============================================================
-
-setSelectedTeam(team) { 
-    this.state.selectedTeam = [...team];
-    this.saveTeamToStorage();
-}
-
-setConfirmationShown(value) {
-    this.state.confirmationShown = value;
-}
-
-saveTeamToStorage() {
-    localStorage.setItem('arena_selected_team', JSON.stringify(this.state.selectedTeam));
-}
-
-loadTeamFromStorage() {
-    const saved = localStorage.getItem('arena_selected_team');
-    if (saved) {
-        try {
-            this.state.selectedTeam = JSON.parse(saved);
-        } catch(e) {}
+    // SETTERS
+    // ============================================================
+    
+    setSelectedTeam(team) { 
+        this.state.selectedTeam = [...team];
+        this.saveTeamToStorage();
     }
-    return this.state.selectedTeam;
-}
+    
+    setConfirmationShown(value) {
+        this.state.confirmationShown = value;
+    }
+    
+    saveTeamToStorage() {
+        localStorage.setItem('arena_selected_team', JSON.stringify(this.state.selectedTeam));
+    }
+    
+    loadTeamFromStorage() {
+        const saved = localStorage.getItem('arena_selected_team');
+        if (saved) {
+            try {
+                this.state.selectedTeam = JSON.parse(saved);
+            } catch(e) {}
+        }
+        return this.state.selectedTeam;
+    }
     
     // ============================================================
     // БОЙ
@@ -294,6 +300,9 @@ loadTeamFromStorage() {
     
     on(event, callback) {
         if (this.callbacks.hasOwnProperty(event)) {
+            this.callbacks[event] = callback;
+        } else {
+            // Если события нет в списке, просто добавляем
             this.callbacks[event] = callback;
         }
     }

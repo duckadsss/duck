@@ -90,6 +90,7 @@ let UPGRADE_BASE_COST = 300;
 let UPGRADE_MULTIPLIER = 1.5;
 let MAX_INVENTORY_SLOTS = 50;
 let SPECIAL_QUESTS = [];
+let findingMatch = false; // блокировка двойного нажатия поиска боя
 
 const RARITY_COLORS = {
     common: '#94a3b8', uncommon: '#22c55e', rare: '#3b82f6',
@@ -322,9 +323,17 @@ function handleVisibilityChange() {
                 if (res.earned > 1) showToast(`+${formatNum(res.earned)} MMO получено`, '💰');
             }
         }).catch(err => console.warn('collect-income error:', err));
+        
+        // Переподключение SSE при возвращении на вкладку
+        if (arenaClient && state.token && !arenaClient.state.sseConnection) {
+            arenaClient.connectSSE(state.token, API_URL);
+        }
+        
         if (isMarketplaceTabActive) {
             renderMarketplaceBuy();
-            intervals.marketplace = setInterval(() => { if (!document.hidden && isMarketplaceTabActive) renderMarketplaceBuy(); }, 10 * 1000);
+            intervals.marketplace = setInterval(() => { 
+                if (!document.hidden && isMarketplaceTabActive) renderMarketplaceBuy(); 
+            }, 10 * 1000);
         }
     }
 }
@@ -2010,23 +2019,48 @@ async function saveArenaTeam() {
 }
 
 async function findMatch() {
-    if (arenaClient?.isSearching()) { showToast('Поиск уже идёт...', '⏳'); return; }
+    if (findingMatch) { 
+        showToast('Поиск уже запущен...', '⏳'); 
+        return; 
+    }
+    if (arenaClient?.isSearching()) { 
+        showToast('Поиск уже идёт...', '⏳'); 
+        return; 
+    }
+    
     const teamRes = await apiRequest('GET', '/api/arena/team');
-    if (!teamRes?.success || teamRes.teamIds?.length !== 3) { showToast('Сначала сохраните команду из 3 питомцев', '⚠️'); return; }
+    if (!teamRes?.success || teamRes.teamIds?.length !== 3) { 
+        showToast('Сначала сохраните команду из 3 питомцев', '⚠️'); 
+        return; 
+    }
     
-    arenaClient?.startSearch();
-    const findBtn = document.getElementById('findMatchBtn');
-    const searchStatus = document.getElementById('arenaSearchStatus');
-    if (findBtn) { findBtn.disabled = true; findBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Поиск...'; }
-    if (searchStatus) searchStatus.innerHTML = '🔍 Поиск соперника...';
+    findingMatch = true;
     
-    const res = await apiRequest('POST', '/api/arena/find-match');
-    if (!res?.success) {
-        arenaClient?.stopSearch();
-        showToast(res?.message || 'Ошибка поиска', '❌');
-        if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; }
-        if (searchStatus) searchStatus.innerHTML = '';
-    } else if (res.isNew && searchStatus) searchStatus.innerHTML = '⏳ В очереди поиска...';
+    try {
+        arenaClient?.startSearch();
+        const findBtn = document.getElementById('findMatchBtn');
+        const searchStatus = document.getElementById('arenaSearchStatus');
+        if (findBtn) { 
+            findBtn.disabled = true; 
+            findBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Поиск...'; 
+        }
+        if (searchStatus) searchStatus.innerHTML = '🔍 Поиск соперника...';
+        
+        const res = await apiRequest('POST', '/api/arena/find-match');
+        if (!res?.success) {
+            arenaClient?.stopSearch();
+            showToast(res?.message || 'Ошибка поиска', '❌');
+            if (findBtn) { 
+                findBtn.disabled = false; 
+                findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; 
+            }
+            if (searchStatus) searchStatus.innerHTML = '';
+        } else if (res.isNew && searchStatus) {
+            searchStatus.innerHTML = '⏳ В очереди поиска...';
+        }
+    } finally {
+        findingMatch = false;
+    }
 }
 
 function cancelBattleSearch() {
@@ -2055,11 +2089,34 @@ async function rejectBattleWebhook() {
 }
 
 async function makeAttack(targetIndex) {
-    if (!arenaClient?.isBattleActive()) { showToast('Бой не активен', '⚠️'); return; }
+    if (!arenaClient?.isBattleActive()) { 
+        showToast('Бой не активен', '⚠️'); 
+        return; 
+    }
     const battleId = arenaClient?.getBattleId();
-    if (!battleId) { showToast('ID боя не найден', '⚠️'); return; }
+    if (!battleId) { 
+        showToast('ID боя не найден', '⚠️'); 
+        return; 
+    }
+    
     const res = await apiRequest('POST', '/api/arena/move', { battleId, targetIndex });
-    if (!res?.success) showToast(res?.message || 'Ошибка атаки', '❌');
+    
+    if (!res?.success) {
+        showToast(res?.message || 'Ошибка атаки', '❌');
+        return;
+    }
+    
+    // Обновляем UI для атакующего (клиента)
+    if (!res.finished) {
+        const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
+        updateBattleUIFromClient({
+            player1Team: res.myTeam,
+            player2Team: res.enemyTeam,
+            lastMove: res.lastMove,
+            currentTurn: res.currentTurn,
+            turnCount: res.turnCount
+        }, isPlayer1);
+    }
 }
 
 async function surrenderBattle() {
