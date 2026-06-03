@@ -3103,20 +3103,29 @@ function startArenaSSE() {
         }
     });
     
-    sse.addEventListener('move_update', (e) => {
-        debugLog('🗡️ ПОЛУЧЕНО move_update!');
-        try {
-            const data = JSON.parse(e.data);
-            if (!arenaState.battleActive) {
-                debugLog('⚠️ Бой не активен, пропускаем');
-                return;
-            }
-            updateBattleUI(data);
-            debugLog('✅ UI обновлён после хода');
-        } catch (err) {
-            debugLog('❌ Ошибка move_update: ' + err.message);
+    // В функции startArenaSSE, замени обработчик 'move_update' на этот:
+
+sse.addEventListener('move_update', (e) => {
+    debugLog('🗡️ ПОЛУЧЕНО move_update!');
+    try {
+        const data = JSON.parse(e.data);
+        debugLog(`Данные хода: текущий ход ${data.currentTurn}`);
+        
+        if (!arenaState.battleActive) {
+            debugLog('⚠️ Бой не активен, пропускаем');
+            return;
         }
-    });
+        
+        // Важно: данные уже содержат player1Team и player2Team
+        // Добавляем информацию о том, кто мы
+        data.isPlayer1 = arenaState.currentBattleIsPlayer1;
+        
+        updateBattleUI(data);
+        debugLog('✅ UI обновлён после хода');
+    } catch (err) {
+        debugLog('❌ Ошибка move_update: ' + err.message);
+    }
+});
     
     sse.addEventListener('battle_end', (e) => {
         debugLog('🏁 ПОЛУЧЕНО battle_end!');
@@ -3345,6 +3354,10 @@ async function surrenderBattle() {
     }
 }
 
+// ============================================================
+// ФИКС: ОБНОВЛЕНИЕ БОЯ (ЗАМЕНИТЬ ВЕСЬ updateBattleUI)
+// ============================================================
+
 function updateBattleUI(data) {
     debugLog('🔄 updateBattleUI вызвана');
     
@@ -3356,10 +3369,11 @@ function updateBattleUI(data) {
     const isPlayer1 = arenaState.currentBattleIsPlayer1;
     debugLog(`isPlayer1: ${isPlayer1}`);
     
-    // Получаем команды
+    // Получаем команды - поддерживаем оба формата
     let myTeam = null;
     let enemyTeam = null;
     
+    // Формат 1: player1Team / player2Team (приходит из move_update)
     if (data.player1Team && data.player2Team) {
         if (isPlayer1) {
             myTeam = data.player1Team;
@@ -3368,7 +3382,9 @@ function updateBattleUI(data) {
             myTeam = data.player2Team;
             enemyTeam = data.player1Team;
         }
-    } else if (data.myTeam && data.opponentTeam) {
+    } 
+    // Формат 2: myTeam / opponentTeam (приходит из battle_start)
+    else if (data.myTeam && data.opponentTeam) {
         myTeam = data.myTeam;
         enemyTeam = data.opponentTeam;
     }
@@ -3378,53 +3394,71 @@ function updateBattleUI(data) {
         return;
     }
     
-    // Обновляем моих существ
+    // Обновляем UI моих существ
     for (let i = 0; i < myTeam.length; i++) {
         const creature = myTeam[i];
         const creatureEl = document.querySelector(`#arenaMyCreatures .arena-battle-creature[data-creature-index="${i}"]`);
         if (creatureEl) {
             const hpEl = creatureEl.querySelector('.creature-hp');
             const fillEl = creatureEl.querySelector('.arena-hp-fill');
-            if (hpEl) hpEl.textContent = `❤️ ${Math.max(0, creature.currentHp)}/${creature.maxHp}`;
-            if (fillEl) fillEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
+            if (hpEl) {
+                const currentHp = creature.currentHp !== undefined ? creature.currentHp : 
+                                  (creature.isAlive ? creature.maxHp : 0);
+                hpEl.textContent = `❤️ ${Math.max(0, currentHp)}/${creature.maxHp}`;
+            }
+            if (fillEl) {
+                const hpPercent = ((creature.currentHp || creature.maxHp) / creature.maxHp) * 100;
+                fillEl.style.width = `${Math.max(0, hpPercent)}%`;
+            }
             if (!creature.isAlive) creatureEl.classList.add('dead');
-            debugLog(`Мой ${i}: HP ${creature.currentHp}/${creature.maxHp}`);
-        } else {
-            debugLog(`⚠️ Элемент моего ${i} не найден!`);
+            else creatureEl.classList.remove('dead');
+            debugLog(`Мой ${i}: HP ${creature.currentHp}/${creature.maxHp}, жив: ${creature.isAlive}`);
         }
     }
     
-    // Обновляем врагов
+    // Обновляем UI врагов
     for (let i = 0; i < enemyTeam.length; i++) {
         const creature = enemyTeam[i];
         const creatureEl = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${i}"]`);
         if (creatureEl) {
             const hpEl = creatureEl.querySelector('.creature-hp');
             const fillEl = creatureEl.querySelector('.arena-hp-fill');
-            if (hpEl) hpEl.textContent = `❤️ ${Math.max(0, creature.currentHp)}/${creature.maxHp}`;
-            if (fillEl) fillEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
+            if (hpEl) {
+                const currentHp = creature.currentHp !== undefined ? creature.currentHp : 
+                                  (creature.isAlive ? creature.maxHp : 0);
+                hpEl.textContent = `❤️ ${Math.max(0, currentHp)}/${creature.maxHp}`;
+            }
+            if (fillEl) {
+                const hpPercent = ((creature.currentHp || creature.maxHp) / creature.maxHp) * 100;
+                fillEl.style.width = `${Math.max(0, hpPercent)}%`;
+            }
             if (!creature.isAlive) creatureEl.classList.add('dead');
-            debugLog(`Враг ${i}: HP ${creature.currentHp}/${creature.maxHp}`);
-        } else {
-            debugLog(`⚠️ Элемент врага ${i} не найден!`);
+            else creatureEl.classList.remove('dead');
+            debugLog(`Враг ${i}: HP ${creature.currentHp}/${creature.maxHp}, жив: ${creature.isAlive}`);
         }
     }
     
-    // Добавляем запись в лог
+    // Добавляем запись в лог если есть новый ход
     if (data.lastMove && data.lastMove.damage !== undefined) {
         const logEl = document.getElementById('arenaBattleLog');
         if (logEl) {
             const logEntry = document.createElement('div');
             logEntry.className = `arena-log-entry ${data.lastMove.isCrit ? 'crit' : ''}`;
+            const attackerName = data.lastMove.attackerName || `Питомец ${(data.lastMove.attackerIndex || 0) + 1}`;
             const targetName = data.lastMove.targetName || `питомец ${(data.lastMove.targetIndex || 0) + 1}`;
-            logEntry.textContent = `⚔️ Ход ${data.turnCount || '?'}: ${data.lastMove.damage} урона${data.lastMove.isCrit ? ' 💥 КРИТ!' : ''}`;
+            logEntry.textContent = `⚔️ ${attackerName} → ${targetName}: ${data.lastMove.damage} урона${data.lastMove.isCrit ? ' 💥 КРИТ!' : ''}`;
             logEl.appendChild(logEntry);
             logEl.scrollTop = logEl.scrollHeight;
             while (logEl.children.length > 20) logEl.removeChild(logEl.firstChild);
+            
+            // Показываем анимацию урона
+            if (data.lastMove.targetIndex !== undefined) {
+                showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit);
+            }
         }
     }
     
-    // Обновляем кнопки атаки
+    // Обновляем кнопки атаки в зависимости от текущего хода
     if (data.currentTurn) {
         const isMyTurn = (data.currentTurn === 'player1' && isPlayer1) ||
                          (data.currentTurn === 'player2' && !isPlayer1);
