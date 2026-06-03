@@ -437,23 +437,7 @@
 let debugLogs = [];
 let debugConsoleShown = false;
 
-function addDebugLog(message, type = 'info') {
-    const timestamp = new Date().toLocaleTimeString();
-    const logEntry = { timestamp, message, type };
-    debugLogs.unshift(logEntry);
-    if (debugLogs.length > 100) debugLogs.pop();
-    
-    updateDebugDisplay();
-    
-    // Также выводим в браузерную консоль
-    if (type === 'error') {
-        console.error(`[DEBUG] ${message}`);
-    } else if (type === 'warn') {
-        console.warn(`[DEBUG] ${message}`);
-    } else {
-        console.log(`[DEBUG] ${message}`);
-    }
-}
+// Функция addDebugLog УДАЛЕНА - она уже есть в script.js
 
 function updateDebugDisplay() {
     const container = document.getElementById('debugLogs');
@@ -474,7 +458,8 @@ function updateDebugDisplay() {
 function clearDebugLogs() {
     debugLogs = [];
     updateDebugDisplay();
-    addDebugLog('Логи очищены', 'info');
+    // Используем глобальную addDebugLog из script.js
+    if (window.addDebugLog) window.addDebugLog('Логи очищены', 'info');
 }
 
 function toggleDebugConsole() {
@@ -487,36 +472,38 @@ function toggleDebugConsole() {
 
 // Перехват ошибок
 window.addEventListener('error', (e) => {
-    addDebugLog(`Ошибка: ${e.message} в ${e.filename}:${e.lineno}`, 'error');
+    if (window.addDebugLog) window.addDebugLog(`Ошибка: ${e.message} в ${e.filename}:${e.lineno}`, 'error');
+    else console.error(e);
 });
 
 window.addEventListener('unhandledrejection', (e) => {
-    addDebugLog(`Promise ошибка: ${e.reason}`, 'error');
+    if (window.addDebugLog) window.addDebugLog(`Promise ошибка: ${e.reason}`, 'error');
+    else console.error(e);
 });
 
 // Перехват fetch запросов (для отладки)
 const originalFetch = window.fetch;
 window.fetch = async function(...args) {
     const url = args[0];
-    addDebugLog(`📡 Запрос: ${args[1]?.method || 'GET'} ${url}`, 'info');
+    if (window.addDebugLog) window.addDebugLog(`📡 Запрос: ${args[1]?.method || 'GET'} ${url}`, 'info');
     
     try {
         const response = await originalFetch(...args);
         if (!response.ok) {
-            addDebugLog(`❌ Ошибка ${response.status}: ${url}`, 'error');
+            if (window.addDebugLog) window.addDebugLog(`❌ Ошибка ${response.status}: ${url}`, 'error');
         } else {
-            addDebugLog(`✅ Успешно: ${response.status} ${url}`, 'success');
+            if (window.addDebugLog) window.addDebugLog(`✅ Успешно: ${response.status} ${url}`, 'success');
         }
         return response;
     } catch (error) {
-        addDebugLog(`❌ Сеть: ${error.message} - ${url}`, 'error');
+        if (window.addDebugLog) window.addDebugLog(`❌ Сеть: ${error.message} - ${url}`, 'error');
         throw error;
     }
 };
 
 // Функция для проверки соединения с сервером
 async function testConnection() {
-    addDebugLog('🔍 Проверка соединения с сервером...', 'info');
+    if (window.addDebugLog) window.addDebugLog('🔍 Проверка соединения с сервером...', 'info');
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -526,17 +513,17 @@ async function testConnection() {
         
         if (response.ok) {
             const data = await response.json();
-            addDebugLog(`✅ Сервер онлайн! DB: ${data.db}`, 'success');
+            if (window.addDebugLog) window.addDebugLog(`✅ Сервер онлайн! DB: ${data.db}`, 'success');
         } else {
-            addDebugLog(`⚠️ Сервер ответил с ошибкой: ${response.status}`, 'warn');
+            if (window.addDebugLog) window.addDebugLog(`⚠️ Сервер ответил с ошибкой: ${response.status}`, 'warn');
         }
     } catch (error) {
         if (error.name === 'AbortError') {
-            addDebugLog(`❌ Таймаут соединения с сервером! Сервер не отвечает.`, 'error');
+            if (window.addDebugLog) window.addDebugLog(`❌ Таймаут соединения с сервером! Сервер не отвечает.`, 'error');
         } else {
-            addDebugLog(`❌ Не могу соединиться с сервером: ${error.message}`, 'error');
+            if (window.addDebugLog) window.addDebugLog(`❌ Не могу соединиться с сервером: ${error.message}`, 'error');
         }
-        addDebugLog(`   Проверь: сервер запущен и API_URL правильный: ${API_URL}`, 'error');
+        if (window.addDebugLog) window.addDebugLog(`   Проверь: сервер запущен и API_URL правильный: ${API_URL}`, 'error');
     }
 }
 
@@ -548,9 +535,11 @@ testBtn.onclick = testConnection;
 document.body.appendChild(testBtn);
 
 // Добавляем информацию о версии
-addDebugLog(`🚀 DNA MMO v5.0 (с ареной)`, 'success');
-addDebugLog(`📡 API_URL: ${API_URL}`, 'info');
-addDebugLog(`🌐 Frontend: ${window.location.href}`, 'info');
+if (window.addDebugLog) {
+    window.addDebugLog(`🚀 DNA MMO v5.0 (с ареной)`, 'success');
+    window.addDebugLog(`📡 API_URL: ${API_URL}`, 'info');
+    window.addDebugLog(`🌐 Frontend: ${window.location.href}`, 'info');
+}
 setTimeout(() => {
     testConnection();
 }, 2000);
