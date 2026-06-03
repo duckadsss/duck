@@ -2811,19 +2811,27 @@ async function findMatch() {
     }
     if (searchStatus) searchStatus.innerHTML = '🔍 Поиск соперника...';
     
-    const res = await apiRequest('POST', '/api/arena/find-match');
-    
-    if (res?.success) {
-        if (res.battle?.player2Id) {
-            if (searchStatus) searchStatus.innerHTML = '⚔️ Соперник найден! Ожидание подтверждения...';
-        } else {
-            if (searchStatus) searchStatus.innerHTML = '⏳ В очереди поиска...';
+
+startArenaSSE();  // ← переносим СЮДА, до запроса
+const res = await apiRequest('POST', '/api/arena/find-match');
+
+if (res?.success) {
+    if (res.battle?.player2Id) {
+        if (searchStatus) searchStatus.innerHTML = '⚔️ Соперник найден! Ожидание подтверждения...';
+        // ← добавляем fallback для player2:
+        const statusRes = await apiRequest('GET', '/api/arena/battle/status');
+        if (statusRes?.hasBattle && statusRes.status === 'pending_confirmation') {
+            arenaState.confirmationShown = true;
+            showNativeBattleConfirmation(statusRes);
         }
-        
-        startArenaSSE();
     } else {
-        showToast(res?.message || 'Ошибка поиска', '❌');
-        arenaState.isSearching = false;
+        if (searchStatus) searchStatus.innerHTML = '⏳ В очереди поиска...';
+    }
+
+} else {
+    stopArenaSSE();  // ← добавить
+    showToast(res?.message || 'Ошибка поиска', '❌');
+    arenaState.isSearching = false;
         if (findBtn) {
             findBtn.disabled = false;
             findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой';
