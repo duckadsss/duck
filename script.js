@@ -2263,24 +2263,77 @@ async function renderArenaFightTab() {
 }
 
 function renderBattleInterface(battleData) {
+    addDebugLog('🎨 renderBattleInterface вызван', 'info');
+    
     const container = document.getElementById('arenaBattleContainer');
-    if (!container) return;
+    if (!container) {
+        addDebugLog('❌ arenaBattleContainer не найден!', 'error');
+        return;
+    }
+    
+    const statusContainer = document.getElementById('arenaFightStatus');
+    
+    // Скрываем статус, показываем контейнер боя
+    if (statusContainer) statusContainer.style.display = 'none';
+    container.style.display = 'block';
     
     const isPlayer1 = battleData.isPlayer1;
     const myTeam = isPlayer1 ? battleData.myTeam : battleData.opponentTeam;
     const enemyTeam = isPlayer1 ? battleData.opponentTeam : battleData.myTeam;
-    const isMyTurn = (battleData.currentTurn === 'player1' && isPlayer1) || (battleData.currentTurn === 'player2' && !isPlayer1);
+    const isMyTurn = (battleData.currentTurn === 'player1' && isPlayer1) || 
+                     (battleData.currentTurn === 'player2' && !isPlayer1);
+    
+    addDebugLog(`Команда игрока: ${myTeam?.length || 0} питомцев`, 'info');
+    addDebugLog(`Команда врага: ${enemyTeam?.length || 0} питомцев`, 'info');
+    addDebugLog(`Текущий ход: ${battleData.currentTurn}, isPlayer1: ${isPlayer1}, мой ход: ${isMyTurn}`, 'info');
+    
+    if (!myTeam || !enemyTeam) {
+        addDebugLog('❌ Нет данных команд!', 'error');
+        container.innerHTML = '<div class="arena-battle-container" style="text-align:center;padding:40px;color:red;">Ошибка загрузки боя</div>';
+        return;
+    }
     
     container.innerHTML = `
         <div class="arena-battle-container">
-            <div class="arena-team-side"><div class="arena-side-title">⚔️ ВАША КОМАНДА</div><div class="arena-creatures-row" id="arenaMyCreatures">${myTeam.map((creature, idx) => `<div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-creature-index="${idx}"><div class="creature-icon">${getIconHtml(creature)}</div><div class="creature-name">${escapeHtml(creature.name)}</div><div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div><div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div></div>`).join('')}</div></div>
+            <div class="arena-team-side">
+                <div class="arena-side-title">⚔️ ВАША КОМАНДА</div>
+                <div class="arena-creatures-row" id="arenaMyCreatures">
+                    ${myTeam.map((creature, idx) => `
+                        <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-creature-index="${idx}">
+                            <div class="creature-icon">${getIconHtml(creature)}</div>
+                            <div class="creature-name">${escapeHtml(creature.name)}</div>
+                            <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
+                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
             <div class="arena-battle-vs">VS</div>
-            <div class="arena-team-side"><div class="arena-side-title">🛡️ КОМАНДА СОПЕРНИКА</div><div class="arena-creatures-row" id="arenaEnemyCreatures">${enemyTeam.map((creature, idx) => `<div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-enemy-index="${idx}"><div class="creature-icon">${getIconHtml(creature)}</div><div class="creature-name">${escapeHtml(creature.name)}</div><div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div><div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>${isMyTurn && creature.isAlive ? `<button class="arena-attack-btn" onclick="makeAttack(${idx})">⚔️ Атаковать</button>` : ''}</div>`).join('')}</div></div>
-            <div class="arena-battle-log" id="arenaBattleLog">${battleData.battleLog && battleData.battleLog.length ? battleData.battleLog.slice(-10).map(log => `<div class="arena-log-entry ${log.isCrit ? 'crit' : ''}">Ход ${log.turn}: ${log.attackerName || 'Питомец'} → ${log.targetName || 'Враг'}: ${log.damage} урона ${log.isCrit ? '💥 КРИТ!' : ''}</div>`).join('') : '<div class="arena-log-entry">Бой начинается...</div>'}</div>
+            <div class="arena-team-side">
+                <div class="arena-side-title">🛡️ КОМАНДА СОПЕРНИКА</div>
+                <div class="arena-creatures-row" id="arenaEnemyCreatures">
+                    ${enemyTeam.map((creature, idx) => `
+                        <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-enemy-index="${idx}">
+                            <div class="creature-icon">${getIconHtml(creature)}</div>
+                            <div class="creature-name">${escapeHtml(creature.name)}</div>
+                            <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
+                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
+                            ${isMyTurn && creature.isAlive ? `<button class="arena-attack-btn" onclick="makeAttack(${idx})">⚔️ Атаковать</button>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="arena-battle-log" id="arenaBattleLog">
+                ${battleData.battleLog && battleData.battleLog.length ? 
+                    battleData.battleLog.slice(-10).map(log => `<div class="arena-log-entry ${log.isCrit ? 'crit' : ''}">Ход ${log.turn}: ${log.attackerName || 'Питомец'} → ${log.targetName || 'Враг'}: ${log.damage} урона ${log.isCrit ? '💥 КРИТ!' : ''}</div>`).join('') : 
+                    '<div class="arena-log-entry">Бой начинается...</div>'}
+            </div>
             <div class="arena-battle-timer" id="arenaBattleTimer">⏱ 30</div>
             <button class="arena-surrender-btn" onclick="surrenderBattle()"><i class="fa-solid fa-flag"></i> Сдаться</button>
         </div>
     `;
+    
+    addDebugLog('✅ Battle interface rendered', 'success');
 }
 
 function updateBattleUIFromClient(data, isPlayer1) {
@@ -2532,20 +2585,7 @@ async function initTelegramApp() {
         arenaClient.loadTeamFromStorage();
         arenaClient.connectSocket(state.token, API_URL);
         arenaClient.on('onMatchFound', (data) => showNativeBattleConfirmation(data));
-        arenaClient.on('onBattleStartUI', (data) => {
-    addDebugLog('⚔️ Battle start UI received!', 'success');
-    if (document.getElementById('overlay')?.classList.contains('show')) closeOverlay();
-    
-    // Скрываем статус и показываем контейнер боя
-    const statusContainer = document.getElementById('arenaFightStatus');
-    const battleContainer = document.getElementById('arenaBattleContainer');
-    
-    if (statusContainer) statusContainer.style.display = 'none';
-    if (battleContainer) {
-        battleContainer.style.display = 'block';
-        renderBattleInterface(data);
-    }
-});
+        arenaClient.on('onBattleStartUI', (data) => { if (document.getElementById('overlay')?.classList.contains('show')) closeOverlay(); renderBattleInterface(data); });
         arenaClient.on('onBattleUpdate', (data, isPlayer1) => updateBattleUIFromClient(data, isPlayer1));
         arenaClient.on('onBattleEnd', (isWin, prizePool) => { showNativeBattleResult(isWin, prizePool); refreshUserProfile(); });
         arenaClient.on('onTimerTick', (timeLeft) => { const timerEl = document.getElementById('arenaBattleTimer'); if (timerEl) { timerEl.textContent = `⏱ ${timeLeft}`; if (timeLeft <= 5) timerEl.classList.add('warning'); else timerEl.classList.remove('warning'); } });
