@@ -2437,7 +2437,7 @@ if (arenaClient) {
             showToast('Соединение с ареной потеряно, переподключение...', '⚠️');
         }
     });
-}
+
 function updateBattleUIFromClient(data, isPlayer1) {
     if (!data) return;
     
