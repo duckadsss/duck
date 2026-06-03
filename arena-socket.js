@@ -493,12 +493,12 @@ battle.status = 'expired';
 await battle.save();
 expiredCount++;
 
-if (wasWaiting && player1Id) {
-                await this.User.findByIdAndUpdate(player1Id, {
-                    $inc: { balance: entryFee },
-                    $set: { currentBattleId: null }
-                });
-            }
+                 if (wasWaiting && player1Id) {
+    await User.findByIdAndUpdate(player1Id, {
+        $inc: { balance: entryFee },
+        $set: { currentBattleId: null }
+    });
+}
             
             if (player1Id) {
                 await this.User.updateOne({ _id: player1Id }, { $set: { currentBattleId: null } });
