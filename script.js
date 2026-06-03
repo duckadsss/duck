@@ -3604,6 +3604,9 @@ function spawnFloatingMMO(amount) {
     setTimeout(() => el.remove(), 1600);
 }
 
+// ============================================================
+// INIT
+// ============================================================
 document.addEventListener('DOMContentLoaded', () => {
     initTelegramApp();
     
@@ -3615,42 +3618,36 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('   battleActive:', arenaState.battleActive);
     };
     
-    // ============================================================
-// ДИАГНОСТИКА SSE
-// ============================================================
-
-window.testSSE = () => {
-    console.log('=== ДИАГНОСТИКА SSE ===');
-    console.log('sseConnection exists:', !!arenaState.sseConnection);
-    console.log('readyState:', arenaState.sseConnection?.readyState);
-    console.log('isSearching:', arenaState.isSearching);
-    console.log('battleActive:', arenaState.battleActive);
-    console.log('token exists:', !!state.token);
-    console.log('API_URL:', API_URL);
-};
-
-// Функция для принудительного переподключения SSE
-window.reconnectSSE = () => {
-    console.log('🔄 Принудительное переподключение SSE...');
-    stopArenaSSE();
-    startArenaSSE();
-};
-
-// Функция для проверки получения событий
-window.listenSSE = () => {
-    if (!arenaState.sseConnection) {
-        console.log('❌ SSE не подключен');
-        return;
-    }
+    // ========== ДОБАВИТЬ ЭТОТ КОД ==========
+    window.testSSE = () => {
+        console.log('=== ДИАГНОСТИКА SSE ===');
+        console.log('sseConnection exists:', !!arenaState.sseConnection);
+        console.log('readyState:', arenaState.sseConnection?.readyState);
+        console.log('isSearching:', arenaState.isSearching);
+        console.log('battleActive:', arenaState.battleActive);
+        console.log('token exists:', !!state.token);
+        console.log('API_URL:', API_URL);
+    };
     
-    console.log('👂 Начинаю слушать SSE события...');
+    window.reconnectSSE = () => {
+        console.log('🔄 Принудительное переподключение SSE...');
+        stopArenaSSE();
+        startArenaSSE();
+    };
     
-    arenaState.sseConnection.addEventListener('test', (e) => {
-        console.log('🧪 TEST событие:', e.data);
-    });
-    
-    console.log('✅ Слушатель добавлен. Ждите событий...');
-};
+    window.listenSSE = () => {
+        if (!arenaState.sseConnection) {
+            console.log('❌ SSE не подключен');
+            return;
+        }
+        console.log('👂 Начинаю слушать SSE события...');
+        arenaState.sseConnection.addEventListener('test', (e) => {
+            console.log('🧪 TEST событие:', e.data);
+        });
+        console.log('✅ Слушатель добавлен. Ждите событий...');
+    };
+    // ========== КОНЕЦ ДОБАВЛЕННОГО КОДА ==========
+});
 
 // ============================================================
 // ЭКСПОРТ ФУНКЦИЙ ДЛЯ ГЛОБАЛЬНОГО ДОСТУПА
