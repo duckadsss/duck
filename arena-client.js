@@ -1,5 +1,5 @@
 // ============================================================
-// arena-client.js - Клиентская логика PvP арены (WebSocket)
+// arena-client.js - Клиентская логика PvP арены (WebSocket для Railway)
 // ============================================================
 
 class ArenaClient {
@@ -24,7 +24,7 @@ class ArenaClient {
         };
         
         this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 5;
+        this.maxReconnectAttempts = 10;
         
         this.callbacks = {
             onBattleStart: null,
@@ -202,7 +202,7 @@ class ArenaClient {
     }
     
     // ============================================================
-    // WEBSOCKET
+    // WEBSOCKET (для Railway)
     // ============================================================
     
     connectSocket(token, apiUrl) {
@@ -213,19 +213,21 @@ class ArenaClient {
             return;
         }
         
-        let wsUrl = apiUrl.replace(/^https?:\/\//, '');
-        wsUrl = `wss://${wsUrl}`;
-        
-        console.log(`🔌 Подключение WebSocket к ${wsUrl}`);
+        // Для Railway используем тот же URL
+        console.log(`🔌 Подключение WebSocket к ${apiUrl}`);
         
         try {
-            const socket = io(wsUrl, {
-                transports: ['websocket', 'polling'],
+            const socket = io(apiUrl, {
+                transports: ['polling', 'websocket'],
                 auth: { token },
                 reconnection: true,
                 reconnectionAttempts: this.maxReconnectAttempts,
                 reconnectionDelay: 1000,
-                reconnectionDelayMax: 5000
+                reconnectionDelayMax: 10000,
+                timeout: 30000,
+                upgrade: true,
+                forceNew: false,
+                path: '/socket.io/'
             });
             
             this.state.socket = socket;
@@ -247,7 +249,11 @@ class ArenaClient {
                 if (this.callbacks.onDisconnected) {
                     this.callbacks.onDisconnected(reason);
                 }
-                this.scheduleReconnect(token, apiUrl);
+                
+                // Не переподключаемся при io client disconnect
+                if (reason !== 'io client disconnect') {
+                    this.scheduleReconnect(token, apiUrl);
+                }
             });
             
             socket.on('connect_error', (err) => {
@@ -315,11 +321,11 @@ class ArenaClient {
                 }
             });
             
-            setInterval(() => {
+            socket.on('ping', () => {
                 if (socket.connected) {
-                    socket.emit('ping');
+                    socket.emit('pong');
                 }
-            }, 25000);
+            });
             
             socket.on('pong', () => {});
             
@@ -338,7 +344,7 @@ class ArenaClient {
             return;
         }
         
-        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+        const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 30000);
         console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
         
         this.timers.reconnectTimer = setTimeout(() => {
