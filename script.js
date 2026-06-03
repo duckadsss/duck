@@ -49,6 +49,28 @@ document.addEventListener('dblclick', () => {
 });
 
 // ============================================================
+// DEBUG LOG ФУНКЦИЯ ДЛЯ АРЕНЫ
+// ============================================================
+function addDebugLog(msg, type = 'info') {
+    const debugContainer = document.getElementById('debugLogs');
+    if (debugContainer) {
+        const timestamp = new Date().toLocaleTimeString();
+        const colors = { info: '#94a3b8', error: '#ef4444', warn: '#f59e0b', success: '#22c55e' };
+        const color = colors[type] || colors.info;
+        const logEntry = document.createElement('div');
+        logEntry.style.cssText = `padding: 4px 0; border-bottom: 1px solid #1e2d4a; color: ${color}; font-size: 10px;`;
+        logEntry.innerHTML = `<span style="color: #4a5568;">[${timestamp}]</span> ${msg}`;
+        debugContainer.insertBefore(logEntry, debugContainer.firstChild);
+        if (debugContainer.children.length > 50) {
+            debugContainer.removeChild(debugContainer.lastChild);
+        }
+    }
+    console.log(`[DEBUG] ${msg}`);
+}
+
+window.addDebugLog = addDebugLog;
+
+// ============================================================
 // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
 // ============================================================
 let state = {
@@ -1509,7 +1531,7 @@ function updateQuestButton(questId, status) {
                 const currentFriends = state.user?.referralCount || 0;
                 const required = quest.required_count || 1;
                 if (currentFriends >= required) {
-                    footer.innerHTML = `<button class="special-quest-btn claim" onclick="claimSpecialQuest('${quest.id}')"><i class="fa-solid fa-gift"></i> ЗАБРАТЬ (${currentFriends}/${required})</button>`;
+                    footer.innerHTML = `<button class="special-quest-btn claim" onclick="claimSpecialQuest('${questId}')"><i class="fa-solid fa-gift"></i> ЗАБРАТЬ (${currentFriends}/${required})</button>`;
                 } else {
                     footer.innerHTML = `<button class="special-quest-btn locked" disabled><i class="fa-solid fa-lock"></i> НУЖНО ${required} ДРУЗЕЙ 5+ (${currentFriends})</button>`;
                 }
@@ -2099,7 +2121,7 @@ async function makeAttack(targetIndex) {
         return; 
     }
     
-    const res = await apiRequest('POST', '/api/arena/move', { battleId, targetIndex });
+    const res = await apiRequest('POST', '/api/arena/move', { battleId });
     
     if (!res?.success) {
         showToast(res?.message || 'Ошибка атаки', '❌');
@@ -2130,6 +2152,13 @@ async function renderArenaFightTab() {
     const statusContainer = document.getElementById('arenaFightStatus');
     const battleContainer = document.getElementById('arenaBattleContainer');
     
+    // Проверка WebSocket соединения
+    if (arenaClient && state.token && !arenaClient.isConnected()) {
+        addDebugLog('WebSocket не подключен, пробуем переподключиться...', 'info');
+        arenaClient.connectSocket(state.token, API_URL);
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
     if (arenaClient?.isBattleActive()) {
         if (battleContainer) battleContainer.style.display = 'block';
         if (statusContainer) statusContainer.style.display = 'none';
@@ -2141,9 +2170,21 @@ async function renderArenaFightTab() {
         if (battleRes?.hasBattle && battleRes.status !== 'finished' && battleRes.status !== 'expired') {
             if (statusContainer) statusContainer.style.display = 'none';
             if (battleContainer) battleContainer.style.display = 'block';
+            
             if (battleRes.status === 'waiting') {
                 arenaClient?.startSearch();
-                battleContainer.innerHTML = `<div class="arena-battle-container" style="text-align:center;padding:40px;"><div class="popup-icon" style="font-size:48px;">⏳</div><div class="popup-title" style="font-size:18px;margin-top:10px;">Поиск соперника...</div><div class="popup-subtitle" style="margin-bottom:20px;">Ожидание игрока</div><div style="background:#0d1120;border-radius:12px;padding:12px;margin-bottom:20px;"><div>💰 Ставка: ${battleRes.entryFee} MMO</div><div>🏆 Приз: ${battleRes.prizePool} MMO</div></div><button class="arena-surrender-btn" onclick="cancelBattleSearch()" style="background:#ef4444;color:#fff;"><i class="fa-solid fa-times"></i> Отменить поиск</button></div>`;
+                battleContainer.innerHTML = `<div class="arena-battle-container" style="text-align:center;padding:40px;">
+                    <div class="popup-icon" style="font-size:48px;">⏳</div>
+                    <div class="popup-title" style="font-size:18px;margin-top:10px;">Поиск соперника...</div>
+                    <div class="popup-subtitle" style="margin-bottom:20px;">Ожидание игрока</div>
+                    <div style="background:#0d1120;border-radius:12px;padding:12px;margin-bottom:20px;">
+                        <div>💰 Ставка: ${battleRes.entryFee} MMO</div>
+                        <div>🏆 Приз: ${battleRes.prizePool} MMO</div>
+                    </div>
+                    <button class="arena-surrender-btn" onclick="cancelBattleSearch()" style="background:#ef4444;color:#fff;">
+                        <i class="fa-solid fa-times"></i> Отменить поиск
+                    </button>
+                </div>`;
             } else if (battleRes.status === 'active') {
                 arenaClient?.startBattle(battleRes.battleId, battleRes.isPlayer1, battleRes.myTeam, battleRes.opponentTeam);
                 renderBattleInterface(battleRes);
@@ -2158,12 +2199,14 @@ async function renderArenaFightTab() {
             if (statusContainer) statusContainer.style.display = 'block';
             if (battleContainer) battleContainer.style.display = 'none';
             arenaClient?.reset();
+            
             const level = state.user?.level || 1;
             let league = 'bronze', entryFee = 500, prizePool = 800;
             if (level >= 50) { league = 'diamond'; entryFee = 5000; prizePool = 8000; }
             else if (level >= 30) { league = 'platinum'; entryFee = 2000; prizePool = 3200; }
             else if (level >= 20) { league = 'gold'; entryFee = 1000; prizePool = 1600; }
             else if (level >= 10) { league = 'silver'; entryFee = 500; prizePool = 800; }
+            
             const entryFeeEl = document.getElementById('arenaEntryFee');
             const prizePoolEl = document.getElementById('arenaPrizePool');
             const leagueEl = document.getElementById('arenaLeague');
@@ -2174,11 +2217,23 @@ async function renderArenaFightTab() {
             const teamRes = await apiRequest('GET', '/api/arena/team');
             if (teamRes?.success && teamRes.team) {
                 const teamContainer = document.getElementById('arenaCurrentTeam');
-                if (teamContainer) teamContainer.innerHTML = teamRes.team.map(creature => `<div class="arena-current-creature"><div class="arena-current-icon">${getIconHtml(creature)}</div><div class="arena-current-name">${escapeHtml(creature.name)}</div></div>`).join('');
-                if (teamRes.teamIds) { arenaClient?.setSelectedTeam(teamRes.teamIds); renderSelectedTeam(); }
+                if (teamContainer) {
+                    teamContainer.innerHTML = teamRes.team.map(creature => `
+                        <div class="arena-current-creature">
+                            <div class="arena-current-icon">${getIconHtml(creature)}</div>
+                            <div class="arena-current-name">${escapeHtml(creature.name)}</div>
+                        </div>
+                    `).join('');
+                }
+                if (teamRes.teamIds) {
+                    arenaClient?.setSelectedTeam(teamRes.teamIds);
+                    renderSelectedTeam();
+                }
             }
         }
-    } catch (err) { debugLog('❌ renderArenaFightTab error: ' + err.message); }
+    } catch (err) {
+        addDebugLog('❌ renderArenaFightTab error: ' + err.message, 'error');
+    }
 }
 
 function renderBattleInterface(battleData) {
@@ -2200,6 +2255,82 @@ function renderBattleInterface(battleData) {
             <button class="arena-surrender-btn" onclick="surrenderBattle()"><i class="fa-solid fa-flag"></i> Сдаться</button>
         </div>
     `;
+}
+
+function updateBattleUIFromClient(data, isPlayer1) {
+    if (!data) return;
+    
+    let myTeam, enemyTeam;
+    if (data.player1Team && data.player2Team) {
+        myTeam = isPlayer1 ? data.player1Team : data.player2Team;
+        enemyTeam = isPlayer1 ? data.player2Team : data.player1Team;
+    } else if (data.myTeam && data.opponentTeam) {
+        myTeam = data.myTeam;
+        enemyTeam = data.opponentTeam;
+    } else {
+        return;
+    }
+    
+    if (!myTeam || !enemyTeam) return;
+    
+    // Обновляем свою команду
+    for (let i = 0; i < myTeam.length; i++) {
+        const creature = myTeam[i];
+        const creatureEl = document.querySelector(`#arenaMyCreatures .arena-battle-creature[data-creature-index="${i}"]`);
+        if (creatureEl && creature) {
+            const hpEl = creatureEl.querySelector('.creature-hp');
+            const fillEl = creatureEl.querySelector('.arena-hp-fill');
+            if (hpEl) hpEl.textContent = `❤️ ${Math.max(0, creature.currentHp)}/${creature.maxHp}`;
+            if (fillEl) fillEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
+            if (!creature.isAlive) creatureEl.classList.add('dead');
+            else creatureEl.classList.remove('dead');
+        }
+    }
+    
+    // Обновляем команду врага
+    const isMyTurn = data.currentTurn && ((data.currentTurn === 'player1' && isPlayer1) || (data.currentTurn === 'player2' && !isPlayer1));
+    
+    for (let i = 0; i < enemyTeam.length; i++) {
+        const creature = enemyTeam[i];
+        const creatureEl = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${i}"]`);
+        if (!creatureEl || !creature) continue;
+        
+        const hpEl = creatureEl.querySelector('.creature-hp');
+        const fillEl = creatureEl.querySelector('.arena-hp-fill');
+        if (hpEl) hpEl.textContent = `❤️ ${Math.max(0, creature.currentHp)}/${creature.maxHp}`;
+        if (fillEl) fillEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
+        if (!creature.isAlive) creatureEl.classList.add('dead');
+        else creatureEl.classList.remove('dead');
+        
+        const existingBtn = creatureEl.querySelector('.arena-attack-btn');
+        if (isMyTurn && creature.isAlive && arenaClient?.isBattleActive()) {
+            if (!existingBtn) {
+                const btn = document.createElement('button');
+                btn.className = 'arena-attack-btn';
+                btn.textContent = '⚔️ Атаковать';
+                btn.onclick = () => makeAttack(i);
+                creatureEl.appendChild(btn);
+            }
+        } else if (existingBtn) {
+            existingBtn.remove();
+        }
+    }
+    
+    // Анимация урона
+    if (data.lastMove && data.lastMove.targetIndex !== undefined) {
+        showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit);
+        
+        const logContainer = document.getElementById('arenaBattleLog');
+        if (logContainer) {
+            const logEntry = document.createElement('div');
+            logEntry.className = `arena-log-entry ${data.lastMove.isCrit ? 'crit' : ''}`;
+            logEntry.innerHTML = `Ход ${data.turnCount || '?'}: Нанесено ${data.lastMove.damage} урона ${data.lastMove.isCrit ? '💥 КРИТ!' : ''}`;
+            logContainer.insertBefore(logEntry, logContainer.firstChild);
+            if (logContainer.children.length > 10) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
+        }
+    }
 }
 
 function showDamageAnimation(targetIndex, damage, isCrit) {
@@ -2246,10 +2377,14 @@ function switchTab(tab) {
     if (tab === 'shop') renderMarketplaceBuy();
     if (tab === 'friends') renderFriendsList();
     if (tab === 'arena') {
+        // Проверяем WebSocket соединение
+        if (arenaClient && state.token && !arenaClient.isConnected()) {
+            addDebugLog('Переключение на арену - подключаем WebSocket...', 'info');
+            arenaClient.connectSocket(state.token, API_URL);
+        }
         renderArenaTeamInventory();
         renderArenaFightTab();
         renderArenaRanking();
-        if (!arenaClient?.isConnected() && state.token) arenaClient?.connectSocket(state.token, API_URL);
     }
 }
 
@@ -2389,50 +2524,6 @@ async function initTelegramApp() {
     });
     window.addEventListener('beforeunload', () => { if (arenaClient) arenaClient.disconnectSocket(); });
     window.addEventListener('online', () => { if ((arenaClient?.isSearching() || arenaClient?.isBattleActive()) && !arenaClient?.isConnected()) arenaClient?.connectSocket(state.token, API_URL); });
-}
-
-function updateBattleUIFromClient(data, isPlayer1) {
-    const myTeam = isPlayer1 ? data.player1Team : data.player2Team;
-    const enemyTeam = isPlayer1 ? data.player2Team : data.player1Team;
-    if (!myTeam || !enemyTeam) return;
-    
-    for (let i = 0; i < myTeam.length; i++) {
-        const creature = myTeam[i];
-        const creatureEl = document.querySelector(`#arenaMyCreatures .arena-battle-creature[data-creature-index="${i}"]`);
-        if (creatureEl) {
-            const hpEl = creatureEl.querySelector('.creature-hp');
-            const fillEl = creatureEl.querySelector('.arena-hp-fill');
-            if (hpEl) hpEl.textContent = `❤️ ${Math.max(0, creature.currentHp)}/${creature.maxHp}`;
-            if (fillEl) fillEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
-            if (!creature.isAlive) creatureEl.classList.add('dead');
-            else creatureEl.classList.remove('dead');
-        }
-    }
-    for (let i = 0; i < enemyTeam.length; i++) {
-        const creature = enemyTeam[i];
-        const creatureEl = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${i}"]`);
-        if (creatureEl) {
-            const hpEl = creatureEl.querySelector('.creature-hp');
-            const fillEl = creatureEl.querySelector('.arena-hp-fill');
-            if (hpEl) hpEl.textContent = `❤️ ${Math.max(0, creature.currentHp)}/${creature.maxHp}`;
-            if (fillEl) fillEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
-            if (!creature.isAlive) creatureEl.classList.add('dead');
-            else creatureEl.classList.remove('dead');
-        }
-    }
-    if (data.lastMove && data.lastMove.targetIndex !== undefined) showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit);
-    if (data.currentTurn) {
-        const isMyTurn = (data.currentTurn === 'player1' && isPlayer1) || (data.currentTurn === 'player2' && !isPlayer1);
-        for (let i = 0; i < enemyTeam.length; i++) {
-            const creature = enemyTeam[i];
-            const creatureEl = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${i}"]`);
-            if (!creatureEl) continue;
-            const existingBtn = creatureEl.querySelector('.arena-attack-btn');
-            if (isMyTurn && creature.isAlive) {
-                if (!existingBtn) { const btn = document.createElement('button'); btn.className = 'arena-attack-btn'; btn.textContent = '⚔️ Атаковать'; btn.onclick = () => makeAttack(i); creatureEl.appendChild(btn); }
-            } else if (existingBtn) existingBtn.remove();
-        }
-    }
 }
 
 function renderAll() {

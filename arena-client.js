@@ -213,12 +213,11 @@ class ArenaClient {
             return;
         }
         
-        // Для Railway используем тот же URL
         console.log(`🔌 Подключение WebSocket к ${apiUrl}`);
         
         try {
             const socket = io(apiUrl, {
-                transports: ['polling', 'websocket'],
+                transports: ['websocket', 'polling'],
                 auth: { token },
                 reconnection: true,
                 reconnectionAttempts: this.maxReconnectAttempts,
@@ -250,7 +249,6 @@ class ArenaClient {
                     this.callbacks.onDisconnected(reason);
                 }
                 
-                // Не переподключаемся при io client disconnect
                 if (reason !== 'io client disconnect') {
                     this.scheduleReconnect(token, apiUrl);
                 }
@@ -295,6 +293,7 @@ class ArenaClient {
             
             socket.on('battle_start', (data) => {
                 console.log('⚔️ Battle start!', data);
+                this.state.confirmationShown = false;
                 this.startBattle(
                     data.battleId,
                     data.isPlayer1,
@@ -318,6 +317,24 @@ class ArenaClient {
             socket.on('confirmation_update', (data) => {
                 if (this.callbacks.onConfirmationUpdate) {
                     this.callbacks.onConfirmationUpdate(data);
+                }
+            });
+            
+            socket.on('error', (error) => {
+                console.error('WebSocket error:', error);
+                if (window.addDebugLog) window.addDebugLog(`WebSocket ошибка: ${error}`, 'error');
+            });
+            
+            socket.on('reconnect_attempt', (attempt) => {
+                console.log(`Reconnect attempt ${attempt}`);
+                if (window.addDebugLog) window.addDebugLog(`Попытка переподключения ${attempt}...`, 'info');
+            });
+            
+            socket.on('reconnect', () => {
+                console.log('Reconnected successfully');
+                if (window.addDebugLog) window.addDebugLog('Переподключено!', 'success');
+                if (this.state.battleActive && this.state.currentBattleId) {
+                    socket.emit('check_battle_status', { battleId: this.state.currentBattleId });
                 }
             });
             
@@ -381,19 +398,18 @@ class ArenaClient {
     // UTILS
     // ============================================================
     
-    // В arena-client.js, найдите метод getCurrentUserId() и замените его на:
-
-getCurrentUserId() {
-    // Исправляем: используем глобальный state
-    if (window.state && window.state.user && window.state.user._id) {
-        return window.state.user._id.toString();
+    getCurrentUserId() {
+        if (window.state && window.state.user && window.state.user._id) {
+            return window.state.user._id.toString();
+        }
+        if (window.state && window.state.user && window.state.user.telegramId) {
+            return window.state.user.telegramId.toString();
+        }
+        if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
+            return window.Telegram.WebApp.initDataUnsafe.user.id.toString();
+        }
+        return null;
     }
-    // Fallback для Telegram WebApp
-    if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
-        return window.Telegram.WebApp.initDataUnsafe.user.id.toString();
-    }
-    return null;
-}
     
     reset() {
         this.disconnectSocket();
@@ -412,6 +428,12 @@ getCurrentUserId() {
             enemyTeam: []
         };
         this.reconnectAttempts = 0;
+    }
+    
+    checkBattleStatus(battleId) {
+        if (this.state.socket && this.state.socket.connected) {
+            this.state.socket.emit('check_battle_status', { battleId });
+        }
     }
 }
 
