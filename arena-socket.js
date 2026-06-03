@@ -531,6 +531,7 @@ class ArenaBattleManager {
     }
 
     async getBattleStatus(userId) {
+    try {
         const user = await this.User.findById(userId);
         if (!user || !user.currentBattleId) {
             return { hasBattle: false };
@@ -542,6 +543,7 @@ class ArenaBattleManager {
             return { hasBattle: false };
         }
         
+        // Проверка просрочки
         if (['waiting', 'pending_confirmation'].includes(battle.status) && battle.expiresAt < new Date()) {
             battle.status = 'expired';
             await battle.save();
@@ -566,10 +568,13 @@ class ArenaBattleManager {
             lastMoveAt: battle.lastMoveAt,
             myTeam: isPlayer1 ? battle.player1Team : battle.player2Team,
             opponentTeam: isPlayer1 ? battle.player2Team : battle.player1Team,
-            battleLog: battle.battleLog.slice(-20),
-            winnerId: battle.winnerId
+            battleLog: battle.battleLog ? battle.battleLog.slice(-20) : []
         };
+    } catch (err) {
+        console.error('getBattleStatus error:', err);
+        return { hasBattle: false, error: err.message };
     }
+}
 
     async getLeaderboard(limit = 50) {
         const leaders = await this.ArenaStats.find()

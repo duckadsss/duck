@@ -2167,8 +2167,6 @@ async function renderArenaFightTab() {
     const statusContainer = document.getElementById('arenaFightStatus');
     const battleContainer = document.getElementById('arenaBattleContainer');
     
-    // НЕ ОТКЛЮЧАЕМ WebSocket при переключении!
-    // Только проверяем соединение
     if (arenaClient && state.token && !arenaClient.isConnected()) {
         addDebugLog('WebSocket не подключен, пробуем переподключиться...', 'info');
         arenaClient.connectSocket(state.token, API_URL);
@@ -2183,12 +2181,21 @@ async function renderArenaFightTab() {
     
     try {
         const battleRes = await apiRequest('GET', '/api/arena/battle/status');
-        if (battleRes?.hasBattle && battleRes.status !== 'finished' && battleRes.status !== 'expired') {
+        
+        // Проверяем ответ
+        if (!battleRes) {
+            addDebugLog('❌ Нет ответа от /api/arena/battle/status', 'error');
+            if (statusContainer) statusContainer.style.display = 'block';
+            if (battleContainer) battleContainer.style.display = 'none';
+            return;
+        }
+        
+        // Если есть активный бой
+        if (battleRes.hasBattle === true && battleRes.status !== 'finished' && battleRes.status !== 'expired') {
             if (statusContainer) statusContainer.style.display = 'none';
             if (battleContainer) battleContainer.style.display = 'block';
             
             if (battleRes.status === 'waiting') {
-                // Не вызываем reset, просто показываем UI
                 if (!arenaClient?.isSearching()) {
                     arenaClient?.startSearch();
                 }
@@ -2205,12 +2212,11 @@ async function renderArenaFightTab() {
                     </button>
                 </div>`;
             } else if (battleRes.status === 'active') {
-    // Убеждаемся что бой активен и отображаем интерфейс
-    if (!arenaClient?.isBattleActive()) {
-        arenaClient?.startBattle(battleRes.battleId, battleRes.isPlayer1, battleRes.myTeam, battleRes.opponentTeam);
-    }
-    renderBattleInterface(battleRes);
-} else if (battleRes.status === 'pending_confirmation') {
+                if (!arenaClient?.isBattleActive()) {
+                    arenaClient?.startBattle(battleRes.battleId, battleRes.isPlayer1, battleRes.myTeam, battleRes.opponentTeam);
+                }
+                renderBattleInterface(battleRes);
+            } else if (battleRes.status === 'pending_confirmation') {
                 const myConfirmed = battleRes.isPlayer1 ? battleRes.player1Confirmed : battleRes.player2Confirmed;
                 if (!myConfirmed && !arenaClient?.getConfirmationShown()) {
                     arenaClient?.setConfirmationShown(true);
@@ -2218,14 +2224,15 @@ async function renderArenaFightTab() {
                 }
             }
         } else {
+            // Нет активного боя - показываем форму поиска
             if (statusContainer) statusContainer.style.display = 'block';
             if (battleContainer) battleContainer.style.display = 'none';
             
-            // НЕ ВЫЗЫВАЕМ reset()! Только останавливаем поиск если он был
             if (arenaClient?.isSearching()) {
                 arenaClient?.stopSearch();
             }
             
+            // Обновляем UI с лигой
             const level = state.user?.level || 1;
             let league = 'bronze', entryFee = 500, prizePool = 800;
             if (level >= 50) { league = 'diamond'; entryFee = 5000; prizePool = 8000; }
@@ -2240,6 +2247,7 @@ async function renderArenaFightTab() {
             if (prizePoolEl) prizePoolEl.textContent = prizePool;
             if (leagueEl) leagueEl.textContent = league === 'diamond' ? 'Алмазная' : league === 'platinum' ? 'Платиновая' : league === 'gold' ? 'Золотая' : league === 'silver' ? 'Серебряная' : 'Бронзовая';
             
+            // Показываем сохранённую команду
             const teamRes = await apiRequest('GET', '/api/arena/team');
             if (teamRes?.success && teamRes.team) {
                 const teamContainer = document.getElementById('arenaCurrentTeam');
@@ -2259,6 +2267,9 @@ async function renderArenaFightTab() {
         }
     } catch (err) {
         addDebugLog('❌ renderArenaFightTab error: ' + err.message, 'error');
+        // В случае ошибки показываем форму поиска
+        if (statusContainer) statusContainer.style.display = 'block';
+        if (battleContainer) battleContainer.style.display = 'none';
     }
 }
 
