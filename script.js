@@ -26,6 +26,56 @@ document.addEventListener('dragstart', (e) => {
 });
 
 // ============================================================
+// ОТЛАДОЧНАЯ ПАНЕЛЬ ДЛЯ ТЕЛЕФОНА
+// ============================================================
+let debugPanel = null;
+
+function createDebugPanel() {
+    if (debugPanel) return;
+    
+    const panel = document.createElement('div');
+    panel.id = 'debugPanel';
+    panel.style.cssText = `
+        position: fixed;
+        bottom: 10px;
+        left: 10px;
+        right: 10px;
+        background: rgba(0,0,0,0.85);
+        color: #0f0;
+        font-family: monospace;
+        font-size: 10px;
+        padding: 8px;
+        border-radius: 8px;
+        z-index: 10000;
+        max-height: 150px;
+        overflow-y: auto;
+        pointer-events: none;
+        backdrop-filter: blur(5px);
+        border: 1px solid #0f0;
+    `;
+    panel.innerHTML = '<div style="font-weight:bold;margin-bottom:5px;">🔍 DEBUG:</div><div id="debugLog"></div>';
+    document.body.appendChild(panel);
+    debugPanel = document.getElementById('debugLog');
+}
+
+function debugLog(msg) {
+    if (!debugPanel) createDebugPanel();
+    const time = new Date().toLocaleTimeString();
+    debugPanel.innerHTML = `<div style="border-bottom:1px solid #333;padding:2px 0;">[${time}] ${msg}</div>` + debugPanel.innerHTML;
+    while (debugPanel.children.length > 20) {
+        debugPanel.removeChild(debugPanel.lastChild);
+    }
+    console.log(msg);
+}
+
+// Скрыть панель по двойному тапу
+document.addEventListener('dblclick', () => {
+    if (debugPanel) {
+        debugPanel.parentElement.style.display = 'none';
+    }
+});
+
+// ============================================================
 // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
 // ============================================================
 let state = {
@@ -77,7 +127,8 @@ let arenaState = {
     confirmationShown: false,
     battleActive: false,
     sseConnection: null,
-    currentBattleIsPlayer1: false
+    currentBattleIsPlayer1: false,
+    currentBattleId: null
 };
 
 let battleTimerInterval = null;
@@ -151,7 +202,7 @@ function getVisualBalance() {
 }
 
 function updateServerSnapshot(newBalance, newIncomePerHour, newLastPassiveIncome) {
-    console.log('📊 updateServerSnapshot:', { newBalance, newIncomePerHour, newLastPassiveIncome });
+    debugLog(`📊 updateServerSnapshot: баланс ${newBalance}`);
     state.serverBalance = newBalance !== undefined ? newBalance : state.serverBalance;
     state.incomePerHour = newIncomePerHour !== undefined ? newIncomePerHour : state.incomePerHour;
     state.lastServerSync = newLastPassiveIncome ? new Date(newLastPassiveIncome).getTime() : Date.now();
@@ -284,7 +335,7 @@ async function loadCreaturesFromServer() {
     const res = await apiRequest('GET', '/api/game/creatures');
     if (res && res.success && res.creatures) {
         CREATURES = res.creatures;
-        console.log(`✅ Загружено ${CREATURES.length} существ`);
+        debugLog(`✅ Загружено ${CREATURES.length} существ`);
         return true;
     }
     return false;
@@ -422,6 +473,8 @@ async function refreshUserProfile() {
 async function initTelegramApp() {
     clearAllIntervals();
     showLoadingScreen(true);
+    createDebugPanel();
+    debugLog('🚀 Инициализация приложения...');
 
     const tg = window.Telegram?.WebApp;
     
@@ -436,9 +489,9 @@ async function initTelegramApp() {
         if (tg.requestFullscreen) {
             try {
                 await tg.requestFullscreen();
-                console.log('✅ Fullscreen requested');
+                debugLog('✅ Fullscreen requested');
             } catch (e) {
-                console.log('Fullscreen request failed:', e);
+                debugLog('Fullscreen request failed: ' + e.message);
             }
         }
         
@@ -460,9 +513,9 @@ async function initTelegramApp() {
         tg.setHeaderColor('#080b14');
         tg.setBackgroundColor('#080b14');
         
-        console.log('✅ Telegram WebApp initialized');
+        debugLog('✅ Telegram WebApp initialized');
     } else {
-        console.warn('⚠️ Telegram WebApp not available');
+        debugLog('⚠️ Telegram WebApp not available');
     }
 
     let initData = tg?.initData || '';
@@ -472,22 +525,22 @@ async function initTelegramApp() {
     
     if (tg?.initDataUnsafe?.start_param) {
         referralCode = tg.initDataUnsafe.start_param;
-        console.log('📎 Реферальный код из start_param:', referralCode);
+        debugLog('📎 Реферальный код из start_param: ' + referralCode);
     }
     
     const urlParams = new URLSearchParams(window.location.search);
     if (!referralCode && urlParams.get('startapp')) {
         referralCode = urlParams.get('startapp');
-        console.log('📎 Реферальный код из startapp URL:', referralCode);
+        debugLog('📎 Реферальный код из startapp URL: ' + referralCode);
     }
     
     if (!referralCode && urlParams.get('ref')) {
         referralCode = urlParams.get('ref');
-        console.log('📎 Реферальный код из ref URL:', referralCode);
+        debugLog('📎 Реферальный код из ref URL: ' + referralCode);
     }
 
     if (!initData && window.location.hostname === 'localhost') {
-        console.warn('⚠️ Dev mode: using mock Telegram user');
+        debugLog('⚠️ Dev mode: using mock Telegram user');
         const mockUser = { id: 123456789, first_name: 'Test', username: 'testuser' };
         initData = `user=${encodeURIComponent(JSON.stringify(mockUser))}&hash=devhash`;
         tgUser = mockUser;
@@ -496,14 +549,17 @@ async function initTelegramApp() {
     if (!initData) {
         showLoadingScreen(false);
         showToast('Открой игру через Telegram!', '⚠️');
+        debugLog('❌ Нет initData');
         return;
     }
 
+    debugLog('📡 Отправка запроса логина...');
     const loginRes = await apiRequest('POST', '/api/auth/login', { initData, referralCode });
 
     if (!loginRes.success) {
         showLoadingScreen(false);
         showToast(loginRes.message || 'Ошибка авторизации', '❌');
+        debugLog('❌ Ошибка логина: ' + loginRes.message);
         return;
     }
 
@@ -515,10 +571,7 @@ async function initTelegramApp() {
     state.lastServerSync = Date.now();
     state.incomePerHour = 0;
     
-    console.log('📦 Логин успешен:');
-    console.log('   - Баланс:', state.user.balance);
-    console.log('   - serverBalance:', state.serverBalance);
-    console.log('   - Инвентарь:', state.inventory.length, 'предметов');
+    debugLog(`✅ Логин успешен! Баланс: ${state.user.balance}, Инвентарь: ${state.inventory.length}`);
 
     const profileRes = await apiRequest('GET', '/api/user/profile');
     if (profileRes && profileRes.success) {
@@ -527,8 +580,7 @@ async function initTelegramApp() {
         state.incomePerHour = profileRes.incomePerHour || 0;
         state.serverBalance = state.user.balance;
         state.lastServerSync = Date.now();
-        console.log('   - После профиля, баланс:', state.user.balance);
-        console.log('   - serverBalance:', state.serverBalance);
+        debugLog(`✅ Профиль загружен, баланс: ${state.user.balance}`);
     }
 
     await loadGameConfig();
@@ -554,11 +606,7 @@ async function initTelegramApp() {
     }
     
     if (state.user) {
-        console.log('👥 Referral info:', {
-            code: state.user.referralCode,
-            count: state.user.referralCount,
-            referredBy: state.user.referredBy
-        });
+        debugLog(`👥 Referral info: код ${state.user.referralCode}, друзей ${state.user.referralCount}`);
     }
     
     setTimeout(() => {
@@ -586,12 +634,10 @@ async function initTelegramApp() {
         });
     });
 
-    // Закрываем SSE при закрытии страницы
     window.addEventListener('beforeunload', () => {
         stopArenaSSE();
     });
 
-    // Восстанавливаем SSE при возврате онлайн
     window.addEventListener('online', () => {
         if ((arenaState.isSearching || arenaState.battleActive) && !arenaState.sseConnection) {
             startArenaSSE();
@@ -737,7 +783,7 @@ function showLoadingScreen(show) {
 })();
 
 // ============================================================
-// UPDATE UI
+// UPDATE UI (ОСТАВЛЯЕМ КАК БЫЛО, ДОБАВЛЯЕМ ТОЛЬКО DEBUG)
 // ============================================================
 function updatePlayerInfo() {
     if (!state.user) return;
@@ -806,9 +852,6 @@ function updateUpgradeButton() {
     }
 }
 
-// ============================================================
-// RENDER CARDS
-// ============================================================
 function renderCards() {
     const grid = document.getElementById('cardsGrid');
     if (!grid) return;
@@ -2647,7 +2690,7 @@ function copyToClipboard(text) {
 }
 
 // ============================================================
-// ARENA MODULE С SSE
+// ARENA MODULE С SSE (ОСНОВНЫЕ ИСПРАВЛЕНИЯ)
 // ============================================================
 
 // Инициализация вебхуков арены
@@ -2657,7 +2700,7 @@ function initArenaWebhooks() {
     const tg = window.Telegram.WebApp;
     
     tg.onEvent('popupClosed', (event) => {
-        console.log('📱 Popup closed:', event);
+        debugLog('📱 Popup closed: ' + event.button_id);
         if (event.button_id === 'accept') {
             acceptBattleWebhook();
         } else if (event.button_id === 'reject') {
@@ -2988,39 +3031,38 @@ async function saveArenaTeam() {
 }
 
 // ============================================================
-// SSE — подключение к серверным событиям арены
+// SSE — подключение к серверным событиям арены (ИСПРАВЛЕННАЯ)
 // ============================================================
 function startArenaSSE() {
     stopArenaSSE();
     
     if (!state.token) {
-        console.log('❌ Нет токена, SSE не подключён');
+        debugLog('❌ Нет токена, SSE не подключён');
         return;
     }
     
-    console.log('📡 Подключаем SSE к:', API_URL);
+    debugLog('📡 Подключаем SSE...');
     
     const url = `${API_URL}/api/arena/events?token=${encodeURIComponent(state.token)}`;
     const sse = new EventSource(url);
     arenaState.sseConnection = sse;
     
     sse.onopen = () => {
-        console.log('🔓 SSE соединение открыто');
+        debugLog('✅ SSE соединение открыто!');
     };
     
     sse.onerror = (e) => {
-        console.warn('⚠️ SSE ошибка:', e);
+        debugLog('⚠️ SSE ошибка, переподключение...');
         if (arenaState.isSearching || arenaState.battleActive) {
-            console.log('🔄 Переподключаемся через 3с...');
             setTimeout(startArenaSSE, 3000);
         }
     };
     
-    // ===== ВАЖНО: обработка match_found =====
     sse.addEventListener('match_found', (e) => {
-        console.log('⚔️ match_found ПОЛУЧЕНО!', e.data);
+        debugLog('⚔️ ПОЛУЧЕНО match_found!');
         try {
             const data = JSON.parse(e.data);
+            debugLog(`Бой ${data.battleId}, я игрок ${data.isPlayer1 ? '1' : '2'}`);
             arenaState.isSearching = true;
             arenaState.currentBattleIsPlayer1 = data.isPlayer1;
             arenaState.currentBattleId = data.battleId;
@@ -3033,107 +3075,88 @@ function startArenaSSE() {
                 showNativeBattleConfirmation(data);
             }
         } catch (err) {
-            console.error('Ошибка обработки match_found:', err);
+            debugLog('❌ Ошибка match_found: ' + err.message);
         }
     });
     
-    // ===== Обработка confirmation_update =====
-    sse.addEventListener('confirmation_update', (e) => {
-        console.log('📋 confirmation_update ПОЛУЧЕНО!', e.data);
-        try {
-            const data = JSON.parse(e.data);
-            updateBattleStatusDisplay(data);
-        } catch (err) {
-            console.error('Ошибка обработки confirmation_update:', err);
-        }
-    });
-    
-    // ===== Обработка battle_start (САМОЕ ВАЖНОЕ!) =====
     sse.addEventListener('battle_start', (e) => {
-        console.log('🚀 battle_start ПОЛУЧЕНО!', e.data);
+        debugLog('🚀 ПОЛУЧЕНО battle_start!');
         try {
             const data = JSON.parse(e.data);
+            debugLog(`Бой начался! Ход: ${data.currentTurn}`);
             arenaState.confirmationShown = false;
             arenaState.battleActive = true;
             arenaState.isSearching = false;
             arenaState.currentBattleIsPlayer1 = data.isPlayer1;
             arenaState.currentBattleId = data.battleId;
             
-            // Закрываем попап если открыт
             const overlay = document.getElementById('overlay');
             if (overlay && overlay.classList.contains('show')) closeOverlay();
             
-            // ОТОБРАЖАЕМ ИНТЕРФЕЙС БОЯ!
             renderBattleInterface(data);
+            debugLog('✅ Интерфейс боя отображён');
             
-            // Обновляем поисковый статус
             const searchStatus = document.getElementById('arenaSearchStatus');
             if (searchStatus) searchStatus.innerHTML = '';
-            
-            const findBtn = document.getElementById('findMatchBtn');
-            if (findBtn) {
-                findBtn.disabled = false;
-                findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой';
-            }
         } catch (err) {
-            console.error('Ошибка обработки battle_start:', err);
+            debugLog('❌ Ошибка battle_start: ' + err.message);
         }
     });
     
-    // ===== Обработка move_update (обновление хода) =====
     sse.addEventListener('move_update', (e) => {
-        console.log('🗡️ move_update ПОЛУЧЕНО!', e.data);
+        debugLog('🗡️ ПОЛУЧЕНО move_update!');
         try {
             const data = JSON.parse(e.data);
-            if (!arenaState.battleActive) return;
-            
-            // Обновляем интерфейс боя с новыми данными
+            if (!arenaState.battleActive) {
+                debugLog('⚠️ Бой не активен, пропускаем');
+                return;
+            }
             updateBattleUI(data);
+            debugLog('✅ UI обновлён после хода');
         } catch (err) {
-            console.error('Ошибка обработки move_update:', err);
+            debugLog('❌ Ошибка move_update: ' + err.message);
         }
     });
     
-    // ===== Обработка battle_end =====
     sse.addEventListener('battle_end', (e) => {
-        console.log('🏁 battle_end ПОЛУЧЕНО!', e.data);
+        debugLog('🏁 ПОЛУЧЕНО battle_end!');
         try {
             const data = JSON.parse(e.data);
             arenaState.battleActive = false;
             arenaState.isSearching = false;
-            arenaState.confirmationShown = false;
             
             const isWin = data.winnerId === state.user?._id?.toString();
+            debugLog(isWin ? '🎉 ПОБЕДА!' : '💀 ПОРАЖЕНИЕ');
             showNativeBattleResult(isWin, data.prizePool || 0);
             
-            // Останавливаем таймер
-            if (battleTimerInterval) {
-                clearInterval(battleTimerInterval);
-                battleTimerInterval = null;
-            }
-            
-            // Обновляем профиль после боя
-            refreshUserProfile();
+            if (battleTimerInterval) clearInterval(battleTimerInterval);
             renderArenaFightTab();
+            refreshUserProfile();
         } catch (err) {
-            console.error('Ошибка обработки battle_end:', err);
+            debugLog('❌ Ошибка battle_end: ' + err.message);
         }
     });
     
-    console.log('📡 SSE настроен, ожидаем события...');
+    debugLog('📡 SSE настроен, ожидаем события...');
 }
 
 function stopArenaSSE() {
     if (arenaState.sseConnection) {
         arenaState.sseConnection.close();
         arenaState.sseConnection = null;
-        console.log('📡 SSE закрыт');
+        debugLog('📡 SSE закрыт');
     }
 }
 
 function renderBattleInterface(battleData) {
     const container = document.getElementById('arenaBattleContainer');
-    if (!container) return;
+    if (!container) {
+        debugLog('❌ arenaBattleContainer не найден!');
+        return;
+    }
+    
+    debugLog('🎨 Рендерим интерфейс боя...');
+    debugLog(`myTeam: ${battleData.myTeam?.length} существ, opponentTeam: ${battleData.opponentTeam?.length} существ`);
     
     arenaState.battleActive = true;
     arenaState.currentBattleIsPlayer1 = battleData.isPlayer1;
@@ -3197,6 +3220,7 @@ function renderBattleInterface(battleData) {
         </div>
     `;
     
+    debugLog(`✅ Рендер завершён. Моих: ${myTeam.length}, Врагов: ${enemyTeam.length}`);
     startBattleTimer();
 }
 
@@ -3211,14 +3235,14 @@ async function makeAttack(targetIndex) {
         return;
     }
     
-    console.log(`⚔️ Атака цели ${targetIndex} в бою ${arenaState.currentBattleId}`);
+    debugLog(`⚔️ Атака цели ${targetIndex} в бою ${arenaState.currentBattleId}`);
     
     const res = await apiRequest('POST', '/api/arena/move', { 
         battleId: arenaState.currentBattleId, 
         targetIndex: targetIndex 
     });
     
-    console.log('Результат атаки:', res);
+    debugLog(`Результат атаки: ${res?.success ? 'успех' : 'ошибка'}`);
     
     if (res?.success) {
         if (res.finished) {
@@ -3230,8 +3254,11 @@ async function makeAttack(targetIndex) {
         } else {
             if (res.lastMove) {
                 showDamageAnimation(targetIndex, res.lastMove.damage, res.lastMove.isCrit);
-                // Обновляем состояние после хода
-                await refreshBattleStatus();
+                const freshStatus = await apiRequest('GET', '/api/arena/battle/status');
+                if (freshStatus?.hasBattle && freshStatus.status === 'active') {
+                    arenaState.currentBattleIsPlayer1 = freshStatus.isPlayer1;
+                    updateBattleUI(freshStatus);
+                }
             }
         }
     } else {
@@ -3248,7 +3275,7 @@ async function refreshBattleStatus() {
 }
 
 function showDamageAnimation(targetIndex, damage, isCrit) {
-    const enemyCreature = document.querySelector(`.arena-battle-creature[data-enemy-index="${targetIndex}"]`);
+    const enemyCreature = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${targetIndex}"]`);
     if (enemyCreature) {
         const damageDiv = document.createElement('div');
         damageDiv.className = `arena-damage-number ${isCrit ? 'crit' : ''}`;
@@ -3318,15 +3345,143 @@ async function surrenderBattle() {
     }
 }
 
+function updateBattleUI(data) {
+    debugLog('🔄 updateBattleUI вызвана');
+    
+    if (!arenaState.battleActive) {
+        debugLog('❌ Бой не активен');
+        return;
+    }
+    
+    const isPlayer1 = arenaState.currentBattleIsPlayer1;
+    debugLog(`isPlayer1: ${isPlayer1}`);
+    
+    // Получаем команды
+    let myTeam = null;
+    let enemyTeam = null;
+    
+    if (data.player1Team && data.player2Team) {
+        if (isPlayer1) {
+            myTeam = data.player1Team;
+            enemyTeam = data.player2Team;
+        } else {
+            myTeam = data.player2Team;
+            enemyTeam = data.player1Team;
+        }
+    } else if (data.myTeam && data.opponentTeam) {
+        myTeam = data.myTeam;
+        enemyTeam = data.opponentTeam;
+    }
+    
+    if (!myTeam || !enemyTeam) {
+        debugLog('❌ Нет данных о командах');
+        return;
+    }
+    
+    // Обновляем моих существ
+    for (let i = 0; i < myTeam.length; i++) {
+        const creature = myTeam[i];
+        const creatureEl = document.querySelector(`#arenaMyCreatures .arena-battle-creature[data-creature-index="${i}"]`);
+        if (creatureEl) {
+            const hpEl = creatureEl.querySelector('.creature-hp');
+            const fillEl = creatureEl.querySelector('.arena-hp-fill');
+            if (hpEl) hpEl.textContent = `❤️ ${Math.max(0, creature.currentHp)}/${creature.maxHp}`;
+            if (fillEl) fillEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
+            if (!creature.isAlive) creatureEl.classList.add('dead');
+            debugLog(`Мой ${i}: HP ${creature.currentHp}/${creature.maxHp}`);
+        } else {
+            debugLog(`⚠️ Элемент моего ${i} не найден!`);
+        }
+    }
+    
+    // Обновляем врагов
+    for (let i = 0; i < enemyTeam.length; i++) {
+        const creature = enemyTeam[i];
+        const creatureEl = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${i}"]`);
+        if (creatureEl) {
+            const hpEl = creatureEl.querySelector('.creature-hp');
+            const fillEl = creatureEl.querySelector('.arena-hp-fill');
+            if (hpEl) hpEl.textContent = `❤️ ${Math.max(0, creature.currentHp)}/${creature.maxHp}`;
+            if (fillEl) fillEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
+            if (!creature.isAlive) creatureEl.classList.add('dead');
+            debugLog(`Враг ${i}: HP ${creature.currentHp}/${creature.maxHp}`);
+        } else {
+            debugLog(`⚠️ Элемент врага ${i} не найден!`);
+        }
+    }
+    
+    // Добавляем запись в лог
+    if (data.lastMove && data.lastMove.damage !== undefined) {
+        const logEl = document.getElementById('arenaBattleLog');
+        if (logEl) {
+            const logEntry = document.createElement('div');
+            logEntry.className = `arena-log-entry ${data.lastMove.isCrit ? 'crit' : ''}`;
+            const targetName = data.lastMove.targetName || `питомец ${(data.lastMove.targetIndex || 0) + 1}`;
+            logEntry.textContent = `⚔️ Ход ${data.turnCount || '?'}: ${data.lastMove.damage} урона${data.lastMove.isCrit ? ' 💥 КРИТ!' : ''}`;
+            logEl.appendChild(logEntry);
+            logEl.scrollTop = logEl.scrollHeight;
+            while (logEl.children.length > 20) logEl.removeChild(logEl.firstChild);
+        }
+    }
+    
+    // Обновляем кнопки атаки
+    if (data.currentTurn) {
+        const isMyTurn = (data.currentTurn === 'player1' && isPlayer1) ||
+                         (data.currentTurn === 'player2' && !isPlayer1);
+        
+        for (let i = 0; i < enemyTeam.length; i++) {
+            const creature = enemyTeam[i];
+            const creatureEl = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${i}"]`);
+            if (!creatureEl) continue;
+            
+            const existingBtn = creatureEl.querySelector('.arena-attack-btn');
+            
+            if (isMyTurn && creature.isAlive) {
+                if (!existingBtn) {
+                    const btn = document.createElement('button');
+                    btn.className = 'arena-attack-btn';
+                    btn.textContent = '⚔️ Атаковать';
+                    btn.onclick = () => makeAttack(i);
+                    creatureEl.appendChild(btn);
+                }
+            } else if (existingBtn) {
+                existingBtn.remove();
+            }
+        }
+    }
+    
+    startBattleTimer();
+}
+
+function updateBattleStatusDisplay(data) {
+    const searchStatus = document.getElementById('arenaSearchStatus');
+    const findBtn = document.getElementById('findMatchBtn');
+    const battleContainer = document.getElementById('arenaBattleContainer');
+    const statusContainer = document.getElementById('arenaFightStatus');
+    
+    if (data.status === 'pending_confirmation') {
+        if (searchStatus) searchStatus.innerHTML = '⚔️ Соперник найден! Ожидание подтверждения...';
+        if (statusContainer) statusContainer.style.display = 'block';
+        if (battleContainer) battleContainer.style.display = 'none';
+        if (findBtn) {
+            findBtn.disabled = false;
+            findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой';
+        }
+    } else if (data.status === 'active') {
+        if (searchStatus) searchStatus.innerHTML = '';
+        if (statusContainer) statusContainer.style.display = 'none';
+        if (battleContainer) battleContainer.style.display = 'block';
+    }
+}
+
 async function renderArenaFightTab() {
-    console.log('🎮 renderArenaFightTab вызвана');
+    debugLog('🎮 renderArenaFightTab вызвана');
     
     const statusContainer = document.getElementById('arenaFightStatus');
     const battleContainer = document.getElementById('arenaBattleContainer');
     
-    // Если бой активен по локальному состоянию, не перезагружаем интерфейс
     if (arenaState.battleActive) {
-        console.log('Бой активен, пропускаем перерисовку');
+        debugLog('Бой активен, пропускаем перерисовку');
         if (battleContainer) battleContainer.style.display = 'block';
         if (statusContainer) statusContainer.style.display = 'none';
         return;
@@ -3334,7 +3489,7 @@ async function renderArenaFightTab() {
     
     try {
         const battleRes = await apiRequest('GET', '/api/arena/battle/status');
-        console.log('📡 Статус боя:', battleRes);
+        debugLog('📡 Статус боя: ' + (battleRes?.status || 'нет боя'));
         
         if (battleRes?.hasBattle && battleRes.status !== 'finished' && battleRes.status !== 'expired') {
             if (statusContainer) statusContainer.style.display = 'none';
@@ -3376,7 +3531,6 @@ async function renderArenaFightTab() {
             arenaState.battleActive = false;
             arenaState.isSearching = false;
             
-            // Обновляем информацию о лиге
             const level = state.user?.level || 1;
             let league = 'bronze';
             let entryFee = 500;
@@ -3397,7 +3551,6 @@ async function renderArenaFightTab() {
                                                   league === 'gold' ? 'Золотая' : 
                                                   league === 'silver' ? 'Серебряная' : 'Бронзовая';
             
-            // Показываем текущую команду
             const teamRes = await apiRequest('GET', '/api/arena/team');
             if (teamRes?.success && teamRes.team) {
                 const teamContainer = document.getElementById('arenaCurrentTeam');
@@ -3409,7 +3562,6 @@ async function renderArenaFightTab() {
                         </div>
                     `).join('');
                 }
-                // Обновляем selectedTeam
                 if (teamRes.teamIds) {
                     arenaState.selectedTeam = teamRes.teamIds;
                     renderSelectedTeam();
@@ -3417,7 +3569,7 @@ async function renderArenaFightTab() {
             }
         }
     } catch (err) {
-        console.error('renderArenaFightTab error:', err);
+        debugLog('❌ renderArenaFightTab error: ' + err.message);
     }
 }
 
@@ -3487,9 +3639,8 @@ function switchTab(tab) {
         renderArenaFightTab();
         renderArenaRanking();
         
-        // Переподключаем SSE если его нет
         if (!arenaState.sseConnection && state.token) {
-            console.log('🔄 Переподключаем SSE при входе в арену');
+            debugLog('🔄 Переподключаем SSE при входе в арену');
             startArenaSSE();
         }
     }
@@ -3550,161 +3701,41 @@ document.addEventListener('DOMContentLoaded', () => {
     initTelegramApp();
     
     window.checkSSE = () => {
-        console.log('🔍 Проверка SSE:');
-        console.log('   connection exists:', !!arenaState.sseConnection);
-        console.log('   readyState:', arenaState.sseConnection?.readyState);
-        console.log('   isSearching:', arenaState.isSearching);
-        console.log('   battleActive:', arenaState.battleActive);
+        debugLog('🔍 Проверка SSE:');
+        debugLog(`   connection exists: ${!!arenaState.sseConnection}`);
+        debugLog(`   readyState: ${arenaState.sseConnection?.readyState}`);
+        debugLog(`   isSearching: ${arenaState.isSearching}`);
+        debugLog(`   battleActive: ${arenaState.battleActive}`);
     };
     
-    // ========== ДОБАВИТЬ ЭТОТ КОД ==========
     window.testSSE = () => {
-        console.log('=== ДИАГНОСТИКА SSE ===');
-        console.log('sseConnection exists:', !!arenaState.sseConnection);
-        console.log('readyState:', arenaState.sseConnection?.readyState);
-        console.log('isSearching:', arenaState.isSearching);
-        console.log('battleActive:', arenaState.battleActive);
-        console.log('token exists:', !!state.token);
-        console.log('API_URL:', API_URL);
+        debugLog('=== ДИАГНОСТИКА SSE ===');
+        debugLog(`sseConnection exists: ${!!arenaState.sseConnection}`);
+        debugLog(`readyState: ${arenaState.sseConnection?.readyState}`);
+        debugLog(`isSearching: ${arenaState.isSearching}`);
+        debugLog(`battleActive: ${arenaState.battleActive}`);
+        debugLog(`token exists: ${!!state.token}`);
+        debugLog(`API_URL: ${API_URL}`);
     };
     
     window.reconnectSSE = () => {
-        console.log('🔄 Принудительное переподключение SSE...');
+        debugLog('🔄 Принудительное переподключение SSE...');
         stopArenaSSE();
         startArenaSSE();
     };
     
     window.listenSSE = () => {
         if (!arenaState.sseConnection) {
-            console.log('❌ SSE не подключен');
+            debugLog('❌ SSE не подключен');
             return;
         }
-        console.log('👂 Начинаю слушать SSE события...');
+        debugLog('👂 Начинаю слушать SSE события...');
         arenaState.sseConnection.addEventListener('test', (e) => {
-            console.log('🧪 TEST событие:', e.data);
+            debugLog('🧪 TEST событие: ' + e.data);
         });
-        console.log('✅ Слушатель добавлен. Ждите событий...');
+        debugLog('✅ Слушатель добавлен. Ждите событий...');
     };
-    // ========== КОНЕЦ ДОБАВЛЕННОГО КОДА ==========
 });
-
-// ============================================================
-// НОВЫЕ ФУНКЦИИ ДЛЯ АРЕНЫ (SSE И ОБНОВЛЕНИЯ)
-// ============================================================
-
-function updateBattleUI(data) {
-    // Проверяем, что бой активен и мы в правильном режиме
-    if (!arenaState.battleActive) return;
-    
-    // Обновляем здоровье моих существ
-    if (data.player1Team && data.player2Team) {
-        const myTeam = arenaState.currentBattleIsPlayer1 ? data.player1Team : data.player2Team;
-        const enemyTeam = arenaState.currentBattleIsPlayer1 ? data.player2Team : data.player1Team;
-        
-        // Обновляем отображение моих существ
-        myTeam.forEach((creature, idx) => {
-            const creatureEl = document.querySelector(`#arenaMyCreatures .arena-battle-creature[data-creature-index="${idx}"]`);
-            if (!creatureEl) return;
-            
-            const hpEl = creatureEl.querySelector('.creature-hp');
-            const fillEl = creatureEl.querySelector('.arena-hp-fill');
-            if (hpEl) hpEl.textContent = `❤️ ${creature.currentHp}/${creature.maxHp}`;
-            if (fillEl) fillEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
-            if (!creature.isAlive) creatureEl.classList.add('dead');
-        });
-        
-        // Обновляем отображение существ противника
-        enemyTeam.forEach((creature, idx) => {
-            const creatureEl = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${idx}"]`);
-            if (!creatureEl) return;
-            
-            const hpEl = creatureEl.querySelector('.creature-hp');
-            const fillEl = creatureEl.querySelector('.arena-hp-fill');
-            if (hpEl) hpEl.textContent = `❤️ ${creature.currentHp}/${creature.maxHp}`;
-            if (fillEl) fillEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
-            if (!creature.isAlive) creatureEl.classList.add('dead');
-        });
-    }
-    
-    // Обновляем лог боя
-    if (data.lastMove && data.lastMove.damage !== undefined) {
-        const logEl = document.getElementById('arenaBattleLog');
-        if (logEl) {
-            const logEntry = document.createElement('div');
-            logEntry.className = `arena-log-entry ${data.lastMove.isCrit ? 'crit' : ''}`;
-            logEntry.textContent = `Ход ${data.turnCount}: ${data.lastMove.attackerName || 'Атака'} → нанесено ${data.lastMove.damage} урона ${data.lastMove.isCrit ? '💥 КРИТ!' : ''}`;
-            logEl.appendChild(logEntry);
-            logEl.scrollTop = logEl.scrollHeight;
-            
-            // Ограничиваем количество записей в логе
-            while (logEl.children.length > 20) {
-                logEl.removeChild(logEl.firstChild);
-            }
-        }
-    }
-    
-    // Показываем анимацию урона
-    if (data.lastMove && data.lastMove.targetIndex !== undefined && data.lastMove.damage) {
-        showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit);
-    }
-    
-    // Обновляем чей ход и перерисовываем кнопки атаки
-    if (data.currentTurn) {
-        const isMyTurn = (data.currentTurn === 'player1' && arenaState.currentBattleIsPlayer1) ||
-                         (data.currentTurn === 'player2' && !arenaState.currentBattleIsPlayer1);
-        
-        const enemyTeam = arenaState.currentBattleIsPlayer1 ? 
-            (data.player2Team || []) : (data.player1Team || []);
-        
-        enemyTeam.forEach((creature, idx) => {
-            const creatureEl = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${idx}"]`);
-            if (!creatureEl) return;
-            
-            const existingBtn = creatureEl.querySelector('.arena-attack-btn');
-            if (isMyTurn && creature.isAlive) {
-                if (!existingBtn) {
-                    const btn = document.createElement('button');
-                    btn.className = 'arena-attack-btn';
-                    btn.textContent = '⚔️ Атаковать';
-                    btn.onclick = () => makeAttack(idx);
-                    creatureEl.appendChild(btn);
-                }
-            } else if (existingBtn) {
-                existingBtn.remove();
-            }
-        });
-    }
-    
-    // Сбрасываем таймер хода
-    if (battleTimerInterval) {
-        clearInterval(battleTimerInterval);
-        battleTimerInterval = null;
-    }
-    startBattleTimer();
-}
-
-function updateBattleStatusDisplay(data) {
-    // Обновляем статус поиска/ожидания
-    const searchStatus = document.getElementById('arenaSearchStatus');
-    const findBtn = document.getElementById('findMatchBtn');
-    const battleContainer = document.getElementById('arenaBattleContainer');
-    const statusContainer = document.getElementById('arenaFightStatus');
-    
-    if (data.status === 'pending_confirmation') {
-        if (searchStatus) searchStatus.innerHTML = '⚔️ Соперник найден! Ожидание подтверждения...';
-        if (statusContainer) statusContainer.style.display = 'block';
-        if (battleContainer) battleContainer.style.display = 'none';
-        if (findBtn) {
-            findBtn.disabled = false;
-            findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой';
-        }
-    } else if (data.status === 'active') {
-        if (searchStatus) searchStatus.innerHTML = '';
-        if (statusContainer) statusContainer.style.display = 'none';
-        if (battleContainer) battleContainer.style.display = 'block';
-    }
-}
-
 
 // ============================================================
 // ЭКСПОРТ ФУНКЦИЙ ДЛЯ ГЛОБАЛЬНОГО ДОСТУПА
@@ -3765,3 +3796,4 @@ window.rejectBattleWebhook = rejectBattleWebhook;
 window.makeAttack = makeAttack;
 window.surrenderBattle = surrenderBattle;
 window.cancelBattleSearch = cancelBattleSearch;
+window.debugLog = debugLog;
