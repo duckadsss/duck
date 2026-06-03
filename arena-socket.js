@@ -488,11 +488,12 @@ class ArenaBattleManager {
             const player1Id = battle.player1Id;
             const player2Id = battle.player2Id;
             
-            battle.status = 'expired';
-            await battle.save();
-            expiredCount++;
-            
-            if (battle.status === 'waiting' && player1Id) {
+            const wasWaiting = battle.status === 'waiting';
+battle.status = 'expired';
+await battle.save();
+expiredCount++;
+
+if (wasWaiting && player1Id) {
                 await this.User.findByIdAndUpdate(player1Id, {
                     $inc: { balance: entryFee },
                     $set: { currentBattleId: null }

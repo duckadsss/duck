@@ -1775,7 +1775,7 @@ app.get('/api/user/leaderboard', authMiddleware, async (req, res) => {
 // АРЕНА - ЭНДПОИНТЫ
 // ============================================
 
-let arenaSocketManager = null;
+let arenaSocketManager = new ArenaModule.ArenaSocketManager(io);
 let arenaManager = null;
 
 app.get('/api/arena/team', authMiddleware, async (req, res) => {
@@ -2988,19 +2988,16 @@ mongoose.connection.once('open', async () => {
     await getGameConfig();
     
     // Создаём менеджеры (если ещё не созданы)
-    if (!arenaSocketManager) {
-        arenaSocketManager = new ArenaModule.ArenaSocketManager(io);
-    }
     if (!arenaManager) {
-        arenaManager = new ArenaModule.ArenaBattleManager(
-            ArenaBattle,
-            User,
-            ArenaStats,
-            getCreature,
-            sendNotificationToUser,
-            arenaSocketManager
-        );
-    }
+    arenaManager = new ArenaModule.ArenaBattleManager(
+        ArenaBattle,
+        User,
+        ArenaStats,
+        getCreature,
+        sendNotificationToUser,
+        arenaSocketManager
+    );
+}
     
     setInterval(async () => {
         if (arenaManager) {
