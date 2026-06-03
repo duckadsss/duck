@@ -498,7 +498,7 @@ expiredCount++;
         $inc: { balance: entryFee },
         $set: { currentBattleId: null }
     });
-
+}
             
             if (player1Id) {
                 await this.User.updateOne({ _id: player1Id }, { $set: { currentBattleId: null } });
