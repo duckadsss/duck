@@ -2774,7 +2774,6 @@ function showNativeBattleResult(isWin, prizePool) {
         overlay.classList.add('show');
         return;
     }
-    
     const tg = window.Telegram.WebApp;
     const title = isWin ? '🏆 ПОБЕДА!' : '💀 ПОРАЖЕНИЕ';
     const message = isWin 
@@ -2811,27 +2810,24 @@ async function findMatch() {
     }
     if (searchStatus) searchStatus.innerHTML = '🔍 Поиск соперника...';
     
-
-startArenaSSE();  // ← переносим СЮДА, до запроса
-const res = await apiRequest('POST', '/api/arena/find-match');
-
-if (res?.success) {
-    if (res.battle?.player2Id) {
-        if (searchStatus) searchStatus.innerHTML = '⚔️ Соперник найден! Ожидание подтверждения...';
-        // ← добавляем fallback для player2:
-        const statusRes = await apiRequest('GET', '/api/arena/battle/status');
-        if (statusRes?.hasBattle && statusRes.status === 'pending_confirmation') {
-            arenaState.confirmationShown = true;
-            showNativeBattleConfirmation(statusRes);
+    startArenaSSE();
+    const res = await apiRequest('POST', '/api/arena/find-match');
+    
+    if (res?.success) {
+        if (res.battle?.player2Id) {
+            if (searchStatus) searchStatus.innerHTML = '⚔️ Соперник найден! Ожидание подтверждения...';
+            const statusRes = await apiRequest('GET', '/api/arena/battle/status');
+            if (statusRes?.hasBattle && statusRes.status === 'pending_confirmation') {
+                arenaState.confirmationShown = true;
+                showNativeBattleConfirmation(statusRes);
+            }
+        } else {
+            if (searchStatus) searchStatus.innerHTML = '⏳ В очереди поиска...';
         }
     } else {
-        if (searchStatus) searchStatus.innerHTML = '⏳ В очереди поиска...';
-    }
-
-} else {
-    stopArenaSSE();  // ← добавить
-    showToast(res?.message || 'Ошибка поиска', '❌');
-    arenaState.isSearching = false;
+        stopArenaSSE();
+        showToast(res?.message || 'Ошибка поиска', '❌');
+        arenaState.isSearching = false;
         if (findBtn) {
             findBtn.disabled = false;
             findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой';
@@ -3225,7 +3221,6 @@ function updateBattleInterface(battleData) {
     
     startBattleTimer();
 }
-
 function renderBattleInterface(battleData) {
     const container = document.getElementById('arenaBattleContainer');
     if (!container) return;
