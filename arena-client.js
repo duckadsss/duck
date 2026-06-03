@@ -381,9 +381,19 @@ class ArenaClient {
     // UTILS
     // ============================================================
     
-    getCurrentUserId() {
-        return window.state?.user?._id?.toString() || null;
+    // В arena-client.js, найдите метод getCurrentUserId() и замените его на:
+
+getCurrentUserId() {
+    // Исправляем: используем глобальный state
+    if (window.state && window.state.user && window.state.user._id) {
+        return window.state.user._id.toString();
     }
+    // Fallback для Telegram WebApp
+    if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
+        return window.Telegram.WebApp.initDataUnsafe.user.id.toString();
+    }
+    return null;
+}
     
     reset() {
         this.disconnectSocket();

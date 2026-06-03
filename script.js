@@ -2366,36 +2366,87 @@ async function initTelegramApp() {
     updateAdsStatus();
     
     // ARENA INIT (WebSocket)
-    arenaClient = window.arenaClient;
-    if (arenaClient) {
-        arenaClient.loadTeamFromStorage();
-        arenaClient.connectSocket(state.token, API_URL);
-        arenaClient.on('onMatchFound', (data) => showNativeBattleConfirmation(data));
-        arenaClient.on('onBattleStartUI', (data) => { if (document.getElementById('overlay')?.classList.contains('show')) closeOverlay(); renderBattleInterface(data); });
-        arenaClient.on('onBattleUpdate', (data, isPlayer1) => updateBattleUIFromClient(data, isPlayer1));
-        arenaClient.on('onBattleEnd', (isWin, prizePool) => { showNativeBattleResult(isWin, prizePool); refreshUserProfile(); });
-        arenaClient.on('onTimerTick', (timeLeft) => { const timerEl = document.getElementById('arenaBattleTimer'); if (timerEl) { timerEl.textContent = `⏱ ${timeLeft}`; if (timeLeft <= 5) timerEl.classList.add('warning'); else timerEl.classList.remove('warning'); } });
-        arenaClient.on('onSearchTimeout', () => { const findBtn = document.getElementById('findMatchBtn'); const searchStatus = document.getElementById('arenaSearchStatus'); if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; } if (searchStatus) searchStatus.innerHTML = '⏱ Поиск отменён (таймаут)'; showToast('Поиск занял слишком много времени, попробуйте снова', '⚠️'); });
-        arenaClient.on('onConnected', () => debugLog('✅ WebSocket соединение установлено'));
-        arenaClient.on('onDisconnected', (reason) => debugLog(`❌ WebSocket отключён: ${reason}`));
-    }
+    // ARENA INIT (WebSocket)
+arenaClient = window.arenaClient;
+if (arenaClient) {
+    // Загружаем команду из localStorage
+    arenaClient.loadTeamFromStorage();
     
-    initArenaWebhooks();
-    activateArenaMainButton();
+    // Передаём правильный API URL (без лишних слешей)
+    const wsUrl = API_URL.replace(/\/$/, ''); // убираем слеш в конце
+    arenaClient.connectSocket(state.token, wsUrl);
     
-    document.querySelectorAll('img').forEach(img => {
-        img.addEventListener('contextmenu', (e) => { e.preventDefault(); return false; });
-        img.addEventListener('touchstart', (e) => { if (e.touches.length > 1) e.preventDefault(); });
+    // Устанавливаем обработчики
+    arenaClient.on('onMatchFound', (data) => {
+        console.log('🎮 Match found:', data);
+        showNativeBattleConfirmation(data);
     });
-    window.addEventListener('beforeunload', () => { if (arenaClient) arenaClient.disconnectSocket(); });
-    window.addEventListener('online', () => { if ((arenaClient?.isSearching() || arenaClient?.isBattleActive()) && !arenaClient?.isConnected()) arenaClient?.connectSocket(state.token, API_URL); });
+    
+    arenaClient.on('onBattleStartUI', (data) => {
+        console.log('⚔️ Battle start UI:', data);
+        if (document.getElementById('overlay')?.classList.contains('show')) {
+            closeOverlay();
+        }
+        renderBattleInterface(data);
+    });
+    
+    arenaClient.on('onBattleUpdate', (data, isPlayer1) => {
+        console.log('🔄 Battle update:', data);
+        updateBattleUIFromClient(data, isPlayer1);
+    });
+    
+    arenaClient.on('onBattleEnd', (isWin, prizePool) => {
+        console.log('🏆 Battle end:', isWin, prizePool);
+        showNativeBattleResult(isWin, prizePool);
+        // Обновляем данные пользователя после боя
+        setTimeout(() => refreshUserProfile(), 1000);
+    });
+    
+    arenaClient.on('onTimerTick', (timeLeft) => {
+        const timerEl = document.getElementById('arenaBattleTimer');
+        if (timerEl) {
+            timerEl.textContent = `⏱ ${timeLeft}`;
+            if (timeLeft <= 5) timerEl.classList.add('warning');
+            else timerEl.classList.remove('warning');
+        }
+    });
+    
+    arenaClient.on('onSearchTimeout', () => {
+        const findBtn = document.getElementById('findMatchBtn');
+        const searchStatus = document.getElementById('arenaSearchStatus');
+        if (findBtn) {
+            findBtn.disabled = false;
+            findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой';
+        }
+        if (searchStatus) {
+            searchStatus.innerHTML = '⏱ Поиск отменён (таймаут)';
+        }
+        showToast('Поиск занял слишком много времени, попробуйте снова', '⚠️');
+        arenaClient?.stopSearch();
+    });
+    
+    arenaClient.on('onConnected', () => {
+        debugLog('✅ WebSocket соединение установлено');
+        // После подключения проверяем статус боя
+        setTimeout(() => renderArenaFightTab(), 500);
+    });
+    
+    arenaClient.on('onDisconnected', (reason) => {
+        debugLog(`❌ WebSocket отключён: ${reason}`);
+        if (reason !== 'io client disconnect') {
+            showToast('Соединение с ареной потеряно, переподключение...', '⚠️');
+        }
+    });
 }
-
 function updateBattleUIFromClient(data, isPlayer1) {
-    const myTeam = isPlayer1 ? data.player1Team : data.player2Team;
-    const enemyTeam = isPlayer1 ? data.player2Team : data.player1Team;
+    if (!data) return;
+    
+    const myTeam = isPlayer1 ? (data.player1Team || data.myTeam) : (data.player2Team || data.opponentTeam);
+    const enemyTeam = isPlayer1 ? (data.player2Team || data.opponentTeam) : (data.player1Team || data.myTeam);
+    
     if (!myTeam || !enemyTeam) return;
     
+    // Обновляем свои существа
     for (let i = 0; i < myTeam.length; i++) {
         const creature = myTeam[i];
         const creatureEl = document.querySelector(`#arenaMyCreatures .arena-battle-creature[data-creature-index="${i}"]`);
@@ -2408,6 +2459,8 @@ function updateBattleUIFromClient(data, isPlayer1) {
             else creatureEl.classList.remove('dead');
         }
     }
+    
+    // Обновляем вражеских существ
     for (let i = 0; i < enemyTeam.length; i++) {
         const creature = enemyTeam[i];
         const creatureEl = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${i}"]`);
@@ -2420,17 +2473,24 @@ function updateBattleUIFromClient(data, isPlayer1) {
             else creatureEl.classList.remove('dead');
         }
     }
-    if (data.lastMove && data.lastMove.targetIndex !== undefined) showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit);
-    if (data.currentTurn) {
-        const isMyTurn = (data.currentTurn === 'player1' && isPlayer1) || (data.currentTurn === 'player2' && !isPlayer1);
-        for (let i = 0; i < enemyTeam.length; i++) {
-            const creature = enemyTeam[i];
-            const creatureEl = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${i}"]`);
-            if (!creatureEl) continue;
-            const existingBtn = creatureEl.querySelector('.arena-attack-btn');
-            if (isMyTurn && creature.isAlive) {
-                if (!existingBtn) { const btn = document.createElement('button'); btn.className = 'arena-attack-btn'; btn.textContent = '⚔️ Атаковать'; btn.onclick = () => makeAttack(i); creatureEl.appendChild(btn); }
-            } else if (existingBtn) existingBtn.remove();
+    
+    // Показываем анимацию урона
+    if (data.lastMove && data.lastMove.targetIndex !== undefined) {
+        showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit);
+    }
+    
+    // Обновляем логи
+    if (data.lastMove && data.battleLog === undefined) {
+        const logContainer = document.getElementById('arenaBattleLog');
+        if (logContainer) {
+            const logEntry = document.createElement('div');
+            logEntry.className = `arena-log-entry ${data.lastMove.isCrit ? 'crit' : ''}`;
+            const turnNum = data.turnCount || (logContainer.children.length + 1);
+            logEntry.textContent = `Ход ${turnNum}: ${data.lastMove.attackerName || 'Питомец'} → ${data.lastMove.targetName || 'Враг'}: ${data.lastMove.damage} урона${data.lastMove.isCrit ? ' 💥 КРИТ!' : ''}`;
+            logContainer.insertBefore(logEntry, logContainer.firstChild);
+            if (logContainer.children.length > 20) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
         }
     }
 }
