@@ -1775,9 +1775,6 @@ app.get('/api/user/leaderboard', authMiddleware, async (req, res) => {
 // АРЕНА - ЭНДПОИНТЫ
 // ============================================
 
-let arenaSocketManager = new ArenaModule.ArenaSocketManager(io);
-let arenaManager = null;
-
 app.get('/api/arena/team', authMiddleware, async (req, res) => {
     try {
         const user = req.user;
@@ -2897,7 +2894,8 @@ const io = socketIo(server, {
     transports: ['websocket', 'polling'],
     path: '/socket.io/'
 });
-
+let arenaSocketManager = new ArenaModule.ArenaSocketManager(io);
+let arenaManager = null;
 // ============================================
 // WEBSOCKET АУТЕНТИФИКАЦИЯ
 // ============================================
