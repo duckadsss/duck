@@ -2989,7 +2989,10 @@ async function saveArenaTeam() {
 function startArenaSSE() {
     stopArenaSSE();
     
-    if (!state.token) return;
+    if (!state.token) {
+        console.log('❌ Нет токена, SSE не подключён');
+        return;
+    }
     
     console.log('📡 Подключаем SSE...');
     
@@ -2997,94 +3000,11 @@ function startArenaSSE() {
     const sse = new EventSource(url);
     arenaState.sseConnection = sse;
     
-    sse.addEventListener('connected', () => {
-        console.log('✅ SSE подключён');
-    });
-    
-    sse.addEventListener('match_found', (e) => {
-        const data = JSON.parse(e.data);
-        console.log('⚔️ SSE match_found:', data);
-        arenaState.confirmationShown = false;
-        arenaState.isSearching = true;
-        arenaState.currentBattleIsPlayer1 = data.isPlayer1;
-        
-        const searchStatus = document.getElementById('arenaSearchStatus');
-        if (searchStatus) searchStatus.innerHTML = '⚔️ Соперник найден! Подтвердите бой...';
-        
-        if (!arenaState.confirmationShown) {
-            arenaState.confirmationShown = true;
-            showNativeBattleConfirmation(data);
-        }
-    });
-    
-    sse.addEventListener('confirmation_update', (e) => {
-        const data = JSON.parse(e.data);
-        console.log('📋 SSE confirmation_update:', data);
-        const myConfirmed = data.isPlayer1 ? data.player1Confirmed : data.player2Confirmed;
-        if (myConfirmed) {
-            arenaState.confirmationShown = false;
-            showToast('Ожидаем соперника...', '⏳');
-        }
-    });
-    
-    sse.addEventListener('battle_start', (e) => {
-        const data = JSON.parse(e.data);
-        console.log('🚀 SSE battle_start:', data);
-        arenaState.confirmationShown = false;
-        arenaState.battleActive = true;
-        arenaState.isSearching = false;
-        arenaState.currentBattleIsPlayer1 = data.isPlayer1;
-        
-        const overlay = document.getElementById('overlay');
-        if (overlay && overlay.classList.contains('show')) closeOverlay();
-        
-        renderBattleInterface({
-            ...data,
-            hasBattle: true,
-            battleLog: data.battleLog || []
-        });
-    });
-    
-    sse.addEventListener('move_update', (e) => {
-        const data = JSON.parse(e.data);
-        console.log('🗡️ SSE move_update:', data);
-        if (!arenaState.battleActive) return;
-        
-        updateBattleInterface({
-            status: 'active',
-            currentTurn: data.currentTurn,
-            turnCount: data.turnCount,
-            isPlayer1: arenaState.currentBattleIsPlayer1,
-            myTeam: arenaState.currentBattleIsPlayer1 ? data.player1Team : data.player2Team,
-            opponentTeam: arenaState.currentBattleIsPlayer1 ? data.player2Team : data.player1Team,
-            battleLog: [data.lastMove ? {
-                turn: data.turnCount,
-                attackerName: 'Соперник',
-                targetName: '?',
-                damage: data.lastMove.damage,
-                isCrit: data.lastMove.isCrit
-            } : null].filter(Boolean),
-            winnerId: data.winnerId,
-            prizePool: data.prizePool
-        });
-        
-        if (data.lastMove) {
-            showIncomingDamageAnimation(data.lastMove);
-        }
-    });
-    
-    sse.addEventListener('battle_end', (e) => {
-        const data = JSON.parse(e.data);
-        console.log('🏁 SSE battle_end:', data);
-        arenaState.battleActive = false;
-        arenaState.isSearching = false;
-        arenaState.confirmationShown = false;
-        
-        const isWin = data.winnerId === state.user?._id?.toString();
-        showNativeBattleResult(isWin, data.prizePool || 0);
-        stopArenaSSE();
-        renderArenaFightTab();
-    });
+    // Глобальный обработчик всех сообщений (для отладки)
+    sse.onmessage = (event) => {
+        console.log('📨 [SSE] Получено сообщение:', event.data);
+        console.log('📨 [SSE] Тип события не распознан onmessage');
+    };
     
     sse.onerror = (e) => {
         console.warn('⚠️ SSE ошибка, переподключаемся через 3с...', e);
@@ -3093,6 +3013,126 @@ function startArenaSSE() {
             setTimeout(startArenaSSE, 3000);
         }
     };
+    
+    sse.addEventListener('connected', () => {
+        console.log('✅ SSE подключён');
+    });
+    
+    sse.addEventListener('match_found', (e) => {
+        console.log('⚔️ [SSE] match_found получено!', e.data);
+        try {
+            const data = JSON.parse(e.data);
+            console.log('⚔️ match_found разобран:', data);
+            
+            arenaState.confirmationShown = false;
+            arenaState.isSearching = true;
+            arenaState.currentBattleIsPlayer1 = data.isPlayer1;
+            
+            const searchStatus = document.getElementById('arenaSearchStatus');
+            if (searchStatus) searchStatus.innerHTML = '⚔️ Соперник найден! Подтвердите бой...';
+            
+            if (!arenaState.confirmationShown) {
+                arenaState.confirmationShown = true;
+                showNativeBattleConfirmation(data);
+            }
+        } catch (err) {
+            console.error('Ошибка обработки match_found:', err);
+        }
+    });
+    
+    sse.addEventListener('confirmation_update', (e) => {
+        console.log('📋 [SSE] confirmation_update получено!', e.data);
+        try {
+            const data = JSON.parse(e.data);
+            console.log('📋 confirmation_update разобран:', data);
+            
+            const myConfirmed = data.isPlayer1 ? data.player1Confirmed : data.player2Confirmed;
+            if (myConfirmed) {
+                arenaState.confirmationShown = false;
+                showToast('Ожидаем соперника...', '⏳');
+            }
+        } catch (err) {
+            console.error('Ошибка обработки confirmation_update:', err);
+        }
+    });
+    
+    sse.addEventListener('battle_start', (e) => {
+        console.log('🚀 [SSE] battle_start получено!', e.data);
+        try {
+            const data = JSON.parse(e.data);
+            console.log('🚀 battle_start разобран:', data);
+            
+            arenaState.confirmationShown = false;
+            arenaState.battleActive = true;
+            arenaState.isSearching = false;
+            arenaState.currentBattleIsPlayer1 = data.isPlayer1;
+            
+            const overlay = document.getElementById('overlay');
+            if (overlay && overlay.classList.contains('show')) closeOverlay();
+            
+            // Обновляем интерфейс боя
+            renderBattleInterface({
+                ...data,
+                hasBattle: true,
+                battleLog: data.battleLog || []
+            });
+        } catch (err) {
+            console.error('Ошибка обработки battle_start:', err);
+        }
+    });
+    
+    sse.addEventListener('move_update', (e) => {
+        console.log('🗡️ [SSE] move_update получено!', e.data);
+        try {
+            const data = JSON.parse(e.data);
+            console.log('🗡️ move_update разобран:', data);
+            
+            if (!arenaState.battleActive) return;
+            
+            updateBattleInterface({
+                status: 'active',
+                currentTurn: data.currentTurn,
+                turnCount: data.turnCount,
+                isPlayer1: arenaState.currentBattleIsPlayer1,
+                myTeam: arenaState.currentBattleIsPlayer1 ? data.player1Team : data.player2Team,
+                opponentTeam: arenaState.currentBattleIsPlayer1 ? data.player2Team : data.player1Team,
+                battleLog: [data.lastMove ? {
+                    turn: data.turnCount,
+                    attackerName: 'Соперник',
+                    targetName: '?',
+                    damage: data.lastMove.damage,
+                    isCrit: data.lastMove.isCrit
+                } : null].filter(Boolean),
+                winnerId: data.winnerId,
+                prizePool: data.prizePool
+            });
+            
+            if (data.lastMove) {
+                showIncomingDamageAnimation(data.lastMove);
+            }
+        } catch (err) {
+            console.error('Ошибка обработки move_update:', err);
+        }
+    });
+    
+    sse.addEventListener('battle_end', (e) => {
+        console.log('🏁 [SSE] battle_end получено!', e.data);
+        try {
+            const data = JSON.parse(e.data);
+            console.log('🏁 battle_end разобран:', data);
+            
+            arenaState.battleActive = false;
+            arenaState.isSearching = false;
+            arenaState.confirmationShown = false;
+            
+            const isWin = data.winnerId === state.user?._id?.toString();
+            showNativeBattleResult(isWin, data.prizePool || 0);
+            stopArenaSSE();
+            renderArenaFightTab();
+        } catch (err) {
+            console.error('Ошибка обработки battle_end:', err);
+        }
+    });
 }
 
 function stopArenaSSE() {
@@ -3549,9 +3589,6 @@ function spawnFloatingMMO(amount) {
     setTimeout(() => el.remove(), 1600);
 }
 
-// ============================================================
-// INIT
-// ============================================================
 document.addEventListener('DOMContentLoaded', () => {
     initTelegramApp();
     
@@ -3561,6 +3598,16 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('   readyState:', arenaState.sseConnection?.readyState);
         console.log('   isSearching:', arenaState.isSearching);
         console.log('   battleActive:', arenaState.battleActive);
+    };
+    
+    window.testSSE = () => {
+        console.log('=== ДИАГНОСТИКА SSE ===');
+        console.log('sseConnection exists:', !!arenaState.sseConnection);
+        console.log('readyState:', arenaState.sseConnection?.readyState);
+        console.log('isSearching:', arenaState.isSearching);
+        console.log('battleActive:', arenaState.battleActive);
+        console.log('token exists:', !!state.token);
+        console.log('API_URL:', API_URL);
     };
 });
 
