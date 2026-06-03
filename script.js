@@ -2994,36 +2994,54 @@ function startArenaSSE() {
         return;
     }
     
-    console.log('📡 Подключаем SSE...');
+    console.log('📡 Подключаем SSE к:', API_URL);
     
     const url = `${API_URL}/api/arena/events?token=${encodeURIComponent(state.token)}`;
+    console.log('📡 URL SSE:', url);
+    
     const sse = new EventSource(url);
     arenaState.sseConnection = sse;
     
-    // Глобальный обработчик всех сообщений (для отладки)
+    // Глобальный обработчик ВСЕХ сообщений (самый важный!)
     sse.onmessage = (event) => {
-        console.log('📨 [SSE] Получено сообщение:', event.data);
-        console.log('📨 [SSE] Тип события не распознан onmessage');
+        console.log('📨 [SSE onmessage] ПОЛУЧЕНО СООБЩЕНИЕ!');
+        console.log('   data:', event.data);
+        console.log('   event.type:', event.type);
+        console.log('   event.lastEventId:', event.lastEventId);
+        
+        // Пытаемся разобрать и показать
+        try {
+            const data = JSON.parse(event.data);
+            console.log('   parsed:', data);
+        } catch(e) {
+            console.log('   (не JSON)');
+        }
+    };
+    
+    sse.onopen = () => {
+        console.log('🔓 SSE соединение открыто (onopen)');
     };
     
     sse.onerror = (e) => {
-        console.warn('⚠️ SSE ошибка, переподключаемся через 3с...', e);
+        console.warn('⚠️ SSE ошибка:', e);
+        console.log('   readyState:', sse.readyState);
+        console.log('   URL:', sse.url);
         stopArenaSSE();
         if (arenaState.isSearching || arenaState.battleActive) {
+            console.log('🔄 Переподключаемся через 3с...');
             setTimeout(startArenaSSE, 3000);
         }
     };
     
-    sse.addEventListener('connected', () => {
-        console.log('✅ SSE подключён');
+    sse.addEventListener('connected', (e) => {
+        console.log('✅ [SSE] connected событие!', e.data);
     });
     
     sse.addEventListener('match_found', (e) => {
-        console.log('⚔️ [SSE] match_found получено!', e.data);
+        console.log('⚔️ [SSE] match_found ПОЛУЧЕНО!', e.data);
         try {
             const data = JSON.parse(e.data);
-            console.log('⚔️ match_found разобран:', data);
-            
+            console.log('   разобранные данные:', data);
             arenaState.confirmationShown = false;
             arenaState.isSearching = true;
             arenaState.currentBattleIsPlayer1 = data.isPlayer1;
@@ -3041,11 +3059,10 @@ function startArenaSSE() {
     });
     
     sse.addEventListener('confirmation_update', (e) => {
-        console.log('📋 [SSE] confirmation_update получено!', e.data);
+        console.log('📋 [SSE] confirmation_update ПОЛУЧЕНО!', e.data);
         try {
             const data = JSON.parse(e.data);
-            console.log('📋 confirmation_update разобран:', data);
-            
+            console.log('   разобранные данные:', data);
             const myConfirmed = data.isPlayer1 ? data.player1Confirmed : data.player2Confirmed;
             if (myConfirmed) {
                 arenaState.confirmationShown = false;
@@ -3057,11 +3074,10 @@ function startArenaSSE() {
     });
     
     sse.addEventListener('battle_start', (e) => {
-        console.log('🚀 [SSE] battle_start получено!', e.data);
+        console.log('🚀 [SSE] battle_start ПОЛУЧЕНО!', e.data);
         try {
             const data = JSON.parse(e.data);
-            console.log('🚀 battle_start разобран:', data);
-            
+            console.log('   разобранные данные:', data);
             arenaState.confirmationShown = false;
             arenaState.battleActive = true;
             arenaState.isSearching = false;
@@ -3070,7 +3086,6 @@ function startArenaSSE() {
             const overlay = document.getElementById('overlay');
             if (overlay && overlay.classList.contains('show')) closeOverlay();
             
-            // Обновляем интерфейс боя
             renderBattleInterface({
                 ...data,
                 hasBattle: true,
@@ -3082,11 +3097,10 @@ function startArenaSSE() {
     });
     
     sse.addEventListener('move_update', (e) => {
-        console.log('🗡️ [SSE] move_update получено!', e.data);
+        console.log('🗡️ [SSE] move_update ПОЛУЧЕНО!', e.data);
         try {
             const data = JSON.parse(e.data);
-            console.log('🗡️ move_update разобран:', data);
-            
+            console.log('   разобранные данные:', data);
             if (!arenaState.battleActive) return;
             
             updateBattleInterface({
@@ -3116,11 +3130,10 @@ function startArenaSSE() {
     });
     
     sse.addEventListener('battle_end', (e) => {
-        console.log('🏁 [SSE] battle_end получено!', e.data);
+        console.log('🏁 [SSE] battle_end ПОЛУЧЕНО!', e.data);
         try {
             const data = JSON.parse(e.data);
-            console.log('🏁 battle_end разобран:', data);
-            
+            console.log('   разобранные данные:', data);
             arenaState.battleActive = false;
             arenaState.isSearching = false;
             arenaState.confirmationShown = false;
@@ -3133,6 +3146,8 @@ function startArenaSSE() {
             console.error('Ошибка обработки battle_end:', err);
         }
     });
+    
+    console.log('📡 SSE настроен, ожидаем события...');
 }
 
 function stopArenaSSE() {
@@ -3600,16 +3615,42 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('   battleActive:', arenaState.battleActive);
     };
     
-    window.testSSE = () => {
-        console.log('=== ДИАГНОСТИКА SSE ===');
-        console.log('sseConnection exists:', !!arenaState.sseConnection);
-        console.log('readyState:', arenaState.sseConnection?.readyState);
-        console.log('isSearching:', arenaState.isSearching);
-        console.log('battleActive:', arenaState.battleActive);
-        console.log('token exists:', !!state.token);
-        console.log('API_URL:', API_URL);
-    };
-});
+    // ============================================================
+// ДИАГНОСТИКА SSE
+// ============================================================
+
+window.testSSE = () => {
+    console.log('=== ДИАГНОСТИКА SSE ===');
+    console.log('sseConnection exists:', !!arenaState.sseConnection);
+    console.log('readyState:', arenaState.sseConnection?.readyState);
+    console.log('isSearching:', arenaState.isSearching);
+    console.log('battleActive:', arenaState.battleActive);
+    console.log('token exists:', !!state.token);
+    console.log('API_URL:', API_URL);
+};
+
+// Функция для принудительного переподключения SSE
+window.reconnectSSE = () => {
+    console.log('🔄 Принудительное переподключение SSE...');
+    stopArenaSSE();
+    startArenaSSE();
+};
+
+// Функция для проверки получения событий
+window.listenSSE = () => {
+    if (!arenaState.sseConnection) {
+        console.log('❌ SSE не подключен');
+        return;
+    }
+    
+    console.log('👂 Начинаю слушать SSE события...');
+    
+    arenaState.sseConnection.addEventListener('test', (e) => {
+        console.log('🧪 TEST событие:', e.data);
+    });
+    
+    console.log('✅ Слушатель добавлен. Ждите событий...');
+};
 
 // ============================================================
 // ЭКСПОРТ ФУНКЦИЙ ДЛЯ ГЛОБАЛЬНОГО ДОСТУПА
