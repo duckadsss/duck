@@ -2113,9 +2113,21 @@ function cancelBattleSearch() {
 
 async function acceptBattleWebhook() {
     const battleId = arenaClient?.getBattleId();
-    if (!battleId) return;
+    if (!battleId) {
+        showToast('Ошибка: ID боя не найден', '❌');
+        addDebugLog('❌ acceptBattleWebhook: battleId = null', 'error');
+        return;
+    }
+    addDebugLog(`✅ Принимаем бой: ${battleId}`, 'info');
     const res = await apiRequest('POST', '/api/arena/accept-match', { battleId });
-    if (res?.success) { closeOverlay(); arenaClient?.setConfirmationShown(false); }
+    if (res?.success) { 
+        closeOverlay(); 
+        arenaClient?.setConfirmationShown(false);
+        addDebugLog('✅ accept-match успешен', 'success');
+    } else {
+        showToast(res?.message || 'Ошибка подтверждения', '❌');
+        addDebugLog(`❌ accept-match ошибка: ${res?.message}`, 'error');
+    }
 }
 
 async function rejectBattleWebhook() {

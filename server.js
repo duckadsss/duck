@@ -1929,7 +1929,7 @@ app.post('/api/arena/accept-match', authMiddleware, async (req, res) => {
             const player1 = await User.findById(battle.player1Id).select('username firstName level');
             const player2 = await User.findById(battle.player2Id).select('username firstName level');
             
-            arenaSocketManager.send(battle.player1Id, 'battle_start', {
+            const sent1 = arenaSocketManager.send(battle.player1Id, 'battle_start', {
                 battleId: battle._id,
                 status: 'active',
                 isPlayer1: true,
@@ -1942,7 +1942,7 @@ app.post('/api/arena/accept-match', authMiddleware, async (req, res) => {
                 battleLog: battle.battleLog
             });
             
-            arenaSocketManager.send(battle.player2Id, 'battle_start', {
+            const sent2 = arenaSocketManager.send(battle.player2Id, 'battle_start', {
                 battleId: battle._id,
                 status: 'active',
                 isPlayer1: false,
@@ -1954,6 +1954,8 @@ app.post('/api/arena/accept-match', authMiddleware, async (req, res) => {
                 entryFee: battle.entryFee,
                 battleLog: battle.battleLog
             });
+            
+            console.log(`⚔️ battle_start отправлен: p1=${sent1}, p2=${sent2}, online=${arenaSocketManager.getClientsCount()}`);
         } else {
             arenaSocketManager.send(result.battle.player1Id, 'confirmation_update', {
                 player1Confirmed: result.battle.player1Confirmed,
@@ -2932,12 +2934,8 @@ io.on('connection', (socket) => {
     
     socket.emit('connected', { ok: true, timestamp: Date.now() });
     
-    if (arenaSocketManager) {
-        arenaSocketManager.add(user._id, socket.id);
-        console.log(`✅ Пользователь ${user._id} зарегистрирован`);
-    } else {
-        console.error(`❌ arenaSocketManager не инициализирован!`);
-    }
+    arenaSocketManager.add(user._id, socket.id);
+    console.log(`✅ Пользователь ${user._id} зарегистрирован`);
     
     // Обработчик проверки статуса боя
     socket.on('check_battle_status', async (data) => {
@@ -2972,9 +2970,7 @@ io.on('connection', (socket) => {
     socket.on('disconnect', (reason) => {
         console.log(`🔌 WebSocket отключён: ${user.telegramId}, причина: ${reason}`);
         clearInterval(pingInterval);
-        if (arenaSocketManager) {
-            arenaSocketManager.remove(user._id);
-        }
+        arenaSocketManager.remove(user._id);
     });
 });
 

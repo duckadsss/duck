@@ -279,6 +279,7 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
             socket.on('battle_status', (data) => {
                 console.log('📡 Battle status received', data);
                 if (data.hasBattle && data.status === 'active' && !this.state.battleActive) {
+                    this.state.currentBattleId = data.battleId;
                     this.startBattle(
                         data.battleId,
                         data.isPlayer1,
@@ -289,6 +290,8 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
                         this.callbacks.onBattleStartUI(data);
                     }
                 } else if (data.hasBattle && data.status === 'pending_confirmation' && !this.state.confirmationShown) {
+                    // Сохраняем battleId для подтверждения
+                    this.state.currentBattleId = data.battleId;
                     this.state.confirmationShown = true;
                     if (this.callbacks.onMatchFound) {
                         this.callbacks.onMatchFound(data);
@@ -298,6 +301,8 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
             
             socket.on('match_found', (data) => {
                 console.log('⚔️ Match found!', data);
+                // КРИТИЧНО: сохраняем battleId чтобы acceptBattleWebhook мог его использовать
+                this.state.currentBattleId = data.battleId;
                 this.state.confirmationShown = true;
                 if (this.callbacks.onMatchFound) {
                     this.callbacks.onMatchFound(data);

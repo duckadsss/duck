@@ -231,6 +231,8 @@ class ArenaBattleManager {
             battle.expiresAt = null;
         }
         
+        battle.markModified('player1Team');
+        battle.markModified('player2Team');
         await battle.save();
         
         return { success: true, battle, bothConfirmed: battle.status === 'active' };
@@ -488,23 +490,41 @@ class ArenaBattleManager {
             const player1Id = battle.player1Id;
             const player2Id = battle.player2Id;
             
-            const wasWaiting = battle.status === 'waiting';
-battle.status = 'expired';
-await battle.save();
-expiredCount++;
+                const wasWaiting = battle.status === 'waiting';
+            const wasPending = battle.status === 'pending_confirmation';
+            battle.status = 'expired';
+            await battle.save();
+            expiredCount++;
 
-                 if (wasWaiting && player1Id) {
-    await User.findByIdAndUpdate(player1Id, {
-        $inc: { balance: entryFee },
-        $set: { currentBattleId: null }
-    });
-}
-            
-            if (player1Id) {
-                await this.User.updateOne({ _id: player1Id }, { $set: { currentBattleId: null } });
+            // Возврат взноса player1 если бой был в ожидании соперника
+            if (wasWaiting && player1Id) {
+                await this.User.findByIdAndUpdate(player1Id, {
+                    $inc: { balance: entryFee },
+                    $set: { currentBattleId: null }
+                });
             }
-            if (player2Id) {
-                await this.User.updateOne({ _id: player2Id }, { $set: { currentBattleId: null } });
+
+            // Возврат обоим если подтверждение истекло
+            if (wasPending) {
+                if (player1Id) {
+                    await this.User.findByIdAndUpdate(player1Id, {
+                        $inc: { balance: entryFee },
+                        $set: { currentBattleId: null }
+                    });
+                }
+                if (player2Id) {
+                    await this.User.findByIdAndUpdate(player2Id, {
+                        $inc: { balance: entryFee },
+                        $set: { currentBattleId: null }
+                    });
+                }
+            } else {
+                if (player1Id) {
+                    await this.User.updateOne({ _id: player1Id }, { $set: { currentBattleId: null } });
+                }
+                if (player2Id) {
+                    await this.User.updateOne({ _id: player2Id }, { $set: { currentBattleId: null } });
+                }
             }
         }
         
