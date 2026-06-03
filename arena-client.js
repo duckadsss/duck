@@ -304,21 +304,6 @@ class ArenaClient {
             });
             
             socket.on('battle_start', (data) => {
-    console.log('⚔️ Battle start!', data);
-    addDebugLog(`Battle start received: battleId=${data.battleId}, isPlayer1=${data.isPlayer1}`, 'success');
-    this.state.confirmationShown = false;
-    this.startBattle(
-        data.battleId,
-        data.isPlayer1,
-        data.myTeam,
-        data.opponentTeam
-    );
-    if (this.callbacks.onBattleStartUI) {
-        this.callbacks.onBattleStartUI(data);
-    }
-});
-
-            socket.on('battle_start', (data) => {
                 console.log('⚔️ Battle start!', data);
                 this.state.confirmationShown = false;
                 this.startBattle(
