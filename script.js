@@ -2087,11 +2087,13 @@ async function findMatch() {
 
 function cancelBattleSearch() {
     arenaClient?.stopSearch();
-    arenaClient?.disconnectSocket();
-    arenaClient?.connectSocket(state.token, API_URL);
+    // НЕ ОТКЛЮЧАЕМ Socket! Только останавливаем поиск
     const findBtn = document.getElementById('findMatchBtn');
     const searchStatus = document.getElementById('arenaSearchStatus');
-    if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; }
+    if (findBtn) { 
+        findBtn.disabled = false; 
+        findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; 
+    }
     if (searchStatus) searchStatus.innerHTML = '';
     showToast('Поиск отменён', '⚠️');
 }
@@ -2152,7 +2154,8 @@ async function renderArenaFightTab() {
     const statusContainer = document.getElementById('arenaFightStatus');
     const battleContainer = document.getElementById('arenaBattleContainer');
     
-    // Проверка WebSocket соединения
+    // НЕ ОТКЛЮЧАЕМ WebSocket при переключении!
+    // Только проверяем соединение
     if (arenaClient && state.token && !arenaClient.isConnected()) {
         addDebugLog('WebSocket не подключен, пробуем переподключиться...', 'info');
         arenaClient.connectSocket(state.token, API_URL);
@@ -2172,7 +2175,10 @@ async function renderArenaFightTab() {
             if (battleContainer) battleContainer.style.display = 'block';
             
             if (battleRes.status === 'waiting') {
-                arenaClient?.startSearch();
+                // Не вызываем reset, просто показываем UI
+                if (!arenaClient?.isSearching()) {
+                    arenaClient?.startSearch();
+                }
                 battleContainer.innerHTML = `<div class="arena-battle-container" style="text-align:center;padding:40px;">
                     <div class="popup-icon" style="font-size:48px;">⏳</div>
                     <div class="popup-title" style="font-size:18px;margin-top:10px;">Поиск соперника...</div>
@@ -2190,7 +2196,7 @@ async function renderArenaFightTab() {
                 renderBattleInterface(battleRes);
             } else if (battleRes.status === 'pending_confirmation') {
                 const myConfirmed = battleRes.isPlayer1 ? battleRes.player1Confirmed : battleRes.player2Confirmed;
-                if (!myConfirmed && !arenaClient?.state.confirmationShown) {
+                if (!myConfirmed && !arenaClient?.getConfirmationShown()) {
                     arenaClient?.setConfirmationShown(true);
                     showNativeBattleConfirmation(battleRes);
                 }
@@ -2198,7 +2204,11 @@ async function renderArenaFightTab() {
         } else {
             if (statusContainer) statusContainer.style.display = 'block';
             if (battleContainer) battleContainer.style.display = 'none';
-            arenaClient?.reset();
+            
+            // НЕ ВЫЗЫВАЕМ reset()! Только останавливаем поиск если он был
+            if (arenaClient?.isSearching()) {
+                arenaClient?.stopSearch();
+            }
             
             const level = state.user?.level || 1;
             let league = 'bronze', entryFee = 500, prizePool = 800;
@@ -2225,7 +2235,7 @@ async function renderArenaFightTab() {
                         </div>
                     `).join('');
                 }
-                if (teamRes.teamIds) {
+                if (teamRes.teamIds && teamRes.teamIds.length === 3) {
                     arenaClient?.setSelectedTeam(teamRes.teamIds);
                     renderSelectedTeam();
                 }
