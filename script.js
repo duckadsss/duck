@@ -180,7 +180,8 @@ let pendingRequests = new Map();
 
 async function apiRequest(method, path, body = null, signal = null) {
     const key = `${method}:${path}:${JSON.stringify(body)}`;
-    if (pendingRequests.has(key)) return pendingRequests.get(key);
+    const isArena = path.includes('/arena/');
+    if (!isArena && pendingRequests.has(key)) return pendingRequests.get(key);
     
     const opts = {
         method,
@@ -2833,9 +2834,18 @@ async function findMatch() {
 async function acceptBattleWebhook() {
     const battleRes = await apiRequest('GET', '/api/arena/battle/status');
     if (battleRes?.battleId) {
-        await apiRequest('POST', '/api/arena/accept-match', { battleId: battleRes.battleId });
+        const acceptRes = await apiRequest('POST', '/api/arena/accept-match', { battleId: battleRes.battleId });
         closeOverlay();
         arenaState.confirmationShown = false;
+
+        const searchStatus = document.getElementById('arenaSearchStatus');
+        if (searchStatus) searchStatus.innerHTML = '✅ Принято! Ожидаем соперника...';
+
+        if (acceptRes?.battle?.status === 'active') {
+            arenaState.battleActive = true;
+            arenaState.currentBattleIsPlayer1 = acceptRes.isPlayer1;
+            renderBattleInterface({ ...acceptRes.battle, isPlayer1: acceptRes.isPlayer1 });
+        }
     }
 }
 
@@ -2995,9 +3005,21 @@ function startArenaSSE() {
     const sse = new EventSource(url);
     arenaState.sseConnection = sse;
     
-    sse.addEventListener('connected', () => {
-        console.log('✅ SSE подключён');
-    });
+    sse.addEventListener('connected', async () => {
+    console.log('✅ SSE подключён');
+    const status = await apiRequest('GET', '/api/arena/battle/status');
+    if (!status?.battle) return;
+
+    const battle = status.battle;
+    if (battle.status === 'active') {
+        arenaState.battleActive = true;
+        arenaState.currentBattleIsPlayer1 = status.isPlayer1;
+        renderBattleInterface({ ...battle, isPlayer1: status.isPlayer1 });
+    } else if (battle.status === 'pending_confirmation' && !arenaState.confirmationShown) {
+        arenaState.confirmationShown = true;
+        showNativeBattleConfirmation(status);
+    }
+});
     
     sse.addEventListener('match_found', (e) => {
         const data = JSON.parse(e.data);
