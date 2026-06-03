@@ -112,21 +112,33 @@ class ArenaClient {
     }
     
     startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
-        this.state.battleActive = true;
-        this.state.currentBattleId = battleId;
-        this.state.currentBattleIsPlayer1 = isPlayer1;
-        this.state.isSearching = false;
-        this.state.myTeam = myTeam;
-        this.state.enemyTeam = enemyTeam;
-        this.state.battleLog = [];
-        
-        this.stopSearch();
-        this.startBattleTimer();
-        
-        if (this.callbacks.onBattleStart) {
-            this.callbacks.onBattleStart(battleId, isPlayer1, myTeam, enemyTeam);
-        }
+    this.state.battleActive = true;
+    this.state.currentBattleId = battleId;
+    this.state.currentBattleIsPlayer1 = isPlayer1;
+    this.state.isSearching = false;
+    this.state.myTeam = myTeam;
+    this.state.enemyTeam = enemyTeam;
+    this.state.battleLog = [];
+    
+    this.stopSearch();
+    this.startBattleTimer();
+    
+    if (this.callbacks.onBattleStart) {
+        this.callbacks.onBattleStart(battleId, isPlayer1, myTeam, enemyTeam);
     }
+    
+    // ВАЖНО: вызываем onBattleStartUI для отображения интерфейса боя
+    if (this.callbacks.onBattleStartUI) {
+        this.callbacks.onBattleStartUI({
+            battleId: battleId,
+            isPlayer1: isPlayer1,
+            myTeam: myTeam,
+            opponentTeam: enemyTeam,
+            currentTurn: isPlayer1 ? 'player1' : 'player2',
+            battleLog: []
+        });
+    }
+}
     
     updateBattle(data) {
         if (!this.state.battleActive) return;
@@ -291,6 +303,21 @@ class ArenaClient {
                 }
             });
             
+            socket.on('battle_start', (data) => {
+    console.log('⚔️ Battle start!', data);
+    addDebugLog(`Battle start received: battleId=${data.battleId}, isPlayer1=${data.isPlayer1}`, 'success');
+    this.state.confirmationShown = false;
+    this.startBattle(
+        data.battleId,
+        data.isPlayer1,
+        data.myTeam,
+        data.opponentTeam
+    );
+    if (this.callbacks.onBattleStartUI) {
+        this.callbacks.onBattleStartUI(data);
+    }
+});
+
             socket.on('battle_start', (data) => {
                 console.log('⚔️ Battle start!', data);
                 this.state.confirmationShown = false;
