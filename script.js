@@ -1,5 +1,5 @@
 // ============================================================
-// script.js - DNA MMO Клиент (Рефакторинг)
+// script.js - DNA MMO Клиент (Рефакторинг + WebSocket)
 // ============================================================
 
 // ============================================================
@@ -90,7 +90,7 @@ let UPGRADE_BASE_COST = 300;
 let UPGRADE_MULTIPLIER = 1.5;
 let MAX_INVENTORY_SLOTS = 50;
 let SPECIAL_QUESTS = [];
-let findingMatch = false; // блокировка двойного нажатия поиска боя
+let findingMatch = false;
 
 const RARITY_COLORS = {
     common: '#94a3b8', uncommon: '#22c55e', rare: '#3b82f6',
@@ -107,7 +107,7 @@ let collectIncomeTimer = null;
 let visualTickerInterval = null;
 
 // ============================================================
-// ARENA CLIENT
+// ARENA CLIENT (WebSocket)
 // ============================================================
 let arenaClient = null;
 
@@ -324,9 +324,9 @@ function handleVisibilityChange() {
             }
         }).catch(err => console.warn('collect-income error:', err));
         
-        // Переподключение SSE при возвращении на вкладку
-        if (arenaClient && state.token && !arenaClient.state.sseConnection) {
-            arenaClient.connectSSE(state.token, API_URL);
+        // Переподключение WebSocket при возвращении на вкладку
+        if (arenaClient && state.token && !arenaClient.isConnected()) {
+            arenaClient.connectSocket(state.token, API_URL);
         }
         
         if (isMarketplaceTabActive) {
@@ -2065,8 +2065,8 @@ async function findMatch() {
 
 function cancelBattleSearch() {
     arenaClient?.stopSearch();
-    arenaClient?.disconnectSSE();
-    arenaClient?.connectSSE(state.token, API_URL);
+    arenaClient?.disconnectSocket();
+    arenaClient?.connectSocket(state.token, API_URL);
     const findBtn = document.getElementById('findMatchBtn');
     const searchStatus = document.getElementById('arenaSearchStatus');
     if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; }
@@ -2106,7 +2106,6 @@ async function makeAttack(targetIndex) {
         return;
     }
     
-    // Обновляем UI для атакующего (клиента)
     if (!res.finished) {
         const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
         updateBattleUIFromClient({
@@ -2250,7 +2249,7 @@ function switchTab(tab) {
         renderArenaTeamInventory();
         renderArenaFightTab();
         renderArenaRanking();
-        if (!arenaClient?.state.sseConnection && state.token) arenaClient?.connectSSE(state.token, API_URL);
+        if (!arenaClient?.isConnected() && state.token) arenaClient?.connectSocket(state.token, API_URL);
     }
 }
 
@@ -2366,17 +2365,19 @@ async function initTelegramApp() {
     setTimeout(() => { checkActiveRequests(); loadUserStats(); }, 1000);
     updateAdsStatus();
     
-    // ARENA INIT
+    // ARENA INIT (WebSocket)
     arenaClient = window.arenaClient;
     if (arenaClient) {
         arenaClient.loadTeamFromStorage();
-        arenaClient.connectSSE(state.token, API_URL);
+        arenaClient.connectSocket(state.token, API_URL);
         arenaClient.on('onMatchFound', (data) => showNativeBattleConfirmation(data));
         arenaClient.on('onBattleStartUI', (data) => { if (document.getElementById('overlay')?.classList.contains('show')) closeOverlay(); renderBattleInterface(data); });
         arenaClient.on('onBattleUpdate', (data, isPlayer1) => updateBattleUIFromClient(data, isPlayer1));
         arenaClient.on('onBattleEnd', (isWin, prizePool) => { showNativeBattleResult(isWin, prizePool); refreshUserProfile(); });
         arenaClient.on('onTimerTick', (timeLeft) => { const timerEl = document.getElementById('arenaBattleTimer'); if (timerEl) { timerEl.textContent = `⏱ ${timeLeft}`; if (timeLeft <= 5) timerEl.classList.add('warning'); else timerEl.classList.remove('warning'); } });
         arenaClient.on('onSearchTimeout', () => { const findBtn = document.getElementById('findMatchBtn'); const searchStatus = document.getElementById('arenaSearchStatus'); if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; } if (searchStatus) searchStatus.innerHTML = '⏱ Поиск отменён (таймаут)'; showToast('Поиск занял слишком много времени, попробуйте снова', '⚠️'); });
+        arenaClient.on('onConnected', () => debugLog('✅ WebSocket соединение установлено'));
+        arenaClient.on('onDisconnected', (reason) => debugLog(`❌ WebSocket отключён: ${reason}`));
     }
     
     initArenaWebhooks();
@@ -2386,8 +2387,8 @@ async function initTelegramApp() {
         img.addEventListener('contextmenu', (e) => { e.preventDefault(); return false; });
         img.addEventListener('touchstart', (e) => { if (e.touches.length > 1) e.preventDefault(); });
     });
-    window.addEventListener('beforeunload', () => { if (arenaClient) arenaClient.disconnectSSE(); });
-    window.addEventListener('online', () => { if ((arenaClient?.isSearching() || arenaClient?.isBattleActive()) && !arenaClient?.state.sseConnection) arenaClient?.connectSSE(state.token, API_URL); });
+    window.addEventListener('beforeunload', () => { if (arenaClient) arenaClient.disconnectSocket(); });
+    window.addEventListener('online', () => { if ((arenaClient?.isSearching() || arenaClient?.isBattleActive()) && !arenaClient?.isConnected()) arenaClient?.connectSocket(state.token, API_URL); });
 }
 
 function updateBattleUIFromClient(data, isPlayer1) {

@@ -70,7 +70,7 @@ async function buildTeamFromIds(teamIds, userLevel, userId, getCreatureFn) {
 class ArenaSocketManager {
     constructor(io) {
         this.io = io;
-        this.connectedUsers = new Map(); // userId -> socket.id
+        this.connectedUsers = new Map();
     }
 
     add(userId, socketId) {
@@ -149,7 +149,6 @@ class ArenaBattleManager {
             return { success: false, message: `Недостаточно MMO. Нужно ${leagueConfig.entryFee} MMO` };
         }
         
-        // Списываем entry fee
         const updatedUser = await this.User.findOneAndUpdate(
             { _id: user._id, balance: { $gte: leagueConfig.entryFee } },
             { $inc: { balance: -leagueConfig.entryFee } },
@@ -160,7 +159,6 @@ class ArenaBattleManager {
             return { success: false, message: 'Не удалось списать средства' };
         }
         
-        // Ищем ожидающего соперника
         const waitingBattle = await this.Battle.findOne({
             status: 'waiting',
             league: league,
@@ -289,7 +287,6 @@ class ArenaBattleManager {
         const myTeam = isPlayer1 ? battle.player1Team : battle.player2Team;
         const enemyTeam = isPlayer1 ? battle.player2Team : battle.player1Team;
         
-        // Находим первого живого атакующего
         let attackerIndex = -1;
         let attacker = null;
         for (let i = 0; i < myTeam.length; i++) {
@@ -307,7 +304,6 @@ class ArenaBattleManager {
             return { success: true, finished: true, winnerId: battle.winnerId };
         }
         
-        // Находим первого живого врага
         let targetIndex = -1;
         for (let i = 0; i < enemyTeam.length; i++) {
             if (enemyTeam[i].isAlive) {

@@ -1,5 +1,5 @@
 // ============================================================
-// arena-client.js - Клиентская логика PvP арены
+// arena-client.js - Клиентская логика PvP арены (WebSocket)
 // ============================================================
 
 class ArenaClient {
@@ -9,7 +9,7 @@ class ArenaClient {
             currentBattleId: null,
             isSearching: false,
             battleActive: false,
-            sseConnection: null,
+            socket: null,
             currentBattleIsPlayer1: false,
             confirmationShown: false,
             battleLog: [],
@@ -19,10 +19,13 @@ class ArenaClient {
         
         this.timers = {
             battleTimer: null,
-            searchTimer: null
+            searchTimer: null,
+            reconnectTimer: null
         };
         
-        // Все возможные колбэки
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        
         this.callbacks = {
             onBattleStart: null,
             onBattleUpdate: null,
@@ -31,7 +34,9 @@ class ArenaClient {
             onBattleStartUI: null,
             onTimerTick: null,
             onSearchTimeout: null,
-            onConfirmationUpdate: null
+            onConfirmationUpdate: null,
+            onConnected: null,
+            onDisconnected: null
         };
     }
     
@@ -47,6 +52,7 @@ class ArenaClient {
     getEnemyTeam() { return this.state.enemyTeam; }
     getBattleLog() { return this.state.battleLog; }
     getConfirmationShown() { return this.state.confirmationShown; }
+    isConnected() { return this.state.socket && this.state.socket.connected; }
     
     // ============================================================
     // SETTERS
@@ -125,7 +131,6 @@ class ArenaClient {
     updateBattle(data) {
         if (!this.state.battleActive) return;
         
-        // Обновляем команды
         if (data.player1Team && data.player2Team) {
             if (this.state.currentBattleIsPlayer1) {
                 this.state.myTeam = data.player1Team;
@@ -139,7 +144,6 @@ class ArenaClient {
             this.state.enemyTeam = data.opponentTeam;
         }
         
-        // Добавляем в лог
         if (data.lastMove) {
             this.state.battleLog.unshift({
                 turn: data.turnCount || this.state.battleLog.length + 1,
@@ -150,7 +154,6 @@ class ArenaClient {
                 timestamp: Date.now()
             });
             
-            // Ограничиваем лог
             if (this.state.battleLog.length > 20) {
                 this.state.battleLog.pop();
             }
@@ -176,7 +179,6 @@ class ArenaClient {
             this.callbacks.onBattleEnd(isWin, prizePool);
         }
         
-        // Сбрасываем состояние через 3 секунды
         setTimeout(() => {
             this.state.currentBattleIsPlayer1 = false;
             this.state.confirmationShown = false;
@@ -200,98 +202,161 @@ class ArenaClient {
     }
     
     // ============================================================
-    // SSE
+    // WEBSOCKET
     // ============================================================
     
-    connectSSE(token, apiUrl) {
-        this.disconnectSSE();
+    connectSocket(token, apiUrl) {
+        this.disconnectSocket();
         
         if (!token) {
-            console.error('No token for SSE');
+            console.error('No token for WebSocket');
             return;
         }
         
-        const url = `${apiUrl}/api/arena/events?token=${encodeURIComponent(token)}`;
-        const sse = new EventSource(url);
-        this.state.sseConnection = sse;
+        let wsUrl = apiUrl.replace(/^https?:\/\//, '');
+        wsUrl = `wss://${wsUrl}`;
         
-        sse.onopen = () => {
-            console.log('✅ SSE connected');
-        };
+        console.log(`🔌 Подключение WebSocket к ${wsUrl}`);
         
-        sse.onerror = (e) => {
-            console.error('SSE error:', e);
-            if (this.state.isSearching || this.state.battleActive) {
-                setTimeout(() => this.connectSSE(token, apiUrl), 3000);
-            }
-        };
-        
-        sse.addEventListener('match_found', (e) => {
-            try {
-                const data = JSON.parse(e.data);
+        try {
+            const socket = io(wsUrl, {
+                transports: ['websocket', 'polling'],
+                auth: { token },
+                reconnection: true,
+                reconnectionAttempts: this.maxReconnectAttempts,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000
+            });
+            
+            this.state.socket = socket;
+            
+            socket.on('connect', () => {
+                console.log('✅ WebSocket connected');
+                this.reconnectAttempts = 0;
+                if (this.timers.reconnectTimer) {
+                    clearTimeout(this.timers.reconnectTimer);
+                    this.timers.reconnectTimer = null;
+                }
+                if (this.callbacks.onConnected) {
+                    this.callbacks.onConnected();
+                }
+            });
+            
+            socket.on('disconnect', (reason) => {
+                console.log('❌ WebSocket disconnected:', reason);
+                if (this.callbacks.onDisconnected) {
+                    this.callbacks.onDisconnected(reason);
+                }
+                this.scheduleReconnect(token, apiUrl);
+            });
+            
+            socket.on('connect_error', (err) => {
+                console.error('WebSocket connect error:', err.message);
+                this.scheduleReconnect(token, apiUrl);
+            });
+            
+            socket.on('connected', (data) => {
+                console.log('📡 Connected to arena server', data);
+            });
+            
+            socket.on('battle_status', (data) => {
+                console.log('📡 Battle status received', data);
+                if (data.hasBattle && data.status === 'active' && !this.state.battleActive) {
+                    this.startBattle(
+                        data.battleId,
+                        data.isPlayer1,
+                        data.myTeam,
+                        data.opponentTeam
+                    );
+                    if (this.callbacks.onBattleStartUI) {
+                        this.callbacks.onBattleStartUI(data);
+                    }
+                } else if (data.hasBattle && data.status === 'pending_confirmation' && !this.state.confirmationShown) {
+                    this.state.confirmationShown = true;
+                    if (this.callbacks.onMatchFound) {
+                        this.callbacks.onMatchFound(data);
+                    }
+                }
+            });
+            
+            socket.on('match_found', (data) => {
+                console.log('⚔️ Match found!', data);
                 this.state.confirmationShown = true;
-                
                 if (this.callbacks.onMatchFound) {
                     this.callbacks.onMatchFound(data);
                 }
-            } catch (err) {
-                console.error('match_found parse error:', err);
-            }
-        });
-        
-        sse.addEventListener('battle_start', (e) => {
-            try {
-                const data = JSON.parse(e.data);
+            });
+            
+            socket.on('battle_start', (data) => {
+                console.log('⚔️ Battle start!', data);
                 this.startBattle(
                     data.battleId,
                     data.isPlayer1,
                     data.myTeam,
                     data.opponentTeam
                 );
-                
                 if (this.callbacks.onBattleStartUI) {
                     this.callbacks.onBattleStartUI(data);
                 }
-            } catch (err) {
-                console.error('battle_start parse error:', err);
-            }
-        });
-        
-        sse.addEventListener('move_update', (e) => {
-            try {
-                const data = JSON.parse(e.data);
+            });
+            
+            socket.on('move_update', (data) => {
                 this.updateBattle(data);
-            } catch (err) {
-                console.error('move_update parse error:', err);
-            }
-        });
-        
-        sse.addEventListener('battle_end', (e) => {
-            try {
-                const data = JSON.parse(e.data);
+            });
+            
+            socket.on('battle_end', (data) => {
+                console.log('🏆 Battle end!', data);
                 this.endBattle(data.winnerId, data.prizePool);
-            } catch (err) {
-                console.error('battle_end parse error:', err);
-            }
-        });
-        
-        sse.addEventListener('confirmation_update', (e) => {
-            try {
-                const data = JSON.parse(e.data);
+            });
+            
+            socket.on('confirmation_update', (data) => {
                 if (this.callbacks.onConfirmationUpdate) {
                     this.callbacks.onConfirmationUpdate(data);
                 }
-            } catch (err) {
-                console.error('confirmation_update parse error:', err);
-            }
-        });
+            });
+            
+            setInterval(() => {
+                if (socket.connected) {
+                    socket.emit('ping');
+                }
+            }, 25000);
+            
+            socket.on('pong', () => {});
+            
+        } catch (err) {
+            console.error('Failed to create WebSocket connection:', err);
+            this.scheduleReconnect(token, apiUrl);
+        }
     }
     
-    disconnectSSE() {
-        if (this.state.sseConnection) {
-            this.state.sseConnection.close();
-            this.state.sseConnection = null;
+    scheduleReconnect(token, apiUrl) {
+        if (this.timers.reconnectTimer) return;
+        
+        this.reconnectAttempts++;
+        if (this.reconnectAttempts > this.maxReconnectAttempts) {
+            console.log('Max reconnect attempts reached');
+            return;
         }
+        
+        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+        console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+        
+        this.timers.reconnectTimer = setTimeout(() => {
+            this.timers.reconnectTimer = null;
+            this.connectSocket(token, apiUrl);
+        }, delay);
+    }
+    
+    disconnectSocket() {
+        if (this.state.socket) {
+            this.state.socket.disconnect();
+            this.state.socket = null;
+        }
+        if (this.timers.reconnectTimer) {
+            clearTimeout(this.timers.reconnectTimer);
+            this.timers.reconnectTimer = null;
+        }
+        this.reconnectAttempts = 0;
     }
     
     // ============================================================
@@ -302,7 +367,6 @@ class ArenaClient {
         if (this.callbacks.hasOwnProperty(event)) {
             this.callbacks[event] = callback;
         } else {
-            // Если события нет в списке, просто добавляем
             this.callbacks[event] = callback;
         }
     }
@@ -316,7 +380,7 @@ class ArenaClient {
     }
     
     reset() {
-        this.disconnectSSE();
+        this.disconnectSocket();
         this.stopSearch();
         if (this.timers.battleTimer) clearInterval(this.timers.battleTimer);
         this.state = {
@@ -324,15 +388,15 @@ class ArenaClient {
             currentBattleId: null,
             isSearching: false,
             battleActive: false,
-            sseConnection: null,
+            socket: null,
             currentBattleIsPlayer1: false,
             confirmationShown: false,
             battleLog: [],
             myTeam: [],
             enemyTeam: []
         };
+        this.reconnectAttempts = 0;
     }
 }
 
-// Создаём глобальный экземпляр
 window.arenaClient = new ArenaClient();
