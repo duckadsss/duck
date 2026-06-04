@@ -8,9 +8,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="format-detection" content="telephone=no">
 <meta name="msapplication-tap-highlight" content="no">
-<title>DNA MMO — Merge & Evolve</title>
+<title>DNA MMO — Merge & Evolve | Arena PvP</title>
 <meta property="og:title" content="DNA MMO — Merge & Evolve">
-<meta property="og:description" content="Open DNA capsules, collect creatures, merge to evolve and earn MMO tokens.">
+<meta property="og:description" content="Open DNA capsules, collect creatures, merge to evolve, battle in PvP Arena and earn MMO tokens.">
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -18,6 +18,8 @@
 <link rel="stylesheet" href="style.css">
 <!-- Telegram WebApp SDK -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<!-- Socket.IO for Arena PvP -->
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 <!-- Giga Pub Enhanced Reliability Script -->
 <script data-project-id="6820">
   !function(){
@@ -85,7 +87,7 @@
                 <img src="1.png" alt="DNA Capsule" style="object-fit:contain">
             </div>
             <div class="capsule-name" data-i18n="game.dnaCapsule">DNA CAPSULE</div>
-            <div class="capsule-cost"><i class="fa-solid fa-dna" style="font-size:10px"></i> 500 MMO</div>
+            <div class="capsule-cost"><i class="fa-solid fa-dna" style="font-size:10px"></i> 1000 MMO</div>
             <button class="capsule-btn" onclick="event.stopPropagation();showCapsuleModal('basic')" data-i18n="game.open">OPEN</button>
         </div>
         <div class="capsule-card premium" id="premiumCapsuleCard" onclick="showCapsuleModal('premium')">
@@ -93,7 +95,7 @@
                 <img src="2.png" alt="Premium DNA Capsule" style="object-fit:contain">
             </div>
             <div class="capsule-name" data-i18n="game.premiumCapsule">PREMIUM DNA</div>
-            <div class="capsule-cost gold"><i class="fa-solid fa-gem" style="font-size:10px"></i> 2000 MMO</div>
+            <div class="capsule-cost gold"><i class="fa-solid fa-gem" style="font-size:10px"></i> 6000 MMO</div>
             <button class="capsule-btn gold-btn" onclick="event.stopPropagation();showCapsuleModal('premium')" data-i18n="game.open">OPEN</button>
         </div>
     </div>
@@ -119,7 +121,7 @@
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <div class="section-title" style="margin-bottom:0"><i class="fa-solid fa-layer-group" style="color:var(--accent3)"></i> <span data-i18n="inventory.myCreatures">My Creatures</span> <span id="inventorySlots" style="font-size:10px;color:var(--text2);font-weight:400;letter-spacing:0">0/10</span></div>
         <button style="padding:6px 12px;border:none;border-radius:8px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;font-size:10px;font-weight:700;font-family:'Orbitron',monospace;cursor:pointer;transition:all 0.2s;white-space:nowrap" onclick="event.stopPropagation(); upgradeInventory()" id="quickUpgradeBtn">
-            <i class="fa-solid fa-plus"></i> <span id="upgradeSlotCost">100</span> <span data-i18n="game.mmo">MMO</span>
+            <i class="fa-solid fa-plus"></i> +1 slot (<span id="upgradeSlotCost">100</span>)
         </button>
     </div>
     <div class="cards-grid" id="cardsGrid">
@@ -159,7 +161,7 @@
 
 <!-- LEADERBOARD TAB -->
 <div class="tab-content" id="tab-leaderboard">
-    <div style="position:relative;border-radius:20px;overflow:hidden;margin-bottom:16px;cursor:pointer" onclick="showToast('🏆 Займи #1 и получи Black Pantera Mythic!', '🏆')">
+    <div style="position:relative;border-radius:20px;overflow:hidden;margin-bottom:16px;cursor:pointer" onclick="showToast('🏆 Get #1 and win Black Pantera Mythic!', '🏆')">
         <div style="position:absolute;inset:0;z-index:2;pointer-events:none;border-radius:20px;border:1px solid rgba(255,255,255,0.18);background:linear-gradient(135deg,rgba(255,255,255,0.10) 0%,rgba(168,85,247,0.08) 40%,rgba(0,0,0,0) 100%)"></div>
         <div style="position:absolute;top:0;left:-10%;width:40%;height:100%;z-index:3;pointer-events:none;background:linear-gradient(105deg,rgba(255,255,255,0) 40%,rgba(255,255,255,0.13) 50%,rgba(255,255,255,0) 60%);border-radius:20px"></div>
         <div style="position:absolute;top:0;left:12%;width:76%;height:1.5px;z-index:4;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.55),transparent);border-radius:2px"></div>
@@ -228,104 +230,6 @@
     <div id="specialQuestsList"></div>
 </div>
 
-<!-- ARENA TAB -->
-<div class="tab-content" id="tab-arena">
-    <div class="arena-tabs">
-        <button class="arena-tab-btn active" data-arena-tab="team" onclick="switchArenaTab('team')">
-            <i class="fa-solid fa-users"></i> <span>Команда</span>
-        </button>
-        <button class="arena-tab-btn" data-arena-tab="fight" onclick="switchArenaTab('fight')">
-            <i class="fa-solid fa-sword"></i> <span>Бой</span>
-        </button>
-        <button class="arena-tab-btn" data-arena-tab="ranking" onclick="switchArenaTab('ranking')">
-            <i class="fa-solid fa-trophy"></i> <span>Рейтинг</span>
-        </button>
-    </div>
-    
-<!-- Вкладка Команда -->
-<div class="arena-subtab active" id="arena-team-tab">
-    <div class="section-title"><i class="fa-solid fa-paw"></i> <span>Выберите 3 питомца</span></div>
-    
-    <div id="arenaTeamInventory" class="cards-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 20px;"></div>
-    
-    <div class="arena-selected-team">
-        <div class="section-title"><i class="fa-solid fa-check-circle"></i> <span>Ваша команда</span></div>
-        <div id="arenaSelectedTeam" class="arena-team-cards"></div>
-        <div style="display: flex; gap: 12px; margin-top: 12px;">
-            <button class="arena-save-btn" onclick="saveArenaTeam()" id="saveTeamBtn" style="flex: 1;">
-                <i class="fa-solid fa-save"></i> <span>Сохранить команду</span>
-            </button>
-            <button class="arena-reset-btn" onclick="resetArenaTeam()" id="resetTeamBtn" style="flex: 1; background: linear-gradient(135deg, #ef4444, #dc2626);">
-                <i class="fa-solid fa-trash-alt"></i> <span>Сбросить команду</span>
-            </button>
-        </div>
-    </div>
-</div>
-    
-    <!-- Вкладка Бой -->
-    <div class="arena-subtab" id="arena-fight-tab">
-        <div id="arenaFightStatus" class="arena-fight-status">
-            <div class="arena-stats-preview">
-                <div class="arena-stat-item">
-                    <span class="arena-stat-label"><i class="fa-solid fa-coins"></i> Вход:</span>
-                    <span class="arena-stat-value" id="arenaEntryFee">500</span>
-                </div>
-                <div class="arena-stat-item">
-                    <span class="arena-stat-label"><i class="fa-solid fa-gift"></i> Приз:</span>
-                    <span class="arena-stat-value" id="arenaPrizePool">800</span>
-                </div>
-                <div class="arena-stat-item">
-                    <span class="arena-stat-label"><i class="fa-solid fa-chart-line"></i> Лига:</span>
-                    <span class="arena-stat-value" id="arenaLeague">Бронзовая</span>
-                </div>
-            </div>
-            
-            <div id="arenaCurrentTeam" class="arena-current-team"></div>
-            
-            <button class="arena-find-btn" onclick="findMatch()" id="findMatchBtn">
-                <i class="fa-solid fa-magnifying-glass"></i> Найти бой
-            </button>
-            
-            <div id="arenaSearchStatus" class="arena-search-status"></div>
-        </div>
-        
-        <div id="arenaBattleContainer" style="display: none;">
-            <!-- Боевой интерфейс будет вставлен динамически -->
-        </div>
-    </div>
-    
-    <!-- Вкладка Рейтинг -->
-    <div class="arena-subtab" id="arena-ranking-tab">
-        <div id="arenaMyStats" class="arena-my-stats">
-            <div class="arena-stats-grid">
-                <div class="arena-stat-card">
-                    <div class="arena-stat-icon"><i class="fa-solid fa-star"></i></div>
-                    <div class="arena-stat-value" id="arenaMyRating">1000</div>
-                    <div class="arena-stat-label">Рейтинг</div>
-                </div>
-                <div class="arena-stat-card">
-                    <div class="arena-stat-icon"><i class="fa-solid fa-trophy"></i></div>
-                    <div class="arena-stat-value" id="arenaMyWins">0</div>
-                    <div class="arena-stat-label">Победы</div>
-                </div>
-                <div class="arena-stat-card">
-                    <div class="arena-stat-icon"><i class="fa-solid fa-skull"></i></div>
-                    <div class="arena-stat-value" id="arenaMyLosses">0</div>
-                    <div class="arena-stat-label">Поражения</div>
-                </div>
-                <div class="arena-stat-card">
-                    <div class="arena-stat-icon"><i class="fa-solid fa-fire"></i></div>
-                    <div class="arena-stat-value" id="arenaMyStreak">0</div>
-                    <div class="arena-stat-label">Стрик</div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="section-title"><i class="fa-solid fa-ranking-star"></i> <span>Топ игроков</span></div>
-        <div id="arenaLeaderboardList" class="leaderboard-list"></div>
-    </div>
-</div>
-
 <!-- WALLET TAB -->
 <div class="tab-content" id="tab-wallet">
     <div class="wallet-hero">
@@ -336,28 +240,28 @@
         <button class="lang-btn" data-lang="ru" onclick="setLanguage('ru')">RU</button>
         <button class="lang-btn" data-lang="en" onclick="setLanguage('en')">EN</button>
     </div>
-<div class="wallet-stats">
-    <div class="wallet-stat">
-        <div class="wallet-stat-icon">🧬</div>
-        <div class="wallet-stat-val" id="walletCards">0</div>
-        <div class="wallet-stat-label" data-i18n="wallet.creatures">Creatures</div>
+    <div class="wallet-stats">
+        <div class="wallet-stat">
+            <div class="wallet-stat-icon">🧬</div>
+            <div class="wallet-stat-val" id="walletCards">0</div>
+            <div class="wallet-stat-label" data-i18n="wallet.creatures">Creatures</div>
+        </div>
+        <div class="wallet-stat">
+            <div class="wallet-stat-icon">🔀</div>
+            <div class="wallet-stat-val" id="walletMerges">0</div>
+            <div class="wallet-stat-label" data-i18n="wallet.totalMerges">Total Merges</div>
+        </div>
+        <div class="wallet-stat">
+            <div class="wallet-stat-icon">📺</div>
+            <div class="wallet-stat-val" id="walletAdsWatched">0</div>
+            <div class="wallet-stat-label" data-i18n="wallet.adsWatched">Ads Watched</div>
+        </div>
+        <div class="wallet-stat">
+            <div class="wallet-stat-icon">👥</div>
+            <div class="wallet-stat-val" id="walletReferralEarned">0</div>
+            <div class="wallet-stat-label" data-i18n="wallet.referralEarned">From Referrals</div>
+        </div>
     </div>
-    <div class="wallet-stat">
-        <div class="wallet-stat-icon">🔀</div>
-        <div class="wallet-stat-val" id="walletMerges">0</div>
-        <div class="wallet-stat-label" data-i18n="wallet.totalMerges">Total Merges</div>
-    </div>
-    <div class="wallet-stat">
-        <div class="wallet-stat-icon">📺</div>
-        <div class="wallet-stat-val" id="walletAdsWatched">0</div>
-        <div class="wallet-stat-label" data-i18n="wallet.adsWatched">Ads Watched</div>
-    </div>
-    <div class="wallet-stat">
-        <div class="wallet-stat-icon">👥</div>
-        <div class="wallet-stat-val" id="walletReferralEarned">0</div>
-        <div class="wallet-stat-label" data-i18n="wallet.referralEarned">From Referrals</div>
-    </div>
-</div>
     <div class="wallet-actions">
         <button class="wallet-action-btn deposit" onclick="showDepositModal()">
             <i class="fa-solid fa-arrow-down"></i> <span data-i18n="wallet.deposit">DEPOSIT</span>
@@ -367,6 +271,55 @@
         </button>
     </div>
     <div id="pendingRequests"></div>
+</div>
+
+<!-- ARENA TAB -->
+<div class="tab-content" id="tab-arena">
+    <div class="arena-rank-card">
+        <div class="arena-rank-icon">🏆</div>
+        <div class="arena-rank-info">
+            <div class="arena-league" id="arenaLeague">BRONZE</div>
+            <div class="arena-rating" id="arenaRating">500</div>
+            <div class="arena-stats">
+                <span>🏆 <span id="arenaWins">0</span></span>
+                <span>💀 <span id="arenaLosses">0</span></span>
+                <span>🤝 <span id="arenaDraws">0</span></span>
+            </div>
+        </div>
+        <div class="arena-tokens" onclick="buyArenaTokens()" style="cursor:pointer">
+            <i class="fa-solid fa-ticket"></i>
+            <span id="arenaTokens">3</span>
+            <span class="arena-tokens-label">/3</span>
+        </div>
+    </div>
+
+    <div class="arena-section-title">
+        <i class="fa-solid fa-dragon"></i>
+        <span>SELECT YOUR TEAM (3 MONSTERS)</span>
+    </div>
+
+    <div class="arena-team-slots" id="arenaTeamSlots">
+        <div class="arena-slot empty" data-slot="0" onclick="openMonsterSelector(0)">+</div>
+        <div class="arena-slot empty" data-slot="1" onclick="openMonsterSelector(1)">+</div>
+        <div class="arena-slot empty" data-slot="2" onclick="openMonsterSelector(2)">+</div>
+    </div>
+
+    <div class="arena-buttons">
+        <button class="arena-find-btn" id="arenaFindBtn" onclick="findArenaMatch()">
+            <i class="fa-solid fa-magnifying-glass"></i> FIND BATTLE
+        </button>
+        <button class="arena-cancel-btn" id="arenaCancelBtn" onclick="cancelArenaSearch()" style="display:none">
+            <i class="fa-solid fa-times"></i> CANCEL SEARCH
+        </button>
+    </div>
+
+    <div class="arena-history">
+        <div class="arena-section-title">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+            <span>BATTLE HISTORY</span>
+        </div>
+        <div id="arenaHistoryList" class="arena-history-list"></div>
+    </div>
 </div>
 
 </div>
@@ -393,13 +346,13 @@
         <i class="fa-solid fa-star"></i>
         <span data-i18n="nav.special">Special</span>
     </div>
-    <div class="nav-item" onclick="switchTab('arena')" id="nav-arena">
-        <i class="fa-solid fa-sword"></i>
-        <span data-i18n="nav.arena">Arena</span>
-    </div>
     <div class="nav-item" onclick="switchTab('wallet')" id="nav-wallet">
         <i class="fa-solid fa-wallet"></i>
         <span data-i18n="nav.wallet">Wallet</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('arena')" id="nav-arena">
+        <i class="fa-solid fa-gamepad"></i>
+        <span data-i18n="nav.arena">Arena</span>
     </div>
 </div>
 
@@ -408,146 +361,68 @@
     <div class="popup" id="popup"></div>
 </div>
 
-<div class="toast" id="toast"></div>
-
-
-<!-- Socket.IO клиент -->
-<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="arena-client.js"></script>      <!-- ← ДОБАВИТЬ! -->
-<script src="script.js"></script>
-<script src="localization.js"></script>
-
-
-<!-- DEBUG CONSOLE -->
-<div id="debugConsole" style="display: none; position: fixed; bottom: 70px; left: 0; right: 0; background: rgba(0,0,0,0.95); border-top: 2px solid #a855f7; padding: 8px; z-index: 10000; font-family: monospace; font-size: 11px; max-height: 200px; overflow-y: auto; backdrop-filter: blur(8px);">
-    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #a855f7;">
-        <span style="color: #a855f7;">🐛 DEBUG CONSOLE</span>
-        <div>
-            <button onclick="clearDebugLogs()" style="background: #1e2d4a; border: none; color: #fff; padding: 2px 8px; border-radius: 4px; margin-right: 8px; font-size: 10px; cursor: pointer;">Очистить</button>
-            <button onclick="toggleDebugConsole()" style="background: #ef4444; border: none; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 10px; cursor: pointer;">✕ Закрыть</button>
-        </div>
+<!-- MONSTER SELECTOR MODAL -->
+<div class="overlay" id="monsterSelectorOverlay" onclick="closeMonsterSelector()">
+    <div class="popup monster-selector-popup">
+        <div class="popup-close" onclick="closeMonsterSelector()"><i class="fa-solid fa-xmark"></i></div>
+        <div class="popup-title">SELECT MONSTER</div>
+        <div class="monster-selector-grid" id="monsterSelectorGrid"></div>
     </div>
-    <div id="debugLogs" style="color: #94a3b8;"></div>
 </div>
 
-<button onclick="toggleDebugConsole()" style="position: fixed; bottom: 130px; right: 8px; background: #a855f7; border: none; color: #fff; width: 36px; height: 36px; border-radius: 50%; font-size: 16px; cursor: pointer; z-index: 9999; box-shadow: 0 0 10px rgba(168,85,247,0.5);">
-    🐛
-</button>
-
-<script>
-// ============================================
-// DEBUG CONSOLE
-// ============================================
-
-let debugLogs = [];
-let debugConsoleShown = false;
-
-// Функция addDebugLog УДАЛЕНА - она уже есть в script.js
-
-function updateDebugDisplay() {
-    const container = document.getElementById('debugLogs');
-    if (!container) return;
-    
-    container.innerHTML = debugLogs.map(log => {
-        let color = '#94a3b8';
-        if (log.type === 'error') color = '#ef4444';
-        else if (log.type === 'warn') color = '#f59e0b';
-        else if (log.type === 'success') color = '#22c55e';
+<!-- BATTLE MODAL -->
+<div class="overlay" id="battleOverlay">
+    <div class="battle-container" id="battleContainer">
+        <div class="battle-close" onclick="closeBattle()">✕</div>
         
-        return `<div style="padding: 4px 0; border-bottom: 1px solid #1e2d4a; color: ${color};">
-            <span style="color: #4a5568;">[${log.timestamp}]</span> ${escapeHtml(log.message)}
-        </div>`;
-    }).join('');
-}
+        <!-- Opponent Section -->
+        <div class="battle-opponent">
+            <div class="battle-player-name" id="opponentName">OPPONENT</div>
+            <div class="battle-health-bar">
+                <div class="battle-health-fill" id="opponentHealthFill" style="width:100%"></div>
+                <span class="battle-health-text" id="opponentHealthText">100%</span>
+            </div>
+            <div class="battle-monsters" id="opponentMonsters"></div>
+        </div>
 
-function clearDebugLogs() {
-    debugLogs = [];
-    updateDebugDisplay();
-    // Используем глобальную addDebugLog из script.js
-    if (window.addDebugLog) window.addDebugLog('Логи очищены', 'info');
-}
+        <!-- Battle Log -->
+        <div class="battle-log" id="battleLog">
+            <div class="battle-log-title">⚔️ BATTLE LOG</div>
+            <div class="battle-log-messages" id="battleLogMessages"></div>
+        </div>
 
-function toggleDebugConsole() {
-    const consoleEl = document.getElementById('debugConsole');
-    if (consoleEl) {
-        debugConsoleShown = !debugConsoleShown;
-        consoleEl.style.display = debugConsoleShown ? 'block' : 'none';
-    }
-}
+        <!-- Player Section -->
+        <div class="battle-player">
+            <div class="battle-player-name" id="playerName">YOU</div>
+            <div class="battle-health-bar">
+                <div class="battle-health-fill" id="playerHealthFill" style="width:100%"></div>
+                <span class="battle-health-text" id="playerHealthText">100%</span>
+            </div>
+            <div class="battle-monsters" id="playerMonsters"></div>
+        </div>
 
-// Перехват ошибок
-window.addEventListener('error', (e) => {
-    if (window.addDebugLog) window.addDebugLog(`Ошибка: ${e.message} в ${e.filename}:${e.lineno}`, 'error');
-    else console.error(e);
-});
+        <div class="battle-turn-timer" id="turnTimer">30s</div>
+        <div class="battle-message" id="battleMessage"></div>
+    </div>
+</div>
 
-window.addEventListener('unhandledrejection', (e) => {
-    if (window.addDebugLog) window.addDebugLog(`Promise ошибка: ${e.reason}`, 'error');
-    else console.error(e);
-});
+<!-- ACCEPT BATTLE MODAL -->
+<div class="overlay" id="acceptBattleOverlay">
+    <div class="battle-accept-popup">
+        <div class="battle-accept-title">⚔️ BATTLE FOUND! ⚔️</div>
+        <div class="battle-accept-opponent" id="acceptOpponentName">Player</div>
+        <div class="battle-accept-rating" id="acceptOpponentRating">Rating: 0</div>
+        <div class="battle-accept-buttons">
+            <button class="battle-accept-btn" onclick="acceptBattle()">✅ ACCEPT</button>
+            <button class="battle-decline-btn" onclick="declineBattle()">❌ DECLINE</button>
+        </div>
+    </div>
+</div>
 
-// Перехват fetch запросов (для отладки)
-const originalFetch = window.fetch;
-window.fetch = async function(...args) {
-    const url = args[0];
-    if (window.addDebugLog) window.addDebugLog(`📡 Запрос: ${args[1]?.method || 'GET'} ${url}`, 'info');
-    
-    try {
-        const response = await originalFetch(...args);
-        if (!response.ok) {
-            if (window.addDebugLog) window.addDebugLog(`❌ Ошибка ${response.status}: ${url}`, 'error');
-        } else {
-            if (window.addDebugLog) window.addDebugLog(`✅ Успешно: ${response.status} ${url}`, 'success');
-        }
-        return response;
-    } catch (error) {
-        if (window.addDebugLog) window.addDebugLog(`❌ Сеть: ${error.message} - ${url}`, 'error');
-        throw error;
-    }
-};
+<div class="toast" id="toast"></div>
 
-// Функция для проверки соединения с сервером
-async function testConnection() {
-    if (window.addDebugLog) window.addDebugLog('🔍 Проверка соединения с сервером...', 'info');
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-        
-        const response = await fetch(`${API_URL}/health`, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
-            const data = await response.json();
-            if (window.addDebugLog) window.addDebugLog(`✅ Сервер онлайн! DB: ${data.db}`, 'success');
-        } else {
-            if (window.addDebugLog) window.addDebugLog(`⚠️ Сервер ответил с ошибкой: ${response.status}`, 'warn');
-        }
-    } catch (error) {
-        if (error.name === 'AbortError') {
-            if (window.addDebugLog) window.addDebugLog(`❌ Таймаут соединения с сервером! Сервер не отвечает.`, 'error');
-        } else {
-            if (window.addDebugLog) window.addDebugLog(`❌ Не могу соединиться с сервером: ${error.message}`, 'error');
-        }
-        if (window.addDebugLog) window.addDebugLog(`   Проверь: сервер запущен и API_URL правильный: ${API_URL}`, 'error');
-    }
-}
-
-// Добавляем кнопку теста
-const testBtn = document.createElement('button');
-testBtn.innerHTML = '🔌 Тест API';
-testBtn.style.cssText = 'position: fixed; bottom: 130px; right: 50px; background: #22c55e; border: none; color: #fff; padding: 6px 12px; border-radius: 20px; font-size: 10px; cursor: pointer; z-index: 9999; font-weight: bold;';
-testBtn.onclick = testConnection;
-document.body.appendChild(testBtn);
-
-// Добавляем информацию о версии
-if (window.addDebugLog) {
-    window.addDebugLog(`🚀 DNA MMO v5.0 (с ареной)`, 'success');
-    window.addDebugLog(`📡 API_URL: ${API_URL}`, 'info');
-    window.addDebugLog(`🌐 Frontend: ${window.location.href}`, 'info');
-}
-setTimeout(() => {
-    testConnection();
-}, 2000);
-</script>
+<!-- SCRIPTS -->
+<script src="script.js"></script>
+<script src="localization.js"></script>
 </body>
 </html>

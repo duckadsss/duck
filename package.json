@@ -1,10 +1,12 @@
 {
   "name": "dna-mmo",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "description": "DNA MMO - Merge & Evolve with PvP Arena",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "bot": "node bot.js"
+    "bot": "node bot.js",
+    "dev": "nodemon server.js"
   },
   "dependencies": {
     "compression": "^1.7.4",
@@ -15,6 +17,21 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^7.6.3",
     "node-telegram-bot-api": "^0.64.0",
-    "socket.io": "^4.7.2"
-  }
+    "socket.io": "^4.5.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "telegram",
+    "game",
+    "mmo",
+    "pvp",
+    "arena",
+    "dna",
+    "merge",
+    "evolve"
+  ],
+  "author": "",
+  "license": "ISC"
 }
