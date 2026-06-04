@@ -427,6 +427,20 @@
 <script src="arena-battle.js"></script>  
 <script src="localization.js"></script>
 
-
+<script>
+    let lastArenaInit = 0;
+    const originalInitArena = window.initArena;
+    window.initArena = function() {
+        const now = Date.now();
+        if (now - lastArenaInit < 1000) {
+            console.log('⏱️ Skipping arena init (too frequent)');
+            return;
+        }
+        lastArenaInit = now;
+        if (typeof originalInitArena === 'function') {
+            originalInitArena();
+        }
+    };
+</script>
 </body>
 </html>

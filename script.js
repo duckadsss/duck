@@ -100,11 +100,27 @@ const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic
 // ARENA FUNCTIONS
 // ============================================================
 
+// Глобальный флаг для предотвращения множественных подключений
+let arenaSocketInitialized = false;
+
 function initArenaWebSocket() {
-    if (arenaSocket && arenaSocket.connected) return;
+    // Если уже есть активное соединение, не создаём новое
+    if (arenaSocket && arenaSocket.connected) {
+        console.log('✅ Arena WebSocket already connected');
+        return;
+    }
+    
+    // Если уже инициализируем, не начинаем заново
+    if (arenaSocketInitialized) {
+        console.log('⚠️ Arena WebSocket initialization already in progress');
+        return;
+    }
     
     const token = state.token;
-    if (!token) return;
+    if (!token) {
+        console.log('⚠️ No token, cannot connect arena');
+        return;
+    }
     
     if (typeof io === 'undefined') {
         console.log('⚠️ Socket.IO not loaded yet, waiting...');
@@ -112,13 +128,28 @@ function initArenaWebSocket() {
         return;
     }
     
+    arenaSocketInitialized = true;
+    
+    // Закрываем старое соединение, если оно есть
+    if (arenaSocket) {
+        try {
+            arenaSocket.disconnect();
+        } catch(e) {}
+        arenaSocket = null;
+    }
+    
+    console.log('🔌 Creating new Arena WebSocket connection...');
+    
     arenaSocket = io(API_URL, {
         transports: ['websocket'],
-        query: { token }
+        query: { token },
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000
     });
     
     arenaSocket.on('connect', () => {
-        console.log('✅ Arena WebSocket connected');
+        console.log('✅ Arena WebSocket connected, id:', arenaSocket.id);
         
         // Регистрируем сокет в боевой системе (arena-battle.js)
         if (typeof window.registerArenaSocket === 'function') {
@@ -131,22 +162,31 @@ function initArenaWebSocket() {
     });
     
     arenaSocket.on('match-found', (data) => {
+        console.log('🎯 Match found!');
         arenaCurrentMatchRequest = data;
         showAcceptBattleModal(data.opponent);
     });
     
     arenaSocket.on('match-cancelled', () => {
+        console.log('❌ Match cancelled');
         showToast('Match search cancelled', '❌');
         stopArenaSearch();
     });
     
     arenaSocket.on('error', (data) => {
+        console.error('❌ Arena error:', data);
         showToast(data.message, '❌');
     });
     
-    arenaSocket.on('disconnect', () => {
-        console.log('❌ Arena WebSocket disconnected');
+    arenaSocket.on('disconnect', (reason) => {
+        console.log('❌ Arena WebSocket disconnected, reason:', reason);
+        arenaSocketInitialized = false;
         if (arenaIsSearching) stopArenaSearch();
+    });
+    
+    arenaSocket.on('connect_error', (error) => {
+        console.error('❌ Arena connection error:', error);
+        arenaSocketInitialized = false;
     });
 }
 
@@ -175,7 +215,9 @@ function findArenaMatch() {
     if (findBtn) findBtn.style.display = 'none';
     if (cancelBtn) cancelBtn.style.display = 'block';
     
-    arenaSocket.emit('find-match', { team: arenaCurrentTeam });
+    if (arenaSocket && arenaSocket.connected) {
+        arenaSocket.emit('find-match', { team: arenaCurrentTeam });
+    }
     showToast('Searching for opponent...', '🔍');
 }
 
@@ -382,11 +424,28 @@ async function buyArenaTokens() {
 }
 
 function initArena() {
+    // Загружаем статистику
     loadArenaStats();
+    // Обновляем отображение слотов
     updateArenaTeamSlots();
+    // Подключаем WebSocket (только один раз)
     initArenaWebSocket();
 }
 
+// Функция для полного сброса арены (при выходе из аккаунта)
+function resetArena() {
+    if (arenaSocket) {
+        try {
+            arenaSocket.disconnect();
+        } catch(e) {}
+        arenaSocket = null;
+    }
+    arenaSocketInitialized = false;
+    arenaIsSearching = false;
+    arenaCurrentMatchRequest = null;
+    arenaCurrentTeam = [null, null, null];
+    updateArenaTeamSlots();
+}
 // ============================================================
 // ВИЗУАЛЬНЫЙ ТИКЕР
 // ============================================================
@@ -2074,7 +2133,7 @@ async function renderFriendsList() {
                     <div style="text-align:right">
                         ${isQualified 
                             ? '<div style="font-size:11px;color:#22c55e;font-weight:600">✅ 5+ level</div>'
-                            : `<div style="font-size:11px;color:#f59e0b">?? needs ${5 - friend.level} levels</div>`
+                            : `<div style="font-size:11px;color:#f59e0b">📈 needs ${5 - friend.level} levels</div>`
                         }
                         <div style="font-size:12px;font-weight:700;color:#a855f7">${formatNum(friend.balance)} MMO</div>
                     </div>
