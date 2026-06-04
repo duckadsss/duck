@@ -73,21 +73,7 @@ const translations = {
         'friends.notQualified': '📈 нужно {left} ур.',
         'friends.levelRequirement': '🔥 ВАЖНО: Для получения наград друзья должны достичь 5 уровня!',
         
-        
-// В translations.ru:
-'nav.arena': 'Арена',
-'arena.title': 'PvP Арена',
-'arena.rating': 'Рейтинг',
-'arena.wins': 'Победы',
-'arena.losses': 'Поражения',
-'arena.league': 'Лига',
-'arena.selectCreatures': 'Выберите 3 существа для боя:',
-'arena.joinQueue': 'ВСТУПИТЬ В ОЧЕРЕДЬ',
-'arena.leaveQueue': 'ВЫЙТИ',
-'arena.searching': 'Поиск соперника...',
-'arena.leaderboard': 'Рейтинг Арены',
-        
-        // Special Quests
+        // Special Quests (обновлено)
         'specialQuests.title': 'Особые Квесты',
         'specialQuests.noQuests': 'Нет активных спец-квестов',
         'specialQuests.comingSoon': 'Скоро появятся новые квесты!',
@@ -108,14 +94,14 @@ const translations = {
         'wallet.withdraw': 'ВЫВЕСТИ',
         'wallet.activeRequests': 'Активных заявок: {count}/{max}',
         'wallet.pending': 'ОЖИДАНИЕ',
-        'wallet.depositAmount': 'Сумма в MMO',
-        'wallet.withdrawAmount': 'Сумма в MMO',
+        'wallet.depositAmount': 'Сумма (MMO)',
+        'wallet.withdrawAmount': 'Сумма (MMO)',
         'wallet.tonWallet': 'TON Кошелек',
         'wallet.minAmount': 'Минимальная сумма {min} MMO',
         'wallet.insufficientFunds': 'Недостаточно средств. Ваш баланс: {balance} MMO',
         'wallet.validWallet': 'Введите корректный TON адрес кошелька (минимум 20 символов)',
         'wallet.requestCreated': 'Заявка на {amount} MMO создана! Ожидайте подтверждения администратора.',
-        'wallet.requestDepositCreated': 'Заявка создана! Отправьте точную сумму {amount} MMO на указанный кошелек TON с указанием мемо.',
+        'wallet.requestDepositCreated': 'Заявка создана! Отправьте точную сумму на указанный кошелек TON с указанием мемо.',
         'wallet.paymentConfirmed': 'Спасибо! Администратор проверит платеж и начислит средства.',
         'wallet.copied': 'Скопировано!',
         
@@ -141,6 +127,7 @@ const translations = {
         'merge.evolutionSuccess': '🎉 Эволюция успешна!',
         'merge.failComplete': '❌ Провал! Существо не изменилось',
         'merge.evolution': 'ЭВОЛЮЦИЯ!',
+        'merge.continue': 'ПРОДОЛЖИТЬ',
         'merge.close': 'ЗАКРЫТЬ',
         'merge.successResult': '+РЕДКОСТЬ',
         'merge.sameResult': '=РЕДКОСТЬ',
@@ -149,18 +136,6 @@ const translations = {
         'popup.close': 'ЗАКРЫТЬ',
         'popup.awesome': 'ОТЛИЧНО!',
         'popup.owned': 'Владелец',
-        
-        // Deposit Popup
-        'deposit.title': '💎 Оплатите депозит',
-        'deposit.amountLabel': 'Сумма к оплате',
-        'deposit.walletLabel': '🏦 Кошелек для оплаты',
-        'deposit.memoLabel': '📝 Мемо (ОБЯЗАТЕЛЬНО!)',
-        'deposit.important': '⚠️ ВАЖНО!',
-        'deposit.importantText': '• Отправьте ровно {amount} MMO\n• Обязательно укажите мемо в комментарии к переводу\n• Без мемо платеж не будет зачислен\n• После перевода нажмите кнопку ниже',
-        'deposit.payButton': '✅ Я ОПЛАТИЛ {amount} MMO',
-        'deposit.cancelButton': '❌ ОТМЕНА',
-        'deposit.copyWallet': 'Скопировать кошелек',
-        'deposit.copyMemo': 'Скопировать мемо',
         
         // Transactions
         'transactions.none': 'Нет транзакций',
@@ -186,8 +161,6 @@ const translations = {
         'toast.errorListing': 'Ошибка при выставлении',
         'toast.errorBuying': 'Ошибка при покупке',
         'toast.copied': 'Ссылка скопирована!',
-        'toast.requestCreated': '✅ Заявка создана! Администратор проверит платеж и начислит средства.',
-        'toast.paymentDataLost': 'Ошибка: данные оплаты утеряны. Начните заново.',
         
         // Errors
         'error.connection': 'Ошибка соединения',
@@ -201,7 +174,7 @@ const translations = {
         'common.mmo': 'MMO',
         'common.hour': 'час',
         
-        // Friend Rewards
+        // Friend Rewards (обновлено)
         'friendReward.claimed': 'ПОЛУЧЕНО',
         'friendReward.claim': 'ЗАБРАТЬ',
         'friendReward.locked': '{friends} ДРУЗЕЙ 5+ УРОВНЯ',
@@ -214,8 +187,7 @@ const translations = {
         
         // Ads Timer
         'ads.ready': 'Готово',
-        'ads.wait': '{seconds}с',
-        'ads.regen': '+1 через {minutes}м'
+        'ads.wait': '{seconds}с'
     },
     en: {
         // Navigation
@@ -270,7 +242,7 @@ const translations = {
         'leaderboard.xp': 'XP',
         'leaderboard.you': '(You)',
         
-        // Friends
+        // Friends (updated)
         'friends.inviteTitle': 'INVITE FRIENDS',
         'friends.inviteBtn': 'INVITE FRIEND',
         'friends.milestones': 'Friend Milestones (Level 5+)',
@@ -283,7 +255,7 @@ const translations = {
         'friends.notQualified': '📈 need {left} lvl',
         'friends.levelRequirement': '🔥 IMPORTANT: Friends must reach level 5 to count for rewards!',
         
-        // Special Quests
+        // Special Quests (updated)
         'specialQuests.title': 'Special Quests',
         'specialQuests.noQuests': 'No active special quests',
         'specialQuests.comingSoon': 'New quests coming soon!',
@@ -304,14 +276,14 @@ const translations = {
         'wallet.withdraw': 'WITHDRAW',
         'wallet.activeRequests': 'Active requests: {count}/{max}',
         'wallet.pending': 'PENDING',
-        'wallet.depositAmount': 'Amount in MMO',
-        'wallet.withdrawAmount': 'Amount in MMO',
+        'wallet.depositAmount': 'Amount (MMO)',
+        'wallet.withdrawAmount': 'Amount (MMO)',
         'wallet.tonWallet': 'TON Wallet',
         'wallet.minAmount': 'Minimum amount {min} MMO',
         'wallet.insufficientFunds': 'Insufficient funds. Your balance: {balance} MMO',
         'wallet.validWallet': 'Enter a valid TON wallet address (min 20 characters)',
         'wallet.requestCreated': 'Withdraw request for {amount} MMO created! Wait for admin approval.',
-        'wallet.requestDepositCreated': 'Request created! Send exact amount {amount} MMO to the TON wallet with memo.',
+        'wallet.requestDepositCreated': 'Request created! Send exact amount to the TON wallet with memo.',
         'wallet.paymentConfirmed': 'Thank you! Admin will check payment and add funds.',
         'wallet.copied': 'Copied!',
         
@@ -337,6 +309,7 @@ const translations = {
         'merge.evolutionSuccess': '🎉 Evolution successful!',
         'merge.failComplete': '❌ Fail! Creature unchanged',
         'merge.evolution': 'EVOLUTION!',
+        'merge.continue': 'CONTINUE',
         'merge.close': 'CLOSE',
         'merge.successResult': '+RARITY',
         'merge.sameResult': '=RARITY',
@@ -345,34 +318,6 @@ const translations = {
         'popup.close': 'CLOSE',
         'popup.awesome': 'AWESOME!',
         'popup.owned': 'Owned',
-        
-        // Deposit Popup
-        'deposit.title': '💎 Pay Deposit',
-        'deposit.amountLabel': 'Amount to pay',
-        'deposit.walletLabel': '🏦 Payment Wallet',
-        'deposit.memoLabel': '📝 Memo (REQUIRED!)',
-        'deposit.important': '⚠️ IMPORTANT!',
-        'deposit.importantText': '• Send exactly {amount} MMO\n• You MUST include the memo in your transfer\n• Without memo, payment will not be credited\n• Click the button below after payment',
-        'deposit.payButton': '✅ I PAID {amount} MMO',
-        'deposit.cancelButton': '❌ CANCEL',
-        'deposit.copyWallet': 'Copy wallet',
-        'deposit.copyMemo': 'Copy memo',
-        // Добавьте в объект translations.ru и translations.en:
-
-
-// В translations.en:
-'nav.arena': 'Arena',
-'arena.title': 'PvP Arena',
-'arena.rating': 'Rating',
-'arena.wins': 'Wins',
-'arena.losses': 'Losses',
-'arena.league': 'League',
-'arena.selectCreatures': 'Select 3 creatures for battle:',
-'arena.joinQueue': 'JOIN QUEUE',
-'arena.leaveQueue': 'LEAVE',
-'arena.searching': 'Searching for opponent...',
-'arena.leaderboard': 'Arena Leaderboard',
-        
         
         // Transactions
         'transactions.none': 'No transactions yet',
@@ -398,8 +343,6 @@ const translations = {
         'toast.errorListing': 'Error listing',
         'toast.errorBuying': 'Error buying',
         'toast.copied': 'Link copied!',
-        'toast.requestCreated': '✅ Request created! Admin will check payment and add funds.',
-        'toast.paymentDataLost': 'Error: payment data lost. Start over.',
         
         // Errors
         'error.connection': 'Connection error',
@@ -413,7 +356,7 @@ const translations = {
         'common.mmo': 'MMO',
         'common.hour': 'hr',
         
-        // Friend Rewards
+        // Friend Rewards (updated)
         'friendReward.claimed': 'CLAIMED',
         'friendReward.claim': 'CLAIM',
         'friendReward.locked': '{friends} FRIENDS LEVEL 5+',
@@ -426,8 +369,7 @@ const translations = {
         
         // Ads Timer
         'ads.ready': 'Ready',
-        'ads.wait': '{seconds}s',
-        'ads.regen': '+1 in {minutes}m'
+        'ads.wait': '{seconds}s'
     }
 };
 
@@ -530,6 +472,12 @@ function setLanguage(lang) {
     
     const walletLabel = document.querySelector('.wallet-label');
     if (walletLabel) walletLabel.textContent = t('wallet.totalBalance');
+    
+    const walletSub = document.getElementById('walletSub');
+    if (walletSub && window.getVisualBalance) {
+        const visualBalance = window.getVisualBalance();
+        walletSub.textContent = `≈ ${(visualBalance * 0.001).toFixed(3)} USD`;
+    }
     
     // Обновляем текст на кнопках friend rewards
     const rewardBtns = ['reward-10-btn', 'reward-50-btn', 'reward-150-btn'];
