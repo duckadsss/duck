@@ -34,8 +34,14 @@ const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
         origin: "*",
-        methods: ["GET", "POST"]
-    }
+        methods: ["GET", "POST"],
+        credentials: true
+    },
+    transports: ['websocket', 'polling'],
+    allowEIO3: true,
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    maxHttpBufferSize: 1e6
 });
 
 // ============================================
@@ -602,6 +608,25 @@ async function endBattle(battle, winner) {
 function formatBattleStart(battle, perspective) {
     const isPlayer = perspective === 'player';
     
+    // Убеждаемся, что монстры имеют корректные поля
+    const playerMonsters = (isPlayer ? battle.player.team : battle.opponent.team).map(m => ({
+        id: m.id,
+        name: m.name,
+        icon: m.icon,
+        rarity: m.rarity,
+        hp: m.hp,
+        maxHp: m.maxHp
+    }));
+    
+    const opponentMonsters = (isPlayer ? battle.opponent.team : battle.player.team).map(m => ({
+        id: m.id,
+        name: m.name,
+        icon: m.icon,
+        rarity: m.rarity,
+        hp: m.hp,
+        maxHp: m.maxHp
+    }));
+    
     return {
         battleId: battle.battleId,
         currentTurn: battle.currentTurn,
@@ -610,7 +635,7 @@ function formatBattleStart(battle, perspective) {
             name: isPlayer ? battle.player.name : battle.opponent.name,
             rating: isPlayer ? battle.player.rating : battle.opponent.rating,
             league: isPlayer ? battle.player.league : battle.opponent.league,
-            monsters: isPlayer ? battle.player.team : battle.opponent.team,
+            monsters: playerMonsters,
             totalHealth: isPlayer ? battle.player.totalHealth : battle.opponent.totalHealth,
             maxHealth: isPlayer ? battle.player.maxHealth : battle.opponent.maxHealth
         },
@@ -619,13 +644,12 @@ function formatBattleStart(battle, perspective) {
             name: isPlayer ? battle.opponent.name : battle.player.name,
             rating: isPlayer ? battle.opponent.rating : battle.player.rating,
             league: isPlayer ? battle.opponent.league : battle.player.league,
-            monsters: isPlayer ? battle.opponent.team : battle.player.team,
+            monsters: opponentMonsters,
             totalHealth: isPlayer ? battle.opponent.totalHealth : battle.player.totalHealth,
             maxHealth: isPlayer ? battle.opponent.maxHealth : battle.player.maxHealth
         }
     };
 }
-
 // ============================================
 // АРЕНА - WEBHOOK SETUP
 // ============================================
