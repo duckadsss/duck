@@ -184,7 +184,6 @@
     </div>
     
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px">
-        <!-- 10 Friends - Rare Wolf -->
         <div class="friends-reward-card" id="reward-10" data-reward="10">
             <div class="reward-icon">
                 <img src="https://ndammo.github.io/Mmodna/wr.png" alt="Rare Wolf" style="width:48px;height:48px;object-fit:contain">
@@ -194,8 +193,6 @@
             <div class="reward-income"><i class="fa-solid fa-bolt"></i> 25/hr</div>
             <button class="reward-btn" id="reward-10-btn">🔒</button>
         </div>
-        
-        <!-- 50 Friends - Epic Wolf -->
         <div class="friends-reward-card" id="reward-50" data-reward="50">
             <div class="reward-icon">
                 <img src="https://ndammo.github.io/Mmodna/we.png" alt="Epic Wolf" style="width:48px;height:48px;object-fit:contain">
@@ -205,8 +202,6 @@
             <div class="reward-income"><i class="fa-solid fa-bolt"></i> 80/hr</div>
             <button class="reward-btn" id="reward-50-btn">🔒</button>
         </div>
-        
-        <!-- 150 Friends - Legendary Wolf -->
         <div class="friends-reward-card" id="reward-150" data-reward="150">
             <div class="reward-icon">
                 <img src="https://ndammo.github.io/Mmodna/wl.png" alt="Legendary Wolf" style="width:48px;height:48px;object-fit:contain">
@@ -240,27 +235,30 @@
         <button class="arena-tab-btn" data-arena-tab="ranking" onclick="switchArenaTab('ranking')">
             <i class="fa-solid fa-trophy"></i> <span>Рейтинг</span>
         </button>
+        <button class="arena-tab-btn" data-arena-tab="ranks" onclick="switchArenaTab('ranks')">
+            <i class="fa-solid fa-chart-simple"></i> <span>Ранги</span>
+        </button>
     </div>
     
-<!-- Вкладка Команда -->
-<div class="arena-subtab active" id="arena-team-tab">
-    <div class="section-title"><i class="fa-solid fa-paw"></i> <span>Выберите 3 питомца</span></div>
-    
-    <div id="arenaTeamInventory" class="cards-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 20px;"></div>
-    
-    <div class="arena-selected-team">
-        <div class="section-title"><i class="fa-solid fa-check-circle"></i> <span>Ваша команда</span></div>
-        <div id="arenaSelectedTeam" class="arena-team-cards"></div>
-        <div style="display: flex; gap: 12px; margin-top: 12px;">
-            <button class="arena-save-btn" onclick="saveArenaTeam()" id="saveTeamBtn" style="flex: 1;">
-                <i class="fa-solid fa-save"></i> <span>Сохранить команду</span>
-            </button>
-            <button class="arena-reset-btn" onclick="resetArenaTeam()" id="resetTeamBtn" style="flex: 1; background: linear-gradient(135deg, #ef4444, #dc2626);">
-                <i class="fa-solid fa-trash-alt"></i> <span>Сбросить команду</span>
-            </button>
+    <!-- Вкладка Команда -->
+    <div class="arena-subtab active" id="arena-team-tab">
+        <div class="section-title"><i class="fa-solid fa-paw"></i> <span>Выберите 3 питомца</span></div>
+        
+        <div id="arenaTeamInventory" class="cards-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 20px;"></div>
+        
+        <div class="arena-selected-team">
+            <div class="section-title"><i class="fa-solid fa-check-circle"></i> <span>Ваша команда</span></div>
+            <div id="arenaSelectedTeam" class="arena-team-cards"></div>
+            <div style="display: flex; gap: 12px; margin-top: 12px;">
+                <button class="arena-save-btn" onclick="saveArenaTeam()" id="saveTeamBtn" style="flex: 1;">
+                    <i class="fa-solid fa-save"></i> <span>Сохранить команду</span>
+                </button>
+                <button class="arena-reset-btn" onclick="resetArenaTeam()" id="resetTeamBtn" style="flex: 1; background: linear-gradient(135deg, #ef4444, #dc2626);">
+                    <i class="fa-solid fa-trash-alt"></i> <span>Сбросить команду</span>
+                </button>
+            </div>
         </div>
     </div>
-</div>
     
     <!-- Вкладка Бой -->
     <div class="arena-subtab" id="arena-fight-tab">
@@ -289,9 +287,7 @@
             <div id="arenaSearchStatus" class="arena-search-status"></div>
         </div>
         
-        <div id="arenaBattleContainer" style="display: none;">
-            <!-- Боевой интерфейс будет вставлен динамически -->
-        </div>
+        <div id="arenaBattleContainer" style="display: none;"></div>
     </div>
     
     <!-- Вкладка Рейтинг -->
@@ -319,10 +315,196 @@
                     <div class="arena-stat-label">Стрик</div>
                 </div>
             </div>
+            
+            <div id="arenaProgressContainer" class="arena-league-progress" style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-size: 11px; color: var(--text2);"><i class="fa-solid fa-chart-line"></i> До следующей лиги:</span>
+                    <span id="arenaNextLeagueInfo" style="font-size: 11px; font-weight: 600; color: var(--accent3);">—</span>
+                </div>
+                <div class="arena-progress-bar">
+                    <div class="arena-progress-fill" id="arenaProgressFill" style="width: 0%;"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 6px;">
+                    <span id="arenaCurrentRating" style="font-size: 9px; color: var(--text3);">0</span>
+                    <span id="arenaNextRating" style="font-size: 9px; color: var(--text3);">0</span>
+                </div>
+            </div>
         </div>
         
         <div class="section-title"><i class="fa-solid fa-ranking-star"></i> <span>Топ игроков</span></div>
         <div id="arenaLeaderboardList" class="leaderboard-list"></div>
+    </div>
+    
+    <!-- Вкладка Ранги -->
+    <div class="arena-subtab" id="arena-ranks-tab">
+        <div class="arena-ranks-header">
+            <div class="arena-ranks-title">
+                <i class="fa-solid fa-crown"></i> Система рангов
+            </div>
+            <div class="arena-ranks-subtitle">Поднимайся в лигах и получай больше наград!</div>
+        </div>
+        
+        <!-- Текущий ранг игрока -->
+        <div class="arena-current-rank-card">
+            <div class="current-rank-icon" id="arenaCurrentRankIcon">🥉</div>
+            <div class="current-rank-info">
+                <div class="current-rank-label">Ваш текущий ранг</div>
+                <div class="current-rank-name" id="arenaCurrentRankName">Бронзовая лига</div>
+                <div class="current-rank-rating">Рейтинг: <span id="arenaCurrentRankRating">1000</span></div>
+            </div>
+            <div class="current-rank-stats">
+                <div class="rank-stat-mini">
+                    <span class="stat-value" id="arenaRankWins">0</span>
+                    <span class="stat-label">Побед</span>
+                </div>
+                <div class="rank-stat-mini">
+                    <span class="stat-value" id="arenaRankLosses">0</span>
+                    <span class="stat-label">Пораж.</span>
+                </div>
+                <div class="rank-stat-mini">
+                    <span class="stat-value" id="arenaRankStreak">0</span>
+                    <span class="stat-label">Стрик</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Прогресс до следующего ранга -->
+        <div class="arena-rank-progress">
+            <div class="progress-header">
+                <span>До следующего ранга:</span>
+                <span class="next-rank-name" id="arenaNextRankName">Серебряная лига</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" id="arenaRankProgressFill" style="width: 0%;"></div>
+            </div>
+            <div class="progress-values">
+                <span id="arenaCurrentRankValue">1000</span>
+                <span id="arenaNextRankValue">1300</span>
+            </div>
+        </div>
+        
+        <!-- Список всех рангов -->
+        <div class="ranks-list-compact">
+            <!-- Бронза -->
+            <div class="rank-item-compact rank-bronze" onclick="toggleRankDetailsCompact('bronze')">
+                <div class="rank-compact-header">
+                    <div class="rank-compact-icon">🥉</div>
+                    <div class="rank-compact-info">
+                        <div class="rank-compact-name">Бронзовая лига</div>
+                        <div class="rank-compact-range">0 - 1199 рейтинга</div>
+                    </div>
+                    <div class="rank-compact-expand"><i class="fa-solid fa-chevron-down"></i></div>
+                </div>
+                <div class="rank-compact-details" id="rankCompactDetails-bronze" style="display: none;">
+                    <div class="compact-rewards">
+                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 200 MMO</div>
+                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 350 MMO</div>
+                        <div class="reward-chip"><i class="fa-solid fa-arrow-up"></i> До 1200</div>
+                    </div>
+                    <div class="compact-players">
+                        <div class="compact-players-title"><i class="fa-solid fa-users"></i> Топ игроки</div>
+                        <div class="compact-players-list" id="bronzeCompactList">Загрузка...</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Серебро -->
+            <div class="rank-item-compact rank-silver" onclick="toggleRankDetailsCompact('silver')">
+                <div class="rank-compact-header">
+                    <div class="rank-compact-icon">🥈</div>
+                    <div class="rank-compact-info">
+                        <div class="rank-compact-name">Серебряная лига</div>
+                        <div class="rank-compact-range">1200 - 1499 рейтинга</div>
+                    </div>
+                    <div class="rank-compact-expand"><i class="fa-solid fa-chevron-down"></i></div>
+                </div>
+                <div class="rank-compact-details" id="rankCompactDetails-silver" style="display: none;">
+                    <div class="compact-rewards">
+                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 500 MMO</div>
+                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 800 MMO</div>
+                        <div class="reward-chip"><i class="fa-solid fa-arrow-up"></i> До 1500</div>
+                    </div>
+                    <div class="compact-players">
+                        <div class="compact-players-title"><i class="fa-solid fa-users"></i> Топ игроки</div>
+                        <div class="compact-players-list" id="silverCompactList">Загрузка...</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Золото -->
+            <div class="rank-item-compact rank-gold" onclick="toggleRankDetailsCompact('gold')">
+                <div class="rank-compact-header">
+                    <div class="rank-compact-icon">🥇</div>
+                    <div class="rank-compact-info">
+                        <div class="rank-compact-name">Золотая лига</div>
+                        <div class="rank-compact-range">1500 - 1799 рейтинга</div>
+                    </div>
+                    <div class="rank-compact-expand"><i class="fa-solid fa-chevron-down"></i></div>
+                </div>
+                <div class="rank-compact-details" id="rankCompactDetails-gold" style="display: none;">
+                    <div class="compact-rewards">
+                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 1000 MMO</div>
+                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 1600 MMO</div>
+                        <div class="reward-chip"><i class="fa-solid fa-arrow-up"></i> До 1800</div>
+                    </div>
+                    <div class="compact-players">
+                        <div class="compact-players-title"><i class="fa-solid fa-users"></i> Топ игроки</div>
+                        <div class="compact-players-list" id="goldCompactList">Загрузка...</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Платина -->
+            <div class="rank-item-compact rank-platinum" onclick="toggleRankDetailsCompact('platinum')">
+                <div class="rank-compact-header">
+                    <div class="rank-compact-icon">💎</div>
+                    <div class="rank-compact-info">
+                        <div class="rank-compact-name">Платиновая лига</div>
+                        <div class="rank-compact-range">1800 - 2099 рейтинга</div>
+                    </div>
+                    <div class="rank-compact-expand"><i class="fa-solid fa-chevron-down"></i></div>
+                </div>
+                <div class="rank-compact-details" id="rankCompactDetails-platinum" style="display: none;">
+                    <div class="compact-rewards">
+                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 2000 MMO</div>
+                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 3200 MMO</div>
+                        <div class="reward-chip"><i class="fa-solid fa-arrow-up"></i> До 2100</div>
+                    </div>
+                    <div class="compact-players">
+                        <div class="compact-players-title"><i class="fa-solid fa-users"></i> Топ игроки</div>
+                        <div class="compact-players-list" id="platinumCompactList">Загрузка...</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Алмаз -->
+            <div class="rank-item-compact rank-diamond" onclick="toggleRankDetailsCompact('diamond')">
+                <div class="rank-compact-header">
+                    <div class="rank-compact-icon">🏆</div>
+                    <div class="rank-compact-info">
+                        <div class="rank-compact-name">Алмазная лига</div>
+                        <div class="rank-compact-range">2100+ рейтинга</div>
+                    </div>
+                    <div class="rank-compact-expand"><i class="fa-solid fa-chevron-down"></i></div>
+                </div>
+                <div class="rank-compact-details" id="rankCompactDetails-diamond" style="display: none;">
+                    <div class="compact-rewards">
+                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 5000 MMO</div>
+                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 8000 MMO</div>
+                        <div class="reward-chip"><i class="fa-solid fa-crown"></i> Элита!</div>
+                    </div>
+                    <div class="compact-players">
+                        <div class="compact-players-title"><i class="fa-solid fa-users"></i> Топ игроки</div>
+                        <div class="compact-players-list" id="diamondCompactList">Загрузка...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="arena-rank-tip">
+            <i class="fa-solid fa-lightbulb"></i>
+            <span>Победа над сильным соперником даёт больше рейтинга! После повышения вы получаете защиту от падения на 1 бой.</span>
+        </div>
     </div>
 </div>
 
@@ -336,28 +518,28 @@
         <button class="lang-btn" data-lang="ru" onclick="setLanguage('ru')">RU</button>
         <button class="lang-btn" data-lang="en" onclick="setLanguage('en')">EN</button>
     </div>
-<div class="wallet-stats">
-    <div class="wallet-stat">
-        <div class="wallet-stat-icon">🧬</div>
-        <div class="wallet-stat-val" id="walletCards">0</div>
-        <div class="wallet-stat-label" data-i18n="wallet.creatures">Creatures</div>
+    <div class="wallet-stats">
+        <div class="wallet-stat">
+            <div class="wallet-stat-icon">🧬</div>
+            <div class="wallet-stat-val" id="walletCards">0</div>
+            <div class="wallet-stat-label" data-i18n="wallet.creatures">Creatures</div>
+        </div>
+        <div class="wallet-stat">
+            <div class="wallet-stat-icon">🔀</div>
+            <div class="wallet-stat-val" id="walletMerges">0</div>
+            <div class="wallet-stat-label" data-i18n="wallet.totalMerges">Total Merges</div>
+        </div>
+        <div class="wallet-stat">
+            <div class="wallet-stat-icon">📺</div>
+            <div class="wallet-stat-val" id="walletAdsWatched">0</div>
+            <div class="wallet-stat-label" data-i18n="wallet.adsWatched">Ads Watched</div>
+        </div>
+        <div class="wallet-stat">
+            <div class="wallet-stat-icon">👥</div>
+            <div class="wallet-stat-val" id="walletReferralEarned">0</div>
+            <div class="wallet-stat-label" data-i18n="wallet.referralEarned">From Referrals</div>
+        </div>
     </div>
-    <div class="wallet-stat">
-        <div class="wallet-stat-icon">🔀</div>
-        <div class="wallet-stat-val" id="walletMerges">0</div>
-        <div class="wallet-stat-label" data-i18n="wallet.totalMerges">Total Merges</div>
-    </div>
-    <div class="wallet-stat">
-        <div class="wallet-stat-icon">📺</div>
-        <div class="wallet-stat-val" id="walletAdsWatched">0</div>
-        <div class="wallet-stat-label" data-i18n="wallet.adsWatched">Ads Watched</div>
-    </div>
-    <div class="wallet-stat">
-        <div class="wallet-stat-icon">👥</div>
-        <div class="wallet-stat-val" id="walletReferralEarned">0</div>
-        <div class="wallet-stat-label" data-i18n="wallet.referralEarned">From Referrals</div>
-    </div>
-</div>
     <div class="wallet-actions">
         <button class="wallet-action-btn deposit" onclick="showDepositModal()">
             <i class="fa-solid fa-arrow-down"></i> <span data-i18n="wallet.deposit">DEPOSIT</span>
@@ -394,8 +576,8 @@
         <span data-i18n="nav.special">Special</span>
     </div>
     <div class="nav-item" onclick="switchTab('arena')" id="nav-arena">
-        <i class="fa-solid fa-sword"></i>
-        <span data-i18n="nav.arena">Arena</span>
+        <i class="fa-solid fa-crossed-swords"></i>   
+        <span>Арена</span>
     </div>
     <div class="nav-item" onclick="switchTab('wallet')" id="nav-wallet">
         <i class="fa-solid fa-wallet"></i>
@@ -410,13 +592,11 @@
 
 <div class="toast" id="toast"></div>
 
-
 <!-- Socket.IO клиент -->
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="arena-client.js"></script>      <!-- ← ДОБАВИТЬ! -->
+<script src="arena-client.js"></script>
 <script src="script.js"></script>
 <script src="localization.js"></script>
-
 
 <!-- DEBUG CONSOLE -->
 <div id="debugConsole" style="display: none; position: fixed; bottom: 70px; left: 0; right: 0; background: rgba(0,0,0,0.95); border-top: 2px solid #a855f7; padding: 8px; z-index: 10000; font-family: monospace; font-size: 11px; max-height: 200px; overflow-y: auto; backdrop-filter: blur(8px);">
@@ -442,8 +622,6 @@
 let debugLogs = [];
 let debugConsoleShown = false;
 
-// Функция addDebugLog УДАЛЕНА - она уже есть в script.js
-
 function updateDebugDisplay() {
     const container = document.getElementById('debugLogs');
     if (!container) return;
@@ -463,7 +641,6 @@ function updateDebugDisplay() {
 function clearDebugLogs() {
     debugLogs = [];
     updateDebugDisplay();
-    // Используем глобальную addDebugLog из script.js
     if (window.addDebugLog) window.addDebugLog('Логи очищены', 'info');
 }
 
@@ -475,7 +652,6 @@ function toggleDebugConsole() {
     }
 }
 
-// Перехват ошибок
 window.addEventListener('error', (e) => {
     if (window.addDebugLog) window.addDebugLog(`Ошибка: ${e.message} в ${e.filename}:${e.lineno}`, 'error');
     else console.error(e);
@@ -486,7 +662,6 @@ window.addEventListener('unhandledrejection', (e) => {
     else console.error(e);
 });
 
-// Перехват fetch запросов (для отладки)
 const originalFetch = window.fetch;
 window.fetch = async function(...args) {
     const url = args[0];
@@ -506,7 +681,6 @@ window.fetch = async function(...args) {
     }
 };
 
-// Функция для проверки соединения с сервером
 async function testConnection() {
     if (window.addDebugLog) window.addDebugLog('🔍 Проверка соединения с сервером...', 'info');
     try {
@@ -532,16 +706,14 @@ async function testConnection() {
     }
 }
 
-// Добавляем кнопку теста
 const testBtn = document.createElement('button');
 testBtn.innerHTML = '🔌 Тест API';
 testBtn.style.cssText = 'position: fixed; bottom: 130px; right: 50px; background: #22c55e; border: none; color: #fff; padding: 6px 12px; border-radius: 20px; font-size: 10px; cursor: pointer; z-index: 9999; font-weight: bold;';
 testBtn.onclick = testConnection;
 document.body.appendChild(testBtn);
 
-// Добавляем информацию о версии
 if (window.addDebugLog) {
-    window.addDebugLog(`🚀 DNA MMO v5.0 (с ареной)`, 'success');
+    window.addDebugLog(`🚀 DNA MMO v6.0 (с системой рангов)`, 'success');
     window.addDebugLog(`📡 API_URL: ${API_URL}`, 'info');
     window.addDebugLog(`🌐 Frontend: ${window.location.href}`, 'info');
 }

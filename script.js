@@ -1885,56 +1885,148 @@ function initArenaWebhooks() {
         if (event.button_id === 'accept') acceptBattleWebhook();
         else if (event.button_id === 'reject') rejectBattleWebhook();
     });
-    
-    tg.MainButton.setText('⚔️ НАЙТИ БОЯ');
-    tg.MainButton.onClick(() => {
-        const activeTab = document.querySelector('.tab-content.active')?.id;
-        if (activeTab === 'tab-arena') findMatch();
-        else { switchTab('arena'); setTimeout(() => findMatch(), 500); }
-    });
-    tg.MainButton.hide();
 }
 
-function activateArenaMainButton() {
-    if (!window.Telegram?.WebApp) return;
-    const tg = window.Telegram.WebApp;
-    
-    const observer = new MutationObserver(() => {
-        const activeTab = document.querySelector('.tab-content.active')?.id;
-        if (activeTab === 'tab-arena') { tg.MainButton.setText('⚔️ НАЙТИ БОЯ'); tg.MainButton.show(); tg.MainButton.enable(); }
-        else tg.MainButton.hide();
-    });
-    observer.observe(document.getElementById('mainContent'), { attributes: true, attributeFilter: ['class'], subtree: true });
-}
+// В script.js - ЗАМЕНЯЕМ showNativeBattleConfirmation
 
 function showNativeBattleConfirmation(battleData) {
-    if (!window.Telegram?.WebApp) {
-        showBattleConfirmationHTML(battleData);
-        return;
-    }
-    const tg = window.Telegram.WebApp;
-    tg.showPopup({
-        title: '⚔️ БОЙ НАЙДЕН!',
-        message: `Противник: ${battleData.opponent?.name || 'Игрок'} (УР ${battleData.opponent?.level || '?'})\n🏆 Приз: ${battleData.prizePool} MMO\n💰 Ваша ставка: ${battleData.entryFee} MMO\n\nПринять бой?`,
-        buttons: [{ id: 'accept', type: 'default', text: '✅ ПРИНЯТЬ', color: '#22c55e' }, { id: 'reject', type: 'destructive', text: '❌ ОТКЛОНИТЬ' }]
-    });
+    // Создаём красивое модальное окно вместо системного уведомления
+    showBattleConfirmationModal(battleData);
 }
 
-function showBattleConfirmationHTML(battleData) {
-    const overlay = document.getElementById('overlay');
-    const popup = document.getElementById('popup');
-    popup.innerHTML = `
-        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
-        <div class="popup-title" style="color:var(--accent3)">⚔️ Бой найден!</div>
-        <div class="popup-subtitle">Противник: ${escapeHtml(battleData.opponent?.name || 'Игрок')} (УР ${battleData.opponent?.level || '?'})</div>
-        <div style="background:#0d1120;border-radius:12px;padding:12px;margin:12px 0;"><div style="font-size:10px;color:#94a3b8;">Призовой фонд</div><div style="font-size:20px;font-weight:700;color:var(--legendary)">${battleData.prizePool} MMO</div></div>
-        <div class="modal-buttons" style="display:flex;gap:10px;"><button class="popup-btn" style="flex:1;background:linear-gradient(135deg,#22c55e,#16a34a)" onclick="acceptBattleWebhook()"><i class="fa-solid fa-check"></i> Принять</button><button class="popup-btn" style="flex:1;background:#1a2540;color:#e2e8f0" onclick="rejectBattleWebhook()"><i class="fa-solid fa-times"></i> Отклонить</button></div>
-        <div style="font-size:10px;color:#94a3b8;text-align:center;margin-top:12px;">⏱ У вас 15 секунд на решение</div>
+// Новая функция для красивого модального окна
+function showBattleConfirmationModal(battleData) {
+    // Удаляем существующий модал, если есть
+    const existingModal = document.getElementById('matchFoundModal');
+    if (existingModal) existingModal.remove();
+    
+    // Создаём модальное окно
+    const modal = document.createElement('div');
+    modal.id = 'matchFoundModal';
+    modal.className = 'match-found-modal';
+    
+    // Получаем первую букву имени соперника для аватара
+    const opponentName = battleData.opponent?.name || 'Игрок';
+    const opponentLevel = battleData.opponent?.level || '?';
+    const firstLetter = opponentName.charAt(0).toUpperCase();
+    
+    // Определяем иконку для лиги соперника
+    const leagueIcons = {
+        bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '💎', diamond: '🏆'
+    };
+    const opponentLeagueIcon = leagueIcons[battleData.opponentLeague] || '⚔️';
+    
+    modal.innerHTML = `
+        <div class="match-found-card">
+            <div class="match-found-header">
+                <div class="match-found-icon">⚔️</div>
+                <div class="match-found-title">БОЙ НАЙДЕН!</div>
+            </div>
+            <div class="match-found-content">
+                <div class="opponent-info">
+                    <div class="opponent-avatar">${firstLetter}</div>
+                    <div class="opponent-details">
+                        <div class="opponent-name">${escapeHtml(opponentName)}</div>
+                        <div class="opponent-level">
+                            <span>Уровень ${opponentLevel}</span>
+                            <span>${opponentLeagueIcon} ${getLeagueName(battleData.opponentLeague)} лига</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="prize-info">
+                    <div class="prize-label">
+                        <i class="fa-solid fa-gift"></i> Призовой фонд
+                    </div>
+                    <div class="prize-value">
+                        ${battleData.prizePool.toLocaleString()} <small>MMO</small>
+                    </div>
+                </div>
+                
+                <div class="prize-info" style="border-color: rgba(124,58,237,0.3);">
+                    <div class="prize-label">
+                        <i class="fa-solid fa-coins"></i> Ваша ставка
+                    </div>
+                    <div class="prize-value" style="color: var(--accent3);">
+                        ${battleData.entryFee.toLocaleString()} <small>MMO</small>
+                    </div>
+                </div>
+                
+                <div class="timer-badge">
+                    <span><i class="fa-regular fa-clock"></i> Принять за 15 секунд</span>
+                    <div class="timer-progress">
+                        <div class="timer-progress-fill"></div>
+                    </div>
+                </div>
+                
+                <div class="match-buttons">
+                    <button class="match-btn-accept" onclick="acceptBattleFromModal('${battleData.battleId}')">
+                        <i class="fa-solid fa-check"></i> ПРИНЯТЬ
+                    </button>
+                    <button class="match-btn-reject" onclick="rejectBattleFromModal('${battleData.battleId}')">
+                        <i class="fa-solid fa-times"></i> ОТКЛОНИТЬ
+                    </button>
+                </div>
+            </div>
+        </div>
     `;
-    overlay.classList.add('show');
-    setTimeout(() => { if (overlay.classList.contains('show') && popup.innerHTML.includes('Бой найден')) rejectBattleWebhook(); }, 15000);
+    
+    document.body.appendChild(modal);
+    
+    // Автоматическое отклонение через 15 секунд
+    modal.timeoutId = setTimeout(() => {
+        if (document.getElementById('matchFoundModal')) {
+            rejectBattleFromModal(battleData.battleId);
+        }
+    }, 15000);
 }
 
+// Вспомогательная функция для получения названия лиги
+function getLeagueName(league) {
+    const leagueNames = {
+        bronze: 'Бронзовой',
+        silver: 'Серебряной',
+        gold: 'Золотой',
+        platinum: 'Платиновой',
+        diamond: 'Алмазной'
+    };
+    return leagueNames[league] || 'Бронзовой';
+}
+
+// Функция принятия боя из модального окна
+async function acceptBattleFromModal(battleId) {
+    const modal = document.getElementById('matchFoundModal');
+    if (modal) {
+        if (modal.timeoutId) clearTimeout(modal.timeoutId);
+        modal.remove();
+    }
+    
+    const res = await apiRequest('POST', '/api/arena/accept-match', { battleId });
+    if (res?.success) {
+        arenaClient?.setConfirmationShown(false);
+        showToast('Бой принят! Идёт загрузка...', '⚔️');
+    } else {
+        showToast(res?.message || 'Ошибка при принятии боя', '❌');
+    }
+}
+
+// Функция отклонения боя из модального окна
+async function rejectBattleFromModal(battleId) {
+    const modal = document.getElementById('matchFoundModal');
+    if (modal) {
+        if (modal.timeoutId) clearTimeout(modal.timeoutId);
+        modal.remove();
+    }
+    
+    const res = await apiRequest('POST', '/api/arena/reject-match', { battleId });
+    if (res?.success) {
+        arenaClient?.stopSearch();
+        showToast('Бой отклонён', '⚠️');
+        renderArenaFightTab();
+    } else {
+        showToast(res?.message || 'Ошибка', '❌');
+    }
+}
 function showNativeBattleResult(isWin, prizePool) {
     if (!window.Telegram?.WebApp) {
         const overlay = document.getElementById('overlay');
@@ -1957,9 +2049,11 @@ function switchArenaTab(tab) {
     document.querySelectorAll('.arena-tab-btn').forEach(b => b.classList.remove('active'));
     document.getElementById(`arena-${tab}-tab`).classList.add('active');
     document.querySelector(`.arena-tab-btn[data-arena-tab="${tab}"]`).classList.add('active');
+    
     if (tab === 'team') renderArenaTeamInventory();
     if (tab === 'fight') renderArenaFightTab();
     if (tab === 'ranking') renderArenaRanking();
+    if (tab === 'ranks') updateArenaRanksInfo();  // НОВАЯ ВКЛАДКА
 }
 
 async function renderArenaTeamInventory() {
@@ -2528,7 +2622,128 @@ async function renderArenaRanking() {
         addDebugLog('❌ renderArenaRanking error: ' + err.message, 'error');
     }
 }
+// ============================================================
+// ARENA RANKS TAB FUNCTIONS
+// ============================================================
 
+// Переключение деталей ранга
+async function toggleRankDetailsCompact(rankId) {
+    const details = document.getElementById(`rankCompactDetails-${rankId}`);
+    const item = details?.closest('.rank-item-compact');
+    
+    if (details) {
+        if (details.style.display === 'none') {
+            details.style.display = 'block';
+            item?.classList.add('expanded');
+            await loadCompactRankPlayers(rankId);
+        } else {
+            details.style.display = 'none';
+            item?.classList.remove('expanded');
+        }
+    }
+}
+
+// Загрузка игроков для компактного списка
+async function loadCompactRankPlayers(league) {
+    const container = document.getElementById(`${league}CompactList`);
+    if (!container) return;
+    
+    container.innerHTML = '<div style="padding: 8px; text-align: center; color: var(--text3); font-size: 10px;">Загрузка...</div>';
+    
+    try {
+        const res = await apiRequest('GET', '/api/arena/leaderboard');
+        if (res?.success && res.leaders) {
+            const leaguePlayers = res.leaders.filter(p => (p.league || 'bronze') === league);
+            
+            if (leaguePlayers.length === 0) {
+                container.innerHTML = '<div style="padding: 8px; text-align: center; color: var(--text3); font-size: 10px;">Нет игроков в этой лиге</div>';
+                return;
+            }
+            
+            container.innerHTML = leaguePlayers.slice(0, 5).map(player => `
+                <div class="compact-player-item">
+                    <div class="compact-player-name">
+                        <div class="compact-player-avatar">${(player.name || '?')[0].toUpperCase()}</div>
+                        <span>${escapeHtml(player.name)}</span>
+                    </div>
+                    <div class="compact-player-rating">${player.rating}</div>
+                </div>
+            `).join('');
+        } else {
+            container.innerHTML = '<div style="padding: 8px; text-align: center; color: var(--text3); font-size: 10px;">Ошибка загрузки</div>';
+        }
+    } catch (err) {
+        addDebugLog(`Ошибка загрузки игроков лиги ${league}: ${err.message}`, 'error');
+        container.innerHTML = '<div style="padding: 8px; text-align: center; color: var(--text3); font-size: 10px;">Ошибка загрузки</div>';
+    }
+}
+
+// Обновление информации о рангах внутри арены
+async function updateArenaRanksInfo() {
+    try {
+        const res = await apiRequest('GET', '/api/arena/leaderboard');
+        if (!res?.success) return;
+        
+        const myStats = res.myStats;
+        const myRating = myStats?.rating || 1000;
+        const myLeague = myStats?.league || 'bronze';
+        
+        const leagueIcons = {
+            bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '💎', diamond: '🏆'
+        };
+        const leagueNames = {
+            bronze: 'Бронзовая лига', silver: 'Серебряная лига', gold: 'Золотая лига',
+            platinum: 'Платиновая лига', diamond: 'Алмазная лига'
+        };
+        
+        const iconEl = document.getElementById('arenaCurrentRankIcon');
+        const nameEl = document.getElementById('arenaCurrentRankName');
+        const ratingEl = document.getElementById('arenaCurrentRankRating');
+        const winsEl = document.getElementById('arenaRankWins');
+        const lossesEl = document.getElementById('arenaRankLosses');
+        const streakEl = document.getElementById('arenaRankStreak');
+        
+        if (iconEl) iconEl.textContent = leagueIcons[myLeague] || '🥉';
+        if (nameEl) nameEl.textContent = leagueNames[myLeague] || 'Бронзовая лига';
+        if (ratingEl) ratingEl.textContent = myRating;
+        if (winsEl) winsEl.textContent = myStats?.wins || 0;
+        if (lossesEl) lossesEl.textContent = myStats?.losses || 0;
+        if (streakEl) streakEl.textContent = myStats?.streak || 0;
+        
+        const nextRatingRequired = res.nextRatingRequired;
+        const currentLeagueRating = res.currentLeagueRating || 0;
+        const nextLeague = res.nextLeague;
+        
+        const nextRankEl = document.getElementById('arenaNextRankName');
+        const progressFill = document.getElementById('arenaRankProgressFill');
+        const currentSpan = document.getElementById('arenaCurrentRankValue');
+        const nextSpan = document.getElementById('arenaNextRankValue');
+        
+        if (nextRatingRequired && nextLeague) {
+            const nextLeagueNames = {
+                silver: 'Серебряная лига', gold: 'Золотая лига',
+                platinum: 'Платиновая лига', diamond: 'Алмазная лига'
+            };
+            if (nextRankEl) nextRankEl.textContent = nextLeagueNames[nextLeague] || 'Следующая лига';
+            
+            const range = nextRatingRequired - currentLeagueRating;
+            const progress = myRating - currentLeagueRating;
+            let percent = (progress / range) * 100;
+            percent = Math.min(100, Math.max(0, percent));
+            
+            if (progressFill) progressFill.style.width = `${percent}%`;
+            if (currentSpan) currentSpan.textContent = myRating;
+            if (nextSpan) nextSpan.textContent = nextRatingRequired;
+        } else if (myLeague === 'diamond') {
+            if (nextRankEl) nextRankEl.innerHTML = '<span style="color: var(--mythic);">🏆 ВЫ В АЛМАЗНОЙ ЛИГЕ!</span>';
+            if (progressFill) progressFill.style.width = '100%';
+            if (currentSpan) currentSpan.textContent = myRating;
+            if (nextSpan) nextSpan.textContent = 'МАКСИМУМ';
+        }
+    } catch (err) {
+        addDebugLog('updateArenaRanksInfo error: ' + err.message, 'error');
+    }
+}
 // ============================================================
 // NAVIGATION
 // ============================================================
@@ -2552,6 +2767,7 @@ function switchTab(tab) {
         renderArenaTeamInventory();
         renderArenaFightTab();
         renderArenaRanking();
+        
     }
 }
 
@@ -2682,7 +2898,6 @@ async function initTelegramApp() {
     }
     
     initArenaWebhooks();
-    activateArenaMainButton();
     
     document.querySelectorAll('img').forEach(img => {
         img.addEventListener('contextmenu', (e) => { e.preventDefault(); return false; });
@@ -2770,3 +2985,6 @@ window.renderBattleInterface = renderBattleInterface;
 window.updateBattleUIFromClient = updateBattleUIFromClient;
 window.showDamageAnimation = showDamageAnimation;
 window.renderArenaRanking = renderArenaRanking;
+window.toggleRankDetailsCompact = toggleRankDetailsCompact;
+window.loadCompactRankPlayers = loadCompactRankPlayers;
+window.updateArenaRanksInfo = updateArenaRanksInfo;

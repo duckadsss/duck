@@ -2332,3 +2332,659 @@ img {
 .league-up-animation {
     animation: leagueUp 0.6s ease;
 }
+/* BOTTOM NAV */
+.bottom-nav {
+    position: relative;
+    z-index: 10;
+    background: rgba(13,17,32,0.98);
+    border-top: 1px solid var(--border);
+    display: flex;
+    padding: 6px 0 max(6px, env(safe-area-inset-bottom));
+    flex-shrink: 0;
+}
+
+.nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 0;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.nav-item i {
+    font-size: 18px;
+    color: var(--text3);
+    transition: all 0.2s;
+}
+
+/* Стили для иконки арены (короны) */
+.nav-item i.fa-crown {
+    color: #fbbf24;  /* Золотистый цвет для короны */
+}
+
+.nav-item.active i.fa-crown {
+    color: #fbbf24;
+    filter: drop-shadow(0 0 4px #fbbf24);
+}
+
+.nav-item span {
+    font-size: 9px;
+    color: var(--text3);
+    font-weight: 500;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.nav-item.active i { 
+    filter: drop-shadow(0 0 4px currentColor);
+}
+
+.nav-item.active span { 
+    color: var(--accent3); 
+}
+
+.nav-item.active::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 30px;
+    height: 2px;
+    background: var(--accent3);
+    border-radius: 0 0 2px 2px;
+    box-shadow: 0 0 8px var(--accent3);
+}
+/* ============================================
+   ARENA MATCH FOUND MODAL
+   ============================================ */
+
+.match-found-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(12px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: modalFadeIn 0.3s ease;
+}
+
+@keyframes modalFadeIn {
+    from {
+        opacity: 0;
+        backdrop-filter: blur(0);
+    }
+    to {
+        opacity: 1;
+        backdrop-filter: blur(12px);
+    }
+}
+
+.match-found-card {
+    background: linear-gradient(135deg, #0d1120 0%, #0a0c15 100%);
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    border-radius: 28px;
+    width: calc(100% - 40px);
+    max-width: 360px;
+    overflow: hidden;
+    animation: modalScaleIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(168, 85, 247, 0.2);
+}
+
+@keyframes modalScaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.match-found-header {
+    background: linear-gradient(135deg, #7c3aed, #a855f7);
+    padding: 20px;
+    text-align: center;
+    position: relative;
+}
+
+.match-found-header::before {
+    content: '⚔️';
+    position: absolute;
+    font-size: 60px;
+    opacity: 0.15;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+.match-found-icon {
+    font-size: 48px;
+    animation: vsPulse 0.8s ease-in-out infinite;
+}
+
+@keyframes vsPulse {
+    0%, 100% {
+        transform: scale(1);
+        text-shadow: 0 0 0 rgba(168, 85, 247, 0);
+    }
+    50% {
+        transform: scale(1.1);
+        text-shadow: 0 0 20px rgba(168, 85, 247, 0.8);
+    }
+}
+
+.match-found-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 20px;
+    font-weight: 800;
+    color: #fff;
+    margin-top: 8px;
+    letter-spacing: 2px;
+}
+
+.match-found-content {
+    padding: 24px;
+}
+
+.opponent-info {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: rgba(168, 85, 247, 0.08);
+    border: 1px solid rgba(168, 85, 247, 0.2);
+    border-radius: 20px;
+    padding: 16px;
+    margin-bottom: 20px;
+}
+
+.opponent-avatar {
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, #7c3aed, #a855f7);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 700;
+    color: #fff;
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.5);
+}
+
+.opponent-details {
+    flex: 1;
+}
+
+.opponent-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.opponent-level {
+    font-size: 12px;
+    color: var(--accent2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.opponent-level span {
+    color: var(--text2);
+}
+
+.prize-info {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.02));
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 16px;
+    padding: 14px;
+    margin-bottom: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.prize-label {
+    font-size: 12px;
+    color: var(--text2);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.prize-value {
+    font-family: 'Orbitron', monospace;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--legendary);
+}
+
+.prize-value small {
+    font-size: 11px;
+    font-weight: 400;
+}
+
+.timer-badge {
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 20px;
+    padding: 6px 12px;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.timer-badge span {
+    font-family: 'Orbitron', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent2);
+}
+
+.timer-progress {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+}
+
+.timer-progress-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, var(--accent2), var(--accent3));
+    border-radius: 2px;
+    animation: timerProgress 15s linear forwards;
+}
+
+@keyframes timerProgress {
+    from { width: 100%; }
+    to { width: 0%; }
+}
+
+.match-buttons {
+    display: flex;
+    gap: 12px;
+}
+
+.match-btn-accept {
+    flex: 1;
+    padding: 14px;
+    border: none;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: #fff;
+    font-family: 'Orbitron', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.match-btn-accept:active {
+    transform: scale(0.97);
+}
+
+.match-btn-reject {
+    flex: 1;
+    padding: 14px;
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    border-radius: 14px;
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    font-family: 'Orbitron', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.match-btn-reject:active {
+    transform: scale(0.97);
+    background: rgba(239, 68, 68, 0.2);
+}
+/* Дополнительные анимации */
+@keyframes modalShake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
+    20%, 40%, 60%, 80% { transform: translateX(2px); }
+}
+
+.match-found-icon {
+    animation: vsPulse 0.8s ease-in-out infinite, modalShake 0.5s ease-in-out 0.3s;
+}
+/* ============================================
+   ARENA RANKS TAB STYLES
+   ============================================ */
+
+.arena-ranks-header {
+    text-align: center;
+    margin-bottom: 20px;
+    padding: 16px;
+    background: linear-gradient(135deg, rgba(168,85,247,0.1), rgba(6,182,212,0.05));
+    border-radius: 20px;
+    border: 1px solid rgba(168,85,247,0.2);
+}
+
+.arena-ranks-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 18px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #fff, var(--accent3));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 6px;
+}
+
+.arena-ranks-subtitle {
+    font-size: 11px;
+    color: var(--text2);
+}
+
+/* Current Rank Card */
+.arena-current-rank-card {
+    background: linear-gradient(135deg, var(--surface), var(--surface2));
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 16px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.current-rank-icon {
+    font-size: 48px;
+    filter: drop-shadow(0 0 8px rgba(168,85,247,0.5));
+}
+
+.current-rank-info {
+    flex: 1;
+}
+
+.current-rank-label {
+    font-size: 10px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.current-rank-name {
+    font-size: 18px;
+    font-weight: 800;
+    font-family: 'Orbitron', monospace;
+    background: linear-gradient(135deg, #fff, var(--accent3));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.current-rank-rating {
+    font-size: 11px;
+    color: var(--text2);
+    margin-top: 4px;
+}
+
+.current-rank-rating span {
+    color: var(--legendary);
+    font-weight: 700;
+}
+
+.current-rank-stats {
+    display: flex;
+    gap: 16px;
+    background: rgba(0,0,0,0.3);
+    padding: 8px 16px;
+    border-radius: 40px;
+}
+
+.rank-stat-mini {
+    text-align: center;
+}
+
+.rank-stat-mini .stat-value {
+    font-size: 16px;
+    font-weight: 700;
+    font-family: 'Orbitron', monospace;
+    color: var(--accent3);
+    display: block;
+}
+
+.rank-stat-mini .stat-label {
+    font-size: 8px;
+    color: var(--text3);
+}
+
+/* Progress */
+.arena-rank-progress {
+    background: var(--bg2);
+    border-radius: 16px;
+    padding: 14px;
+    margin-bottom: 20px;
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    margin-bottom: 10px;
+    color: var(--text2);
+}
+
+.next-rank-name {
+    color: var(--legendary);
+    font-weight: 600;
+}
+
+.progress-bar-container {
+    height: 8px;
+    background: var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent3), var(--accent2));
+    border-radius: 10px;
+    transition: width 0.5s ease;
+}
+
+.progress-values {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 9px;
+    color: var(--text3);
+}
+
+/* Compact Ranks List */
+.ranks-list-compact {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.rank-item-compact {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.rank-item-compact:hover {
+    transform: translateX(4px);
+}
+
+.rank-item-compact.rank-bronze { border-left: 3px solid #cd7c3a; }
+.rank-item-compact.rank-silver { border-left: 3px solid #94a3b8; }
+.rank-item-compact.rank-gold { border-left: 3px solid #f59e0b; }
+.rank-item-compact.rank-platinum { border-left: 3px solid #a855f7; }
+.rank-item-compact.rank-diamond { border-left: 3px solid #06b6d4; }
+
+.rank-compact-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+}
+
+.rank-compact-icon {
+    font-size: 28px;
+}
+
+.rank-compact-info {
+    flex: 1;
+}
+
+.rank-compact-name {
+    font-size: 14px;
+    font-weight: 700;
+    font-family: 'Orbitron', monospace;
+}
+
+.rank-item-compact.rank-bronze .rank-compact-name { color: #cd7c3a; }
+.rank-item-compact.rank-silver .rank-compact-name { color: #94a3b8; }
+.rank-item-compact.rank-gold .rank-compact-name { color: #f59e0b; }
+.rank-item-compact.rank-platinum .rank-compact-name { color: #a855f7; }
+.rank-item-compact.rank-diamond .rank-compact-name { color: #06b6d4; }
+
+.rank-compact-range {
+    font-size: 9px;
+    color: var(--text2);
+    margin-top: 2px;
+}
+
+.rank-compact-expand {
+    color: var(--text3);
+    transition: transform 0.2s;
+}
+
+.rank-item-compact.expanded .rank-compact-expand {
+    transform: rotate(180deg);
+}
+
+.rank-compact-details {
+    padding: 0 12px 12px 12px;
+    border-top: 1px solid var(--border);
+    background: var(--bg2);
+}
+
+.compact-rewards {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 12px 0;
+}
+
+.reward-chip {
+    background: rgba(168,85,247,0.1);
+    border: 1px solid rgba(168,85,247,0.2);
+    border-radius: 20px;
+    padding: 4px 10px;
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--text2);
+}
+
+.compact-players {
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+}
+
+.compact-players-title {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 8px;
+}
+
+.compact-players-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.compact-player-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 8px;
+    background: var(--surface);
+    border-radius: 8px;
+    font-size: 10px;
+}
+
+.compact-player-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.compact-player-avatar {
+    width: 20px;
+    height: 20px;
+    background: linear-gradient(135deg, var(--accent), var(--accent3));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+    color: #fff;
+}
+
+.compact-player-rating {
+    font-family: 'Orbitron', monospace;
+    font-weight: 700;
+    color: var(--legendary);
+    font-size: 10px;
+}
+
+/* Tip */
+.arena-rank-tip {
+    background: rgba(168,85,247,0.08);
+    border: 1px solid rgba(168,85,247,0.15);
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 10px;
+    color: var(--text2);
+    margin-top: 16px;
+}
+
+.arena-rank-tip i {
+    color: var(--accent3);
+    font-size: 14px;
+}
