@@ -1,5 +1,5 @@
 // ============================================================
-// script.js - DNA MMO Клиент (Рефакторинг + WebSocket)
+// script.js - DNA MMO Клиент (Полная версия с системой лиг)
 // ============================================================
 
 // ============================================================
@@ -48,9 +48,6 @@ document.addEventListener('dblclick', () => {
     if (debugPanel) debugPanel.parentElement.style.display = 'none';
 });
 
-// ============================================================
-// DEBUG LOG ФУНКЦИЯ ДЛЯ АРЕНЫ
-// ============================================================
 function addDebugLog(msg, type = 'info') {
     const debugContainer = document.getElementById('debugLogs');
     if (debugContainer) {
@@ -92,14 +89,12 @@ let activeQuestTimers = new Map();
 let currentLeaderboardController = null;
 let isMarketplaceTabActive = false;
 
-// КЭШИ
 let leaderboardCache = { data: null, expiresAt: 0 };
 let marketplaceCache = { data: null, hash: null, expiresAt: 0 };
 let questStatuses = new Map();
 
 const QUESTS_STORAGE_KEY = 'dna_mmo_quests_status';
 
-// GAME DATA
 let CREATURES = [];
 let CAPSULE_COSTS = { basic: 500, premium: 2000 };
 let RARITY_WEIGHTS = {
@@ -128,9 +123,6 @@ let lastMergeTimes = new Map();
 let collectIncomeTimer = null;
 let visualTickerInterval = null;
 
-// ============================================================
-// ARENA CLIENT (WebSocket)
-// ============================================================
 let arenaClient = null;
 
 // ============================================================
@@ -346,7 +338,6 @@ function handleVisibilityChange() {
             }
         }).catch(err => console.warn('collect-income error:', err));
         
-        // Переподключение WebSocket при возвращении на вкладку
         if (arenaClient && state.token && !arenaClient.isConnected()) {
             arenaClient.connectSocket(state.token, API_URL);
         }
@@ -1893,18 +1884,25 @@ function initArenaWebhooks() {
     tg.onEvent('popupClosed', (event) => {
         if (event.button_id === 'accept') acceptBattleWebhook();
         else if (event.button_id === 'reject') rejectBattleWebhook();
-        else if (event.button_id === 'ok') renderArenaFightTab();
     });
     
+    tg.MainButton.setText('⚔️ НАЙТИ БОЯ');
+    tg.MainButton.onClick(() => {
+        const activeTab = document.querySelector('.tab-content.active')?.id;
+        if (activeTab === 'tab-arena') findMatch();
+        else { switchTab('arena'); setTimeout(() => findMatch(), 500); }
+    });
     tg.MainButton.hide();
 }
 
 function activateArenaMainButton() {
     if (!window.Telegram?.WebApp) return;
     const tg = window.Telegram.WebApp;
-    tg.MainButton.hide();
+    
     const observer = new MutationObserver(() => {
-        tg.MainButton.hide();
+        const activeTab = document.querySelector('.tab-content.active')?.id;
+        if (activeTab === 'tab-arena') { tg.MainButton.setText('⚔️ НАЙТИ БОЯ'); tg.MainButton.show(); tg.MainButton.enable(); }
+        else tg.MainButton.hide();
     });
     observer.observe(document.getElementById('mainContent'), { attributes: true, attributeFilter: ['class'], subtree: true });
 }
@@ -2033,15 +2031,12 @@ async function saveArenaTeam() {
     else showToast(res?.message || 'Ошибка сохранения', '❌');
 }
 
-// Сбросить выбранную команду
 function resetArenaTeam() {
     if (arenaClient) {
         arenaClient.setSelectedTeam([]);
         renderArenaTeamInventory();
         renderSelectedTeam();
         showToast('Команда сброшена', '🗑️');
-        
-        // Также сбрасываем на сервере
         apiRequest('POST', '/api/arena/team', { team: [] }).catch(() => {});
     }
 }
@@ -2091,12 +2086,14 @@ async function findMatch() {
     }
 }
 
-async function cancelBattleSearch() {
+function cancelBattleSearch() {
     arenaClient?.stopSearch();
-    await apiRequest('POST', '/api/arena/cancel-search');
     const findBtn = document.getElementById('findMatchBtn');
     const searchStatus = document.getElementById('arenaSearchStatus');
-    if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; }
+    if (findBtn) { 
+        findBtn.disabled = false; 
+        findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; 
+    }
     if (searchStatus) searchStatus.innerHTML = '';
     showToast('Поиск отменён', '⚠️');
 }
@@ -2126,7 +2123,7 @@ async function makeAttack(targetIndex) {
         return; 
     }
     
-    const res = await apiRequest('POST', '/api/arena/move', { battleId, targetIndex });
+    const res = await apiRequest('POST', '/api/arena/move', { battleId });
     
     if (!res?.success) {
         showToast(res?.message || 'Ошибка атаки', '❌');
@@ -2136,8 +2133,8 @@ async function makeAttack(targetIndex) {
     if (!res.finished) {
         const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
         updateBattleUIFromClient({
-            myTeam: res.myTeam,
-            opponentTeam: res.enemyTeam,
+            player1Team: res.myTeam,
+            player2Team: res.enemyTeam,
             lastMove: res.lastMove,
             currentTurn: res.currentTurn,
             turnCount: res.turnCount
@@ -2153,6 +2150,9 @@ async function surrenderBattle() {
     if (res?.success) { showToast('Вы сдались', '⚠️'); renderArenaFightTab(); }
 }
 
+// ============================================================
+// RENDER ARENA FIGHT TAB
+// ============================================================
 async function renderArenaFightTab() {
     const statusContainer = document.getElementById('arenaFightStatus');
     const battleContainer = document.getElementById('arenaBattleContainer');
@@ -2172,7 +2172,6 @@ async function renderArenaFightTab() {
     try {
         const battleRes = await apiRequest('GET', '/api/arena/battle/status');
         
-        // Проверяем ответ
         if (!battleRes) {
             addDebugLog('❌ Нет ответа от /api/arena/battle/status', 'error');
             if (statusContainer) statusContainer.style.display = 'block';
@@ -2180,7 +2179,6 @@ async function renderArenaFightTab() {
             return;
         }
         
-        // Если есть активный бой
         if (battleRes.hasBattle === true && battleRes.status !== 'finished' && battleRes.status !== 'expired') {
             if (statusContainer) statusContainer.style.display = 'none';
             if (battleContainer) battleContainer.style.display = 'block';
@@ -2207,32 +2205,41 @@ async function renderArenaFightTab() {
                 }
             }
         } else {
-            // Нет активного боя - показываем форму поиска
             if (statusContainer) statusContainer.style.display = 'block';
             if (battleContainer) battleContainer.style.display = 'none';
-
+            
             arenaClient?.stopSearch();
             const findBtn = document.getElementById('findMatchBtn');
             if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; }
             const searchStatus = document.getElementById('arenaSearchStatus');
             if (searchStatus) searchStatus.innerHTML = '';
-
-            // Обновляем UI с лигой
-            const level = state.user?.level || 1;
-            let league = 'bronze', entryFee = 500, prizePool = 800;
-            if (level >= 50) { league = 'diamond'; entryFee = 5000; prizePool = 8000; }
-            else if (level >= 30) { league = 'platinum'; entryFee = 2000; prizePool = 3200; }
-            else if (level >= 20) { league = 'gold'; entryFee = 1000; prizePool = 1600; }
-            else if (level >= 10) { league = 'silver'; entryFee = 500; prizePool = 800; }
             
-            const entryFeeEl = document.getElementById('arenaEntryFee');
-            const prizePoolEl = document.getElementById('arenaPrizePool');
-            const leagueEl = document.getElementById('arenaLeague');
-            if (entryFeeEl) entryFeeEl.textContent = entryFee;
-            if (prizePoolEl) prizePoolEl.textContent = prizePool;
-            if (leagueEl) leagueEl.textContent = league === 'diamond' ? 'Алмазная' : league === 'platinum' ? 'Платиновая' : league === 'gold' ? 'Золотая' : league === 'silver' ? 'Серебряная' : 'Бронзовая';
+            try {
+                const leaderboardRes = await apiRequest('GET', '/api/arena/leaderboard');
+                if (leaderboardRes?.success && leaderboardRes.myStats) {
+                    const myLeague = leaderboardRes.myStats.league || 'bronze';
+                    const leagueConfigs = {
+                        bronze: { name: '🥉 Бронзовая', entryFee: 200, prizePool: 350 },
+                        silver: { name: '🥈 Серебряная', entryFee: 500, prizePool: 800 },
+                        gold: { name: '🥇 Золотая', entryFee: 1000, prizePool: 1600 },
+                        platinum: { name: '💎 Платиновая', entryFee: 2000, prizePool: 3200 },
+                        diamond: { name: '🏆 Алмазная', entryFee: 5000, prizePool: 8000 }
+                    };
+                    const cfg = leagueConfigs[myLeague] || leagueConfigs.bronze;
+                    
+                    const entryFeeEl = document.getElementById('arenaEntryFee');
+                    const prizePoolEl = document.getElementById('arenaPrizePool');
+                    const leagueEl = document.getElementById('arenaLeague');
+                    if (entryFeeEl) entryFeeEl.textContent = cfg.entryFee;
+                    if (prizePoolEl) prizePoolEl.textContent = cfg.prizePool;
+                    if (leagueEl) {
+                        leagueEl.innerHTML = `<span class="arena-league-badge league-${myLeague}">${cfg.name}</span>`;
+                    }
+                }
+            } catch (err) {
+                addDebugLog('Ошибка получения лиги: ' + err.message, 'warn');
+            }
             
-            // Показываем сохранённую команду
             const teamRes = await apiRequest('GET', '/api/arena/team');
             if (teamRes?.success && teamRes.team) {
                 const teamContainer = document.getElementById('arenaCurrentTeam');
@@ -2252,12 +2259,14 @@ async function renderArenaFightTab() {
         }
     } catch (err) {
         addDebugLog('❌ renderArenaFightTab error: ' + err.message, 'error');
-        // В случае ошибки показываем форму поиска
         if (statusContainer) statusContainer.style.display = 'block';
         if (battleContainer) battleContainer.style.display = 'none';
     }
 }
 
+// ============================================================
+// RENDER BATTLE INTERFACE (С ЛИГАМИ)
+// ============================================================
 function renderBattleInterface(battleData) {
     addDebugLog('🎨 renderBattleInterface вызван', 'info');
     
@@ -2268,31 +2277,32 @@ function renderBattleInterface(battleData) {
     }
     
     const statusContainer = document.getElementById('arenaFightStatus');
-    
-    // Скрываем статус, показываем контейнер боя
     if (statusContainer) statusContainer.style.display = 'none';
     container.style.display = 'block';
     
     const isPlayer1 = battleData.isPlayer1;
-    const myTeam = battleData.myTeam;
-    const enemyTeam = battleData.opponentTeam;
+    const myTeam = isPlayer1 ? battleData.myTeam : battleData.opponentTeam;
+    const enemyTeam = isPlayer1 ? battleData.opponentTeam : battleData.myTeam;
     const isMyTurn = (battleData.currentTurn === 'player1' && isPlayer1) || 
                      (battleData.currentTurn === 'player2' && !isPlayer1);
     
-    addDebugLog(`Команда игрока: ${myTeam?.length || 0} питомцев`, 'info');
-    addDebugLog(`Команда врага: ${enemyTeam?.length || 0} питомцев`, 'info');
-    addDebugLog(`Текущий ход: ${battleData.currentTurn}, isPlayer1: ${isPlayer1}, мой ход: ${isMyTurn}`, 'info');
-    
-    if (!myTeam || !enemyTeam) {
-        addDebugLog('❌ Нет данных команд!', 'error');
-        container.innerHTML = '<div class="arena-battle-container" style="text-align:center;padding:40px;color:red;">Ошибка загрузки боя</div>';
-        return;
-    }
+    const opponentLeague = battleData.opponentLeague || battleData.league || 'bronze';
+    const myLeague = battleData.myLeague || 'bronze';
+    const leagueNames = {
+        bronze: '🥉 Бронзовая',
+        silver: '🥈 Серебряная',
+        gold: '🥇 Золотая',
+        platinum: '💎 Платиновая',
+        diamond: '🏆 Алмазная'
+    };
     
     container.innerHTML = `
         <div class="arena-battle-container">
             <div class="arena-team-side">
-                <div class="arena-side-title">⚔️ ВАША КОМАНДА</div>
+                <div class="arena-side-title">
+                    ⚔️ ВАША КОМАНДА
+                    <span class="arena-league-badge-small league-${myLeague}" style="margin-left: 8px;">${leagueNames[myLeague] || 'Бронзовая'}</span>
+                </div>
                 <div class="arena-creatures-row" id="arenaMyCreatures">
                     ${myTeam.map((creature, idx) => `
                         <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-creature-index="${idx}">
@@ -2304,9 +2314,17 @@ function renderBattleInterface(battleData) {
                     `).join('')}
                 </div>
             </div>
-            <div class="arena-battle-vs">VS</div>
+            <div class="arena-battle-vs">
+                VS
+                <span style="font-size: 10px; display: block; color: var(--text2); margin-top: 4px;">
+                    ${leagueNames[opponentLeague] || 'Бронзовая'} лига
+                </span>
+            </div>
             <div class="arena-team-side">
-                <div class="arena-side-title">🛡️ КОМАНДА СОПЕРНИКА</div>
+                <div class="arena-side-title">
+                    🛡️ КОМАНДА СОПЕРНИКА
+                    <span class="arena-league-badge-small league-${opponentLeague}" style="margin-left: 8px;">${leagueNames[opponentLeague] || 'Бронзовая'}</span>
+                </div>
                 <div class="arena-creatures-row" id="arenaEnemyCreatures">
                     ${enemyTeam.map((creature, idx) => `
                         <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-enemy-index="${idx}">
@@ -2329,7 +2347,7 @@ function renderBattleInterface(battleData) {
         </div>
     `;
     
-    addDebugLog('✅ Battle interface rendered', 'success');
+    addDebugLog('✅ Battle interface rendered with league info', 'success');
 }
 
 function updateBattleUIFromClient(data, isPlayer1) {
@@ -2348,7 +2366,6 @@ function updateBattleUIFromClient(data, isPlayer1) {
     
     if (!myTeam || !enemyTeam) return;
     
-    // Обновляем свою команду
     for (let i = 0; i < myTeam.length; i++) {
         const creature = myTeam[i];
         const creatureEl = document.querySelector(`#arenaMyCreatures .arena-battle-creature[data-creature-index="${i}"]`);
@@ -2362,7 +2379,6 @@ function updateBattleUIFromClient(data, isPlayer1) {
         }
     }
     
-    // Обновляем команду врага
     const isMyTurn = data.currentTurn && ((data.currentTurn === 'player1' && isPlayer1) || (data.currentTurn === 'player2' && !isPlayer1));
     
     for (let i = 0; i < enemyTeam.length; i++) {
@@ -2391,9 +2407,6 @@ function updateBattleUIFromClient(data, isPlayer1) {
         }
     }
     
-    arenaClient?.startBattleTimer();
-
-    // Анимация урона
     if (data.lastMove && data.lastMove.targetIndex !== undefined) {
         showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit);
         
@@ -2423,19 +2436,97 @@ function showDamageAnimation(targetIndex, damage, isCrit) {
     }
 }
 
+// ============================================================
+// RENDER ARENA RANKING (С ЛИГАМИ И ПРОГРЕССОМ)
+// ============================================================
 async function renderArenaRanking() {
-    const res = await apiRequest('GET', '/api/arena/leaderboard');
-    if (!res?.success) return;
-    const myRatingEl = document.getElementById('arenaMyRating');
-    const myWinsEl = document.getElementById('arenaMyWins');
-    const myLossesEl = document.getElementById('arenaMyLosses');
-    const myStreakEl = document.getElementById('arenaMyStreak');
-    if (myRatingEl) myRatingEl.textContent = res.myStats?.rating || 1000;
-    if (myWinsEl) myWinsEl.textContent = res.myStats?.wins || 0;
-    if (myLossesEl) myLossesEl.textContent = res.myStats?.losses || 0;
-    if (myStreakEl) myStreakEl.textContent = res.myStats?.streak || 0;
-    const container = document.getElementById('arenaLeaderboardList');
-    if (container) container.innerHTML = (res.leaders || []).map((player, idx) => `<div class="lb-item ${player.rating === res.myStats?.rating ? 'me' : ''}"><div class="lb-rank ${idx === 0 ? 'gold' : idx === 1 ? 'silver' : idx === 2 ? 'bronze' : ''}">${idx + 1}</div><div class="lb-avatar" style="background: linear-gradient(135deg, var(--accent), var(--accent3));">${(player.name || '?')[0]?.toUpperCase() || '?'}</div><div class="lb-info"><div class="lb-name">${escapeHtml(player.name)}</div><div class="lb-level">УР ${player.level}</div></div><div class="lb-score"><span>${player.rating}</span><span style="font-size:9px;">${player.wins}/${player.losses}</span></div></div>`).join('');
+    try {
+        const res = await apiRequest('GET', '/api/arena/leaderboard');
+        if (!res?.success) return;
+        
+        const myRatingEl = document.getElementById('arenaMyRating');
+        const myWinsEl = document.getElementById('arenaMyWins');
+        const myLossesEl = document.getElementById('arenaMyLosses');
+        const myStreakEl = document.getElementById('arenaMyStreak');
+        
+        if (myRatingEl) myRatingEl.textContent = res.myStats?.rating || 1000;
+        if (myWinsEl) myWinsEl.textContent = res.myStats?.wins || 0;
+        if (myLossesEl) myLossesEl.textContent = res.myStats?.losses || 0;
+        if (myStreakEl) myStreakEl.textContent = res.myStats?.streak || 0;
+        
+        const currentRating = res.myStats?.rating || 1000;
+        const nextRatingRequired = res.nextRatingRequired;
+        const currentLeagueRating = res.currentLeagueRating || 0;
+        const nextLeague = res.nextLeague;
+        
+        const progressContainer = document.getElementById('arenaProgressContainer');
+        const nextLeagueInfo = document.getElementById('arenaNextLeagueInfo');
+        const progressFill = document.getElementById('arenaProgressFill');
+        const currentRatingSpan = document.getElementById('arenaCurrentRating');
+        const nextRatingSpan = document.getElementById('arenaNextRating');
+        
+        if (nextRatingRequired && nextLeague && progressContainer) {
+            const leagueNamesRu = { silver: 'Серебряную', gold: 'Золотую', platinum: 'Платиновую', diamond: 'Алмазную' };
+            const leagueName = leagueNamesRu[nextLeague] || nextLeague;
+            if (nextLeagueInfo) nextLeagueInfo.innerHTML = `<span style="color: var(--legendary);">✨ ${leagueName} лига</span>`;
+            
+            const range = nextRatingRequired - currentLeagueRating;
+            const progress = currentRating - currentLeagueRating;
+            let percent = (progress / range) * 100;
+            percent = Math.min(100, Math.max(0, percent));
+            
+            if (progressFill) progressFill.style.width = `${percent}%`;
+            if (currentRatingSpan) currentRatingSpan.textContent = `${currentRating}`;
+            if (nextRatingSpan) nextRatingSpan.textContent = `${nextRatingRequired}`;
+        } else if (progressContainer && res.myStats?.league === 'diamond') {
+            if (nextLeagueInfo) nextLeagueInfo.innerHTML = '<span style="color: var(--mythic);">🏆 ВЫ В АЛМАЗНОЙ ЛИГЕ! 🏆</span>';
+            if (progressFill) progressFill.style.width = '100%';
+            if (currentRatingSpan) currentRatingSpan.textContent = `${currentRating}`;
+            if (nextRatingSpan) nextRatingSpan.textContent = 'МАКСИМУМ';
+        }
+        
+        const container = document.getElementById('arenaLeaderboardList');
+        if (container && res.leaders) {
+            const leagueDisplay = {
+                bronze: { name: '🥉 Бронза', class: 'league-badge-bronze' },
+                silver: { name: '🥈 Серебро', class: 'league-badge-silver' },
+                gold: { name: '🥇 Золото', class: 'league-badge-gold' },
+                platinum: { name: '💎 Платина', class: 'league-badge-platinum' },
+                diamond: { name: '🏆 Алмаз', class: 'league-badge-diamond' }
+            };
+            
+            container.innerHTML = res.leaders.map((player, idx) => {
+                const rank = idx + 1;
+                const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
+                const rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+                const isMe = player.rating === res.myStats?.rating && player.name === (state.user?.username || state.user?.firstName);
+                const league = player.league || 'bronze';
+                const leagueInfo = leagueDisplay[league] || leagueDisplay.bronze;
+                
+                return `<div class="lb-item ${isMe ? 'me' : ''}">
+                    <div class="lb-rank ${rankClass}">${rankIcon}</div>
+                    <div class="lb-avatar" style="background: linear-gradient(135deg, var(--accent), var(--accent3));">
+                        ${(player.name || '?')[0]?.toUpperCase() || '?'}
+                    </div>
+                    <div class="lb-info">
+                        <div class="lb-name">
+                            ${escapeHtml(player.name)} ${isMe ? '<span style="font-size:9px;color:var(--accent3)">(Вы)</span>' : ''}
+                        </div>
+                        <div class="lb-level">
+                            УР ${player.level}
+                            <span class="arena-league-badge-small ${leagueInfo.class}">${leagueInfo.name}</span>
+                        </div>
+                    </div>
+                    <div class="lb-score">
+                        <span>${player.rating}</span>
+                        <span style="font-size:9px;">${player.wins}/${player.losses}</span>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+    } catch (err) {
+        addDebugLog('❌ renderArenaRanking error: ' + err.message, 'error');
+    }
 }
 
 // ============================================================
@@ -2454,7 +2545,6 @@ function switchTab(tab) {
     if (tab === 'shop') renderMarketplaceBuy();
     if (tab === 'friends') renderFriendsList();
     if (tab === 'arena') {
-        // Проверяем WebSocket соединение
         if (arenaClient && state.token && !arenaClient.isConnected()) {
             addDebugLog('Переключение на арену - подключаем WebSocket...', 'info');
             arenaClient.connectSocket(state.token, API_URL);
@@ -2577,7 +2667,6 @@ async function initTelegramApp() {
     setTimeout(() => { checkActiveRequests(); loadUserStats(); }, 1000);
     updateAdsStatus();
     
-    // ARENA INIT (WebSocket)
     arenaClient = window.arenaClient;
     if (arenaClient) {
         arenaClient.loadTeamFromStorage();
@@ -2677,3 +2766,7 @@ window.makeAttack = makeAttack;
 window.surrenderBattle = surrenderBattle;
 window.cancelBattleSearch = cancelBattleSearch;
 window.debugLog = debugLog;
+window.renderBattleInterface = renderBattleInterface;
+window.updateBattleUIFromClient = updateBattleUIFromClient;
+window.showDamageAnimation = showDamageAnimation;
+window.renderArenaRanking = renderArenaRanking;
