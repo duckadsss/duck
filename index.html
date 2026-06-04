@@ -184,7 +184,6 @@
     </div>
     
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px">
-        <!-- 10 Friends - Rare Wolf -->
         <div class="friends-reward-card" id="reward-10" data-reward="10">
             <div class="reward-icon">
                 <img src="https://ndammo.github.io/Mmodna/wr.png" alt="Rare Wolf" style="width:48px;height:48px;object-fit:contain">
@@ -195,7 +194,6 @@
             <button class="reward-btn" id="reward-10-btn">🔒</button>
         </div>
         
-        <!-- 50 Friends - Epic Wolf -->
         <div class="friends-reward-card" id="reward-50" data-reward="50">
             <div class="reward-icon">
                 <img src="https://ndammo.github.io/Mmodna/we.png" alt="Epic Wolf" style="width:48px;height:48px;object-fit:contain">
@@ -206,7 +204,6 @@
             <button class="reward-btn" id="reward-50-btn">🔒</button>
         </div>
         
-        <!-- 150 Friends - Legendary Wolf -->
         <div class="friends-reward-card" id="reward-150" data-reward="150">
             <div class="reward-icon">
                 <img src="https://ndammo.github.io/Mmodna/wl.png" alt="Legendary Wolf" style="width:48px;height:48px;object-fit:contain">
@@ -226,57 +223,6 @@
 <div class="tab-content" id="tab-special">
     <div class="section-title"><i class="fa-solid fa-star" style="color:var(--legendary)"></i> <span data-i18n="specialQuests.title">Special Quests</span></div>
     <div id="specialQuestsList"></div>
-</div>
-
-<!-- ARENA TAB -->
-<div class="tab-content" id="tab-arena">
-    <div class="section-title"><i class="fa-solid fa-shield-haltered" style="color:var(--legendary)"></i> <span data-i18n="arena.title">PvP Arena</span></div>
-    
-    <!-- Статистика -->
-    <div class="arena-stats">
-        <div class="arena-stat">
-            <div class="arena-stat-value" id="arenaRating">1000</div>
-            <div class="arena-stat-label" data-i18n="arena.rating">Рейтинг</div>
-        </div>
-        <div class="arena-stat">
-            <div class="arena-stat-value" id="arenaWins">0</div>
-            <div class="arena-stat-label" data-i18n="arena.wins">Победы</div>
-        </div>
-        <div class="arena-stat">
-            <div class="arena-stat-value" id="arenaLosses">0</div>
-            <div class="arena-stat-label" data-i18n="arena.losses">Поражения</div>
-        </div>
-        <div class="arena-stat">
-            <div class="arena-league" id="arenaLeague">🏆 Бронза</div>
-            <div class="arena-stat-label" data-i18n="arena.league">Лига</div>
-        </div>
-    </div>
-    
-    <!-- Выбор существ -->
-    <div class="arena-creature-select">
-        <div style="font-size:11px;color:var(--text2);margin-bottom:8px">
-            <i class="fa-solid fa-dragon"></i> <span data-i18n="arena.selectCreatures">Выберите 3 существа для боя:</span>
-        </div>
-        <div class="arena-selection-grid" id="arenaSelectionGrid">
-            <!-- Существа будут добавлены динамически -->
-        </div>
-        <div class="arena-selected-creatures" id="arenaSelectedCreatures"></div>
-        <div class="arena-queue-buttons">
-            <button class="arena-queue-btn join" id="arenaJoinBtn" onclick="joinArenaQueue()" disabled style="opacity:0.5">
-                <i class="fa-solid fa-search"></i> <span data-i18n="arena.joinQueue">ВСТУПИТЬ В ОЧЕРЕДЬ</span>
-            </button>
-            <button class="arena-queue-btn leave" id="arenaLeaveBtn" onclick="leaveArenaQueue()" style="display:none">
-                <i class="fa-solid fa-times"></i> <span data-i18n="arena.leaveQueue">ВЫЙТИ</span>
-            </button>
-        </div>
-        <div class="arena-queue-status" id="arenaQueueStatus">
-            <i class="fa-solid fa-spinner fa-pulse"></i> <span data-i18n="arena.searching">Поиск соперника...</span>
-        </div>
-    </div>
-    
-    <!-- Лидерборд арены -->
-    <div class="section-title" style="margin-top:16px"><i class="fa-solid fa-ranking-star" style="color:var(--legendary)"></i> <span data-i18n="arena.leaderboard">Рейтинг Арены</span></div>
-    <div class="arena-leaderboard-list" id="arenaLeaderboardList"></div>
 </div>
 
 <!-- WALLET TAB -->
@@ -322,6 +268,72 @@
     <div id="pendingRequests"></div>
 </div>
 
+<!-- ARENA TAB -->
+<div class="tab-content" id="tab-arena">
+    <div class="arena-hero" id="arenaHero">
+        <div class="arena-rank-info">
+            <div class="arena-league-icon" id="arenaLeagueIcon">🥉</div>
+            <div class="arena-league-name" id="arenaLeagueName">Bronze</div>
+            <div class="arena-rating" id="arenaRating">1000</div>
+        </div>
+        <div class="arena-stats">
+            <div class="arena-stat">
+                <span class="arena-stat-value" id="arenaWins">0</span>
+                <span class="arena-stat-label">Wins</span>
+            </div>
+            <div class="arena-stat">
+                <span class="arena-stat-value" id="arenaLosses">0</span>
+                <span class="arena-stat-label">Losses</span>
+            </div>
+            <div class="arena-stat">
+                <span class="arena-stat-value" id="arenaStreak">0</span>
+                <span class="arena-stat-label">Streak</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="arena-team-section">
+        <div class="section-title"><i class="fa-solid fa-users"></i> Arena Team (3 creatures)</div>
+        <div class="arena-team-selector" id="arenaTeamSelector">
+            <div class="arena-team-slot empty" data-slot="0" onclick="openArenaTeamSelect(0)">
+                <div class="slot-icon">➕</div>
+                <div class="slot-name">Select</div>
+            </div>
+            <div class="arena-team-slot empty" data-slot="1" onclick="openArenaTeamSelect(1)">
+                <div class="slot-icon">➕</div>
+                <div class="slot-name">Select</div>
+            </div>
+            <div class="arena-team-slot empty" data-slot="2" onclick="openArenaTeamSelect(2)">
+                <div class="slot-icon">➕</div>
+                <div class="slot-name">Select</div>
+            </div>
+        </div>
+        <button class="arena-save-team-btn" onclick="saveArenaTeam()">
+            <i class="fa-solid fa-save"></i> Save Team
+        </button>
+    </div>
+    
+    <div class="arena-queue-section">
+        <div class="arena-queue-status" id="arenaQueueStatus">
+            <div class="queue-idle">
+                <i class="fa-solid fa-sword"></i>
+                <span>Ready for battle!</span>
+            </div>
+        </div>
+        <button class="arena-fight-btn" id="arenaFightBtn" onclick="startArenaSearch()">
+            <i class="fa-solid fa-crosshairs"></i> FIND OPPONENT
+        </button>
+        <button class="arena-cancel-btn hidden" id="arenaCancelBtn" onclick="cancelArenaSearch()">
+            <i class="fa-solid fa-times"></i> CANCEL SEARCH
+        </button>
+    </div>
+    
+    <div class="arena-leaderboard-section">
+        <div class="section-title"><i class="fa-solid fa-trophy"></i> Arena Leaderboard</div>
+        <div class="arena-leaderboard-list" id="arenaLeaderboardList"></div>
+    </div>
+</div>
+
 </div>
 
 <!-- BOTTOM NAV -->
@@ -346,13 +358,13 @@
         <i class="fa-solid fa-star"></i>
         <span data-i18n="nav.special">Special</span>
     </div>
-    <div class="nav-item" onclick="switchTab('arena')" id="nav-arena">
-        <i class="fa-solid fa-shield-haltered"></i>
-        <span data-i18n="nav.arena">Arena</span>
-    </div>
     <div class="nav-item" onclick="switchTab('wallet')" id="nav-wallet">
         <i class="fa-solid fa-wallet"></i>
         <span data-i18n="nav.wallet">Wallet</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('arena')" id="nav-arena">
+        <i class="fa-solid fa-shield-haltered"></i>
+        <span>Arena</span>
     </div>
 </div>
 
@@ -365,6 +377,7 @@
 
 <!-- SCRIPTS -->
 <script src="script.js"></script>
+<script src="arenaClient.js"></script>
 <script src="localization.js"></script>
 </body>
 </html>
