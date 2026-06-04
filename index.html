@@ -186,7 +186,6 @@
     </div>
     
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px">
-        <!-- 10 Friends - Rare Wolf -->
         <div class="friends-reward-card" id="reward-10" data-reward="10">
             <div class="reward-icon">
                 <img src="https://ndammo.github.io/Mmodna/wr.png" alt="Rare Wolf" style="width:48px;height:48px;object-fit:contain">
@@ -197,7 +196,6 @@
             <button class="reward-btn" id="reward-10-btn">🔒</button>
         </div>
         
-        <!-- 50 Friends - Epic Wolf -->
         <div class="friends-reward-card" id="reward-50" data-reward="50">
             <div class="reward-icon">
                 <img src="https://ndammo.github.io/Mmodna/we.png" alt="Epic Wolf" style="width:48px;height:48px;object-fit:contain">
@@ -208,7 +206,6 @@
             <button class="reward-btn" id="reward-50-btn">🔒</button>
         </div>
         
-        <!-- 150 Friends - Legendary Wolf -->
         <div class="friends-reward-card" id="reward-150" data-reward="150">
             <div class="reward-icon">
                 <img src="https://ndammo.github.io/Mmodna/wl.png" alt="Legendary Wolf" style="width:48px;height:48px;object-fit:contain">
@@ -273,52 +270,92 @@
     <div id="pendingRequests"></div>
 </div>
 
-<!-- ARENA TAB -->
+<!-- ARENA TAB - UPDATED WITH BATTLE SCREEN -->
 <div class="tab-content" id="tab-arena">
-    <div class="arena-rank-card">
-        <div class="arena-rank-icon">🏆</div>
-        <div class="arena-rank-info">
-            <div class="arena-league" id="arenaLeague">BRONZE</div>
-            <div class="arena-rating" id="arenaRating">500</div>
-            <div class="arena-stats">
-                <span>🏆 <span id="arenaWins">0</span></span>
-                <span>💀 <span id="arenaLosses">0</span></span>
-                <span>🤝 <span id="arenaDraws">0</span></span>
+    <!-- Main Arena UI -->
+    <div id="arenaMainUI">
+        <div class="arena-rank-card">
+            <div class="arena-rank-icon">🏆</div>
+            <div class="arena-rank-info">
+                <div class="arena-league" id="arenaLeague">BRONZE</div>
+                <div class="arena-rating" id="arenaRating">500</div>
+                <div class="arena-stats">
+                    <span>🏆 <span id="arenaWins">0</span></span>
+                    <span>💀 <span id="arenaLosses">0</span></span>
+                    <span>🤝 <span id="arenaDraws">0</span></span>
+                </div>
+            </div>
+            <div class="arena-tokens" onclick="buyArenaTokens()" style="cursor:pointer">
+                <i class="fa-solid fa-ticket"></i>
+                <span id="arenaTokens">3</span>
+                <span class="arena-tokens-label">/3</span>
             </div>
         </div>
-        <div class="arena-tokens" onclick="buyArenaTokens()" style="cursor:pointer">
-            <i class="fa-solid fa-ticket"></i>
-            <span id="arenaTokens">3</span>
-            <span class="arena-tokens-label">/3</span>
-        </div>
-    </div>
 
-    <div class="arena-section-title">
-        <i class="fa-solid fa-dragon"></i>
-        <span>SELECT YOUR TEAM (3 MONSTERS)</span>
-    </div>
-
-    <div class="arena-team-slots" id="arenaTeamSlots">
-        <div class="arena-slot empty" data-slot="0" onclick="openMonsterSelector(0)">+</div>
-        <div class="arena-slot empty" data-slot="1" onclick="openMonsterSelector(1)">+</div>
-        <div class="arena-slot empty" data-slot="2" onclick="openMonsterSelector(2)">+</div>
-    </div>
-
-    <div class="arena-buttons">
-        <button class="arena-find-btn" id="arenaFindBtn" onclick="findArenaMatch()">
-            <i class="fa-solid fa-magnifying-glass"></i> FIND BATTLE
-        </button>
-        <button class="arena-cancel-btn" id="arenaCancelBtn" onclick="cancelArenaSearch()" style="display:none">
-            <i class="fa-solid fa-times"></i> CANCEL SEARCH
-        </button>
-    </div>
-
-    <div class="arena-history">
+        <!-- League Scroll -->
         <div class="arena-section-title">
-            <i class="fa-solid fa-clock-rotate-left"></i>
-            <span>BATTLE HISTORY</span>
+            <i class="fa-solid fa-chart-line"></i>
+            <span>LEAGUES & PROGRESS</span>
         </div>
-        <div id="arenaHistoryList" class="arena-history-list"></div>
+        <div class="league-scroll" id="leagueScroll"></div>
+
+        <div class="arena-section-title">
+            <i class="fa-solid fa-dragon"></i>
+            <span>SELECT YOUR TEAM (3 MONSTERS)</span>
+        </div>
+
+        <div class="arena-team-slots" id="arenaTeamSlots">
+            <div class="arena-slot empty" data-slot="0" onclick="openMonsterSelector(0)">+</div>
+            <div class="arena-slot empty" data-slot="1" onclick="openMonsterSelector(1)">+</div>
+            <div class="arena-slot empty" data-slot="2" onclick="openMonsterSelector(2)">+</div>
+        </div>
+
+        <div class="arena-buttons">
+            <button class="arena-find-btn" id="arenaFindBtn" onclick="findArenaMatch()">
+                <i class="fa-solid fa-magnifying-glass"></i> FIND BATTLE
+            </button>
+            <button class="arena-cancel-btn" id="arenaCancelBtn" onclick="cancelArenaSearch()" style="display:none">
+                <i class="fa-solid fa-times"></i> CANCEL SEARCH
+            </button>
+        </div>
+
+        <div class="arena-history">
+            <div class="arena-section-title">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+                <span>BATTLE HISTORY</span>
+            </div>
+            <div id="arenaHistoryList" class="arena-history-list"></div>
+        </div>
+    </div>
+
+    <!-- Battle Screen (hidden by default) -->
+    <div id="arenaBattleScreen" style="display: none;">
+        <div class="battle-header">
+            <button class="battle-exit-btn" onclick="closeBattle()">
+                <i class="fa-solid fa-door-open"></i> EXIT
+            </button>
+            <div class="battle-turn-timer" id="turnTimer">30s</div>
+        </div>
+
+        <!-- Opponent Section -->
+        <div class="battle-side opponent-side">
+            <div class="battle-player-name" id="battleOpponentName">OPPONENT</div>
+            <div class="battle-monsters-grid" id="opponentMonsters"></div>
+        </div>
+
+        <!-- Battle Log -->
+        <div class="battle-log">
+            <div class="battle-log-title">⚔️ BATTLE LOG</div>
+            <div class="battle-log-messages" id="battleLogMessages"></div>
+        </div>
+
+        <!-- Player Section -->
+        <div class="battle-side player-side">
+            <div class="battle-player-name" id="battlePlayerName">YOU</div>
+            <div class="battle-monsters-grid" id="playerMonsters"></div>
+        </div>
+
+        <div class="battle-message" id="battleMessage"></div>
     </div>
 </div>
 
@@ -370,42 +407,6 @@
     </div>
 </div>
 
-<!-- BATTLE MODAL -->
-<div class="overlay" id="battleOverlay">
-    <div class="battle-container" id="battleContainer">
-        <div class="battle-close" onclick="closeBattle()">✕</div>
-        
-        <!-- Opponent Section -->
-        <div class="battle-opponent">
-            <div class="battle-player-name" id="opponentName">OPPONENT</div>
-            <div class="battle-health-bar">
-                <div class="battle-health-fill" id="opponentHealthFill" style="width:100%"></div>
-                <span class="battle-health-text" id="opponentHealthText">100%</span>
-            </div>
-            <div class="battle-monsters" id="opponentMonsters"></div>
-        </div>
-
-        <!-- Battle Log -->
-        <div class="battle-log" id="battleLog">
-            <div class="battle-log-title">⚔️ BATTLE LOG</div>
-            <div class="battle-log-messages" id="battleLogMessages"></div>
-        </div>
-
-        <!-- Player Section -->
-        <div class="battle-player">
-            <div class="battle-player-name" id="playerName">YOU</div>
-            <div class="battle-health-bar">
-                <div class="battle-health-fill" id="playerHealthFill" style="width:100%"></div>
-                <span class="battle-health-text" id="playerHealthText">100%</span>
-            </div>
-            <div class="battle-monsters" id="playerMonsters"></div>
-        </div>
-
-        <div class="battle-turn-timer" id="turnTimer">30s</div>
-        <div class="battle-message" id="battleMessage"></div>
-    </div>
-</div>
-
 <!-- ACCEPT BATTLE MODAL -->
 <div class="overlay" id="acceptBattleOverlay">
     <div class="battle-accept-popup">
@@ -424,5 +425,6 @@
 <!-- SCRIPTS -->
 <script src="script.js"></script>
 <script src="localization.js"></script>
+<script src="arena.js"></script>
 </body>
 </html>

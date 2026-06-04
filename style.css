@@ -2293,3 +2293,309 @@ img {
     animation: defendShake 0.3s ease-in-out;
     border-color: #f59e0b;
 }
+/* ============================================
+   ARENA UPDATED STYLES
+   ============================================ */
+
+/* League Scroll */
+.league-scroll {
+    display: flex;
+    overflow-x: auto;
+    gap: 12px;
+    padding: 8px 4px 16px 4px;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+}
+
+.league-scroll::-webkit-scrollbar {
+    height: 3px;
+}
+
+.league-scroll::-webkit-scrollbar-track {
+    background: var(--border);
+    border-radius: 2px;
+}
+
+.league-scroll::-webkit-scrollbar-thumb {
+    background: var(--accent3);
+    border-radius: 2px;
+}
+
+.league-card {
+    flex: 0 0 140px;
+    background: var(--surface);
+    border: 2px solid;
+    border-radius: 16px;
+    padding: 12px;
+    text-align: center;
+    scroll-snap-align: start;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.league-card.current {
+    transform: scale(1.02);
+    background: linear-gradient(135deg, var(--surface), rgba(168,85,247,0.1));
+    box-shadow: 0 0 20px rgba(168,85,247,0.3);
+}
+
+.league-card.past {
+    opacity: 0.7;
+}
+
+.league-icon {
+    font-size: 32px;
+    margin-bottom: 8px;
+}
+
+.league-name {
+    font-family: 'Orbitron', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.league-range {
+    font-size: 10px;
+    color: var(--text2);
+    margin-bottom: 6px;
+}
+
+.league-reward {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--uncommon);
+}
+
+.league-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--border);
+    border-radius: 0 0 14px 14px;
+    overflow: hidden;
+}
+
+.league-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent3));
+    transition: width 0.5s ease;
+}
+
+.league-progress-text {
+    position: absolute;
+    top: -18px;
+    right: 8px;
+    font-size: 8px;
+    font-weight: 600;
+    color: var(--accent3);
+    background: var(--bg2);
+    padding: 2px 6px;
+    border-radius: 10px;
+    white-space: nowrap;
+}
+
+/* Battle Screen */
+.battle-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.battle-exit-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 8px 16px;
+    color: var(--text2);
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'Orbitron', monospace;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.battle-exit-btn:active {
+    transform: scale(0.95);
+}
+
+.battle-side {
+    margin-bottom: 20px;
+}
+
+.battle-monsters-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+/* Battle Monster Card */
+.arena-battle-monster-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 10px;
+    text-align: center;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.arena-battle-monster-card.defeated {
+    opacity: 0.5;
+    background: var(--bg2);
+}
+
+.arena-battle-monster-card.attacking {
+    animation: attackShake 0.3s ease-in-out;
+    border-color: #ef4444;
+    background: rgba(239,68,68,0.2);
+}
+
+.arena-battle-monster-card.defending {
+    animation: defendShake 0.3s ease-in-out;
+    border-color: #f59e0b;
+}
+
+.arena-battle-monster-card.targetable {
+    border-color: #22c55e;
+    animation: targetPulse 0.8s infinite;
+    cursor: pointer;
+}
+
+@keyframes targetPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(34,197,94,0); }
+}
+
+.arena-battle-monster-card .monster-icon {
+    position: relative;
+    display: inline-block;
+}
+
+.arena-battle-monster-card img {
+    width: 60px;
+    height: 60px;
+    object-fit: contain;
+}
+
+.arena-battle-monster-card .monster-rarity {
+    position: absolute;
+    bottom: -4px;
+    right: -4px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.monster-rarity.common { background: var(--common); box-shadow: 0 0 4px var(--common); }
+.monster-rarity.uncommon { background: var(--uncommon); box-shadow: 0 0 4px var(--uncommon); }
+.monster-rarity.rare { background: var(--rare); box-shadow: 0 0 4px var(--rare); }
+.monster-rarity.epic { background: var(--epic); box-shadow: 0 0 4px var(--epic); }
+.monster-rarity.legendary { background: var(--legendary); box-shadow: 0 0 4px var(--legendary); }
+
+.arena-battle-monster-card .monster-name {
+    font-size: 10px;
+    font-weight: 600;
+    margin: 6px 0 4px;
+    color: var(--text);
+}
+
+.arena-battle-monster-card .monster-hp-bar {
+    background: var(--bg2);
+    border-radius: 10px;
+    height: 14px;
+    margin: 6px 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.arena-battle-monster-card .monster-hp-fill {
+    background: linear-gradient(90deg, #22c55e, #16a34a);
+    height: 100%;
+    width: 100%;
+    transition: width 0.3s ease;
+}
+
+.arena-battle-monster-card .monster-hp-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 8px;
+    font-weight: 700;
+    color: white;
+    text-shadow: 0 0 2px black;
+}
+
+.monster-attack-btn {
+    width: 100%;
+    padding: 6px;
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    border: none;
+    border-radius: 20px;
+    color: white;
+    font-size: 9px;
+    font-weight: 700;
+    font-family: 'Orbitron', monospace;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-top: 4px;
+}
+
+.monster-attack-btn:active {
+    transform: scale(0.95);
+}
+
+.monster-defeated {
+    font-size: 8px;
+    font-weight: 700;
+    color: #ef4444;
+    margin-top: 4px;
+}
+
+/* Cancel target button */
+.cancel-target-btn {
+    background: var(--surface2);
+    border: none;
+    border-radius: 20px;
+    padding: 4px 12px;
+    margin-left: 8px;
+    color: var(--text2);
+    font-size: 10px;
+    cursor: pointer;
+}
+
+/* Monster selector duplicate warning */
+.monster-selector-item.duplicate {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: grayscale(0.3);
+}
+
+.duplicate-badge {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    background: #ef4444;
+    color: white;
+    font-size: 7px;
+    font-weight: 700;
+    padding: 2px 4px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+@keyframes attackShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-6px); }
+    75% { transform: translateX(6px); }
+}
+
+@keyframes defendShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(4px); }
+    75% { transform: translateX(-4px); }
+}
