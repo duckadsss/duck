@@ -7,7 +7,7 @@
 // ============================================================
 
 const API_URL = 'https://serv-production-765e.up.railway.app';
-const WEBSOCKET_URL = 'https://serv-production-765e.up.railway.app'; // Тот же URL для Socket.IO
+const WEBSOCKET_URL = 'wss://serv-production-765e.up.railway.app'; // WebSocket URL
 // ============================================================
 // ЗАПРЕТ КОНТЕКСТНОГО МЕНЮ И ВЫДЕЛЕНИЯ
 // ============================================================
@@ -2185,7 +2185,7 @@ async function renderArenaFightTab() {
     
     if (arenaClient && state.token && !arenaClient.isConnected()) {
         addDebugLog('WebSocket не подключен, пробуем переподключиться...', 'info');
-        arenaClient.connectSocket(state.token, API_URL);
+        arenaClient.connectSocket(state.token, WEBSOCKET_URL);
         await new Promise(resolve => setTimeout(resolve, 500));
     }
     
@@ -2486,7 +2486,7 @@ function switchTab(tab) {
         // Проверяем WebSocket соединение
         if (arenaClient && state.token && !arenaClient.isConnected()) {
             addDebugLog('Переключение на арену - подключаем WebSocket...', 'info');
-            arenaClient.connectSocket(state.token, API_URL);
+            arenaClient.connectSocket(state.token, WEBSOCKET_URL);
         }
         renderArenaTeamInventory();
         renderArenaFightTab();
@@ -2610,7 +2610,7 @@ async function initTelegramApp() {
     arenaClient = window.arenaClient;
     if (arenaClient) {
         arenaClient.loadTeamFromStorage();
-        arenaClient.connectSocket(state.token, API_URL);
+        arenaClient.connectSocket(state.token, WEBSOCKET_URL);
         arenaClient.on('onMatchFound', (data) => showNativeBattleConfirmation(data));
         arenaClient.on('onBattleStartUI', (data) => { if (document.getElementById('overlay')?.classList.contains('show')) closeOverlay(); renderBattleInterface(data); });
         arenaClient.on('onBattleUpdate', (data, isPlayer1) => updateBattleUIFromClient(data, isPlayer1));
@@ -2629,7 +2629,7 @@ async function initTelegramApp() {
         img.addEventListener('touchstart', (e) => { if (e.touches.length > 1) e.preventDefault(); });
     });
     window.addEventListener('beforeunload', () => { if (arenaClient) arenaClient.disconnectSocket(); });
-    window.addEventListener('online', () => { if ((arenaClient?.isSearching() || arenaClient?.isBattleActive()) && !arenaClient?.isConnected()) arenaClient?.connectSocket(state.token, API_URL); });
+    window.addEventListener('online', () => { if ((arenaClient?.isSearching() || arenaClient?.isBattleActive()) && !arenaClient?.isConnected()) arenaClient?.connectSocket(state.token, WEBSOCKET_URL); });
 }
 
 function renderAll() {
