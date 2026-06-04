@@ -1,5 +1,6 @@
 // ============================================================
 // DNA MMO - ПОЛНАЯ КЛИЕНТСКАЯ ЧАСТЬ (С АРЕНОЙ)
+// ВЕРСИЯ 3.0 - ПОЛНОСТЬЮ ИНТЕГРИРОВАНА
 // ============================================================
 
 // ============================================================
@@ -73,6 +74,7 @@ let arenaCurrentTeam = [null, null, null];
 let arenaIsSearching = false;
 let arenaCurrentMatchRequest = null;
 let arenaSelectedSlotIndex = null;
+let arenaSocketInitialized = false;
 
 // ============================================================
 // GAME DATA
@@ -97,20 +99,15 @@ const RARITY_COLORS = {
 const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
 
 // ============================================================
-// ARENA FUNCTIONS
+// ARENA FUNCTIONS - ПОЛНОСТЬЮ ИНТЕГРИРОВАННЫ
 // ============================================================
 
-// Глобальный флаг для предотвращения множественных подключений
-let arenaSocketInitialized = false;
-
 function initArenaWebSocket() {
-    // Если уже есть активное соединение, не создаём новое
     if (arenaSocket && arenaSocket.connected) {
         console.log('✅ Arena WebSocket already connected');
         return;
     }
     
-    // Если уже инициализируем, не начинаем заново
     if (arenaSocketInitialized) {
         console.log('⚠️ Arena WebSocket initialization already in progress');
         return;
@@ -130,7 +127,6 @@ function initArenaWebSocket() {
     
     arenaSocketInitialized = true;
     
-    // Закрываем старое соединение, если оно есть
     if (arenaSocket) {
         try {
             arenaSocket.disconnect();
@@ -151,7 +147,7 @@ function initArenaWebSocket() {
     arenaSocket.on('connect', () => {
         console.log('✅ Arena WebSocket connected, id:', arenaSocket.id);
         
-        // Регистрируем сокет в боевой системе (arena-battle.js)
+        // Регистрируем сокет в боевой системе
         if (typeof window.registerArenaSocket === 'function') {
             window.registerArenaSocket(arenaSocket);
         }
@@ -171,6 +167,30 @@ function initArenaWebSocket() {
         console.log('❌ Match cancelled');
         showToast('Match search cancelled', '❌');
         stopArenaSearch();
+    });
+    
+    arenaSocket.on('battle-start', (battleData) => {
+        console.log('⚔️ Battle starting!', battleData);
+        if (typeof window.initBattle === 'function') {
+            window.initBattle(battleData);
+        } else {
+            console.error('initBattle function not found!');
+        }
+    });
+    
+    arenaSocket.on('move-made', (data) => {
+        console.log('🎮 Move made:', data);
+        if (typeof window.handleOpponentMove === 'function') {
+            window.handleOpponentMove(data);
+        }
+    });
+    
+    arenaSocket.on('battle-end', (result) => {
+        console.log('🏁 Battle ended:', result);
+        if (typeof window.endBattle === 'function') {
+            window.endBattle(result);
+        }
+        loadArenaStats();
     });
     
     arenaSocket.on('error', (data) => {
@@ -217,13 +237,22 @@ function findArenaMatch() {
     
     if (arenaSocket && arenaSocket.connected) {
         arenaSocket.emit('find-match', { team: arenaCurrentTeam });
+        showToast('Searching for opponent...', '🔍');
+    } else {
+        showToast('Connecting to arena...', '⏳');
+        setTimeout(() => {
+            if (arenaSocket && arenaSocket.connected && arenaIsSearching) {
+                arenaSocket.emit('find-match', { team: arenaCurrentTeam });
+            }
+        }, 1000);
     }
-    showToast('Searching for opponent...', '🔍');
 }
 
 function cancelArenaSearch() {
     if (!arenaIsSearching) return;
-    if (arenaSocket) arenaSocket.emit('cancel-search');
+    if (arenaSocket && arenaSocket.connected) {
+        arenaSocket.emit('cancel-search');
+    }
     stopArenaSearch();
 }
 
@@ -254,6 +283,7 @@ function acceptBattle() {
     
     if (arenaSocket && arenaCurrentMatchRequest) {
         arenaSocket.emit('accept-battle', { matchId: arenaCurrentMatchRequest.matchId });
+        showToast('Battle accepted!', '✅');
     }
     stopArenaSearch();
 }
@@ -424,15 +454,11 @@ async function buyArenaTokens() {
 }
 
 function initArena() {
-    // Загружаем статистику
     loadArenaStats();
-    // Обновляем отображение слотов
     updateArenaTeamSlots();
-    // Подключаем WebSocket (только один раз)
     initArenaWebSocket();
 }
 
-// Функция для полного сброса арены (при выходе из аккаунта)
 function resetArena() {
     if (arenaSocket) {
         try {
@@ -446,6 +472,7 @@ function resetArena() {
     arenaCurrentTeam = [null, null, null];
     updateArenaTeamSlots();
 }
+
 // ============================================================
 // ВИЗУАЛЬНЫЙ ТИКЕР
 // ============================================================
@@ -638,7 +665,7 @@ async function getCurrentIncome() {
 }
 
 // ============================================================
-// СТАТИСТИКА ПОЛЬЗОВАТЕЛЯ (КОШЕЛЕК)
+// СТАТИСТИКА ПОЛЬЗОВАТЕЛЯ
 // ============================================================
 async function loadUserStats() {
     try {
@@ -757,9 +784,75 @@ async function refreshUserProfile() {
     }
 }
 
+// ============================================================
+// ЗАГРУЗКА БОЕВОЙ СИСТЕМЫ
+// ============================================================
+function loadBattleSystem() {
+    // Проверяем, что battle system уже загружена через HTML
+    if (typeof window.initBattle === 'undefined') {
+        console.warn('Battle system not loaded, creating fallbacks');
+        
+        // Создаём заглушки для боевой системы, если не загружена
+        window.initBattle = function(battleData) {
+            console.log('Battle started (fallback):', battleData);
+            showToast('Battle system loading...', '⚔️');
+        };
+        
+        window.handleOpponentMove = function(data) {
+            console.log('Opponent move:', data);
+        };
+        
+        window.endBattle = function(result) {
+            console.log('Battle ended:', result);
+            loadArenaStats();
+            if (result.winner === 'player') {
+                showToast(`Victory! +${result.reward || 0} MMO`, '🏆');
+            } else if (result.winner === 'draw') {
+                showToast('Draw!', '🤝');
+            } else {
+                showToast('Defeat!', '💀');
+            }
+        };
+        
+        window.registerArenaSocket = function(socket) {
+            window.arenaSocket = socket;
+        };
+        
+        window.attackTarget = function(targetIdx) {
+            console.log('Attack target:', targetIdx);
+            if (window.arenaSocket && window.currentBattle) {
+                const attackerIdx = window.currentBattle.player?.monsters?.findIndex(m => m.hp > 0) || 0;
+                window.arenaSocket.emit('make-move', {
+                    battleId: window.currentBattle.battleId,
+                    attackerIndex: attackerIdx,
+                    targetIndex: targetIdx
+                });
+            }
+        };
+        
+        window.exitBattle = function() {
+            const container = document.getElementById('battleArenaContainer');
+            if (container) container.style.display = 'none';
+            
+            const mainContent = document.getElementById('mainContent');
+            const bottomNav = document.querySelector('.bottom-nav');
+            const header = document.querySelector('.header');
+            if (mainContent) mainContent.style.display = 'block';
+            if (bottomNav) bottomNav.style.display = 'flex';
+            if (header) header.style.display = 'block';
+            
+            window.currentBattle = null;
+        };
+    }
+}
+
+// ============================================================
+// INIT TELEGRAM APP
+// ============================================================
 async function initTelegramApp() {
     clearAllIntervals();
     showLoadingScreen(true);
+    loadBattleSystem();
 
     const tg = window.Telegram?.WebApp;
     
@@ -1459,7 +1552,7 @@ async function upgradeInventory() {
 }
 
 // ============================================================
-// ADS (ОБНОВЛЕННАЯ ВЕРСИЯ)
+// ADS
 // ============================================================
 async function updateAdsStatus() {
     if (window._adsUpdating) return;
@@ -1722,7 +1815,7 @@ function showCreatureInfo(creatureId) {
 }
 
 // ============================================================
-// MARKETPLACE (СОКРАЩЕННО ДЛЯ ЭКОНОМИИ МЕСТА)
+// MARKETPLACE
 // ============================================================
 function switchMarketplaceTab(tab, event) {
     document.querySelectorAll('.marketplace-subtab').forEach(t => t.classList.remove('active'));
@@ -2261,7 +2354,7 @@ function updateFriendRewardButtons() {
 }
 
 // ============================================================
-// SPECIAL QUESTS (С СОХРАНЕНИЕМ В localStorage)
+// SPECIAL QUESTS
 // ============================================================
 
 function loadQuestStatusesFromStorage() {
@@ -3070,3 +3163,30 @@ window.openMonsterSelector = openMonsterSelector;
 window.selectMonsterForTeam = selectMonsterForTeam;
 window.closeMonsterSelector = closeMonsterSelector;
 window.buyArenaTokens = buyArenaTokens;
+window.initArena = initArena;
+window.resetArena = resetArena;
+
+// Battle system exports (если загружены из arena-battle.js)
+// Они будут перезаписаны, когда arena-battle.js загрузится
+// Но мы создаём заглушки на всякий случай
+if (typeof window.initBattle === 'undefined') {
+    window.initBattle = function(battleData) {
+        console.log('Battle started:', battleData);
+    };
+    window.handleOpponentMove = function(data) {
+        console.log('Opponent move:', data);
+    };
+    window.endBattle = function(result) {
+        console.log('Battle ended:', result);
+        loadArenaStats();
+    };
+    window.registerArenaSocket = function(socket) {
+        window.arenaSocket = socket;
+    };
+    window.attackTarget = function(targetIdx) {
+        console.log('Attack target:', targetIdx);
+    };
+    window.exitBattle = function() {
+        console.log('Exit battle');
+    };
+}
