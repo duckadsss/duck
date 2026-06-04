@@ -72,9 +72,7 @@ let arenaSocket = null;
 let arenaCurrentTeam = [null, null, null];
 let arenaIsSearching = false;
 let arenaCurrentMatchRequest = null;
-let arenaCurrentBattle = null;
 let arenaSelectedSlotIndex = null;
-let arenaBattleInterval = null;
 
 // ============================================================
 // GAME DATA
@@ -121,6 +119,12 @@ function initArenaWebSocket() {
     
     arenaSocket.on('connect', () => {
         console.log('✅ Arena WebSocket connected');
+        
+        // Регистрируем сокет в боевой системе (arena-battle.js)
+        if (typeof window.registerArenaSocket === 'function') {
+            window.registerArenaSocket(arenaSocket);
+        }
+        
         if (arenaIsSearching) {
             arenaSocket.emit('find-match', { team: arenaCurrentTeam.filter(m => m !== null) });
         }
@@ -134,27 +138,6 @@ function initArenaWebSocket() {
     arenaSocket.on('match-cancelled', () => {
         showToast('Match search cancelled', '❌');
         stopArenaSearch();
-    });
-    
-    arenaSocket.on('battle-start', (data) => {
-        arenaCurrentBattle = data;
-        startBattle(data);
-    });
-    
-    arenaSocket.on('opponent-move', (data) => {
-        handleOpponentMove(data);
-    });
-    
-    arenaSocket.on('turn-update', (data) => {
-        updateTurnTimer(data.timeLeft);
-    });
-    
-    arenaSocket.on('battle-end', (data) => {
-        endBattle(data);
-    });
-    
-    arenaSocket.on('rating-update', (data) => {
-        updateArenaStats(data);
     });
     
     arenaSocket.on('error', (data) => {
@@ -244,241 +227,6 @@ function declineBattle() {
     showToast('Battle declined', '❌');
 }
 
-function startBattle(battleData) {
-    arenaCurrentBattle = battleData;
-    
-    const battleOverlay = document.getElementById('battleOverlay');
-    if (battleOverlay) battleOverlay.classList.add('show');
-    
-    const playerNameEl = document.getElementById('playerName');
-    const opponentNameEl = document.getElementById('opponentName');
-    
-    if (playerNameEl) playerNameEl.innerHTML = `YOU <span style="font-size:10px">(${battleData.player.rating})</span>`;
-    if (opponentNameEl) opponentNameEl.innerHTML = `${battleData.opponent.name} <span style="font-size:10px">(${battleData.opponent.rating})</span>`;
-    
-    renderBattleMonsters('player', battleData.player.monsters, true);
-    renderBattleMonsters('opponent', battleData.opponent.monsters, false);
-    
-    updateHealthBar('player', battleData.player.totalHealth, battleData.player.maxHealth);
-    updateHealthBar('opponent', battleData.opponent.totalHealth, battleData.opponent.maxHealth);
-    
-    const logContainer = document.getElementById('battleLogMessages');
-    if (logContainer) logContainer.innerHTML = '';
-    addBattleLogMessage('⚔️ BATTLE STARTED! ⚔️');
-    
-    const messageEl = document.getElementById('battleMessage');
-    if (battleData.currentTurn === 'player') {
-        if (messageEl) messageEl.innerHTML = '🔵 YOUR TURN - Click a monster to attack!';
-        enableAttackSelection();
-    } else {
-        if (messageEl) messageEl.innerHTML = '🔴 OPPONENT\'S TURN - Waiting...';
-        disableAttackSelection();
-    }
-}
-
-function renderBattleMonsters(side, monsters, isPlayer) {
-    const container = document.getElementById(`${side}Monsters`);
-    if (!container) return;
-    
-    container.innerHTML = monsters.map((monster, idx) => `
-        <div class="battle-monster-card ${isPlayer && monster.hp > 0 ? 'can-attack' : ''}" 
-             data-side="${side}" data-index="${idx}" data-alive="${monster.hp > 0}"
-             onclick="${isPlayer && monster.hp > 0 ? `selectAttackTarget(${idx})` : ''}">
-            <img src="${monster.icon}" alt="${monster.name}" 
-                 onerror="this.src='https://ndammo.github.io/Mmodna/default.png'">
-            <div class="battle-monster-name">${escapeHtml(monster.name)}</div>
-            <div class="battle-monster-hp">❤️ ${monster.hp}/${monster.maxHp}</div>
-        </div>
-    `).join('');
-}
-
-function selectAttackTarget(targetIndex) {
-    if (!arenaCurrentBattle || arenaCurrentBattle.currentTurn !== 'player') {
-        addBattleLogMessage('❌ Not your turn!', true);
-        return;
-    }
-    
-    const playerMonster = arenaCurrentBattle.player.monsters.find(m => m.hp > 0);
-    if (!playerMonster) {
-        addBattleLogMessage('❌ You have no alive monsters!', true);
-        return;
-    }
-    
-    const targetMonster = arenaCurrentBattle.opponent.monsters[targetIndex];
-    if (!targetMonster || targetMonster.hp <= 0) {
-        addBattleLogMessage('❌ That monster is already defeated!', true);
-        return;
-    }
-    
-    animateAttack(targetIndex);
-    
-    if (arenaSocket) {
-        arenaSocket.emit('make-move', {
-            battleId: arenaCurrentBattle.battleId,
-            attackerIndex: arenaCurrentBattle.player.monsters.findIndex(m => m.id === playerMonster.id),
-            targetIndex: targetIndex
-        });
-    }
-    
-    disableAttackSelection();
-    const messageEl = document.getElementById('battleMessage');
-    if (messageEl) messageEl.innerHTML = '⏳ Waiting for server...';
-}
-
-function animateAttack(targetIndex) {
-    const targetCard = document.querySelector(`#opponentMonsters .battle-monster-card[data-index="${targetIndex}"]`);
-    if (targetCard) {
-        targetCard.classList.add('defending');
-        setTimeout(() => targetCard.classList.remove('defending'), 300);
-    }
-    
-    const attackerCard = document.querySelector(`#playerMonsters .battle-monster-card.can-attack`);
-    if (attackerCard) {
-        attackerCard.classList.add('attacking');
-        setTimeout(() => attackerCard.classList.remove('attacking'), 300);
-    }
-}
-
-function handleOpponentMove(data) {
-    addBattleLogMessage(data.logMessage);
-    
-    if (data.playerHealth) {
-        updateHealthBar('player', data.playerHealth.current, data.playerHealth.max);
-        updateMonsterHealth('player', data.playerHealth.monsters);
-    }
-    if (data.opponentHealth) {
-        updateHealthBar('opponent', data.opponentHealth.current, data.opponentHealth.max);
-        updateMonsterHealth('opponent', data.opponentHealth.monsters);
-    }
-    
-    if (data.attackerIndex !== undefined && data.targetIndex !== undefined) {
-        const attackerCard = document.querySelector(`#opponentMonsters .battle-monster-card[data-index="${data.attackerIndex}"]`);
-        const targetCard = document.querySelector(`#playerMonsters .battle-monster-card[data-index="${data.targetIndex}"]`);
-        if (attackerCard) attackerCard.classList.add('attacking');
-        if (targetCard) targetCard.classList.add('defending');
-        setTimeout(() => {
-            if (attackerCard) attackerCard.classList.remove('attacking');
-            if (targetCard) targetCard.classList.remove('defending');
-        }, 300);
-    }
-    
-    const messageEl = document.getElementById('battleMessage');
-    if (data.nextTurn === 'player') {
-        if (messageEl) messageEl.innerHTML = '🔵 YOUR TURN - Click a monster to attack!';
-        enableAttackSelection();
-    } else {
-        if (messageEl) messageEl.innerHTML = '🔴 OPPONENT\'S TURN - Waiting...';
-        disableAttackSelection();
-    }
-}
-
-function updateHealthBar(side, current, max) {
-    const percent = (current / max) * 100;
-    const fill = document.getElementById(`${side}HealthFill`);
-    const text = document.getElementById(`${side}HealthText`);
-    if (fill) fill.style.width = `${percent}%`;
-    if (text) text.innerHTML = `${Math.floor(current)}/${Math.floor(max)}`;
-}
-
-function updateMonsterHealth(side, monsters) {
-    monsters.forEach((monster, idx) => {
-        const card = document.querySelector(`#${side}Monsters .battle-monster-card[data-index="${idx}"]`);
-        if (card) {
-            const hpDiv = card.querySelector('.battle-monster-hp');
-            if (hpDiv) hpDiv.innerHTML = `❤️ ${monster.hp}/${monster.maxHp}`;
-            if (monster.hp <= 0) {
-                card.classList.add('disabled');
-                card.classList.remove('can-attack');
-                card.setAttribute('data-alive', 'false');
-            }
-        }
-    });
-}
-
-function updateTurnTimer(seconds) {
-    const timerEl = document.getElementById('turnTimer');
-    if (timerEl) {
-        timerEl.innerHTML = `${seconds}s`;
-        timerEl.style.color = seconds <= 5 ? '#ef4444' : '#f59e0b';
-    }
-}
-
-function enableAttackSelection() {
-    const monsters = document.querySelectorAll('#playerMonsters .battle-monster-card');
-    monsters.forEach(card => {
-        if (card.getAttribute('data-alive') !== 'false') {
-            card.classList.add('can-attack');
-        }
-    });
-}
-
-function disableAttackSelection() {
-    const monsters = document.querySelectorAll('#playerMonsters .battle-monster-card');
-    monsters.forEach(card => card.classList.remove('can-attack'));
-}
-
-function addBattleLogMessage(message, isError = false) {
-    const logContainer = document.getElementById('battleLogMessages');
-    if (!logContainer) return;
-    
-    const msgDiv = document.createElement('div');
-    msgDiv.innerHTML = isError ? `❌ ${message}` : `⚔️ ${message}`;
-    msgDiv.style.color = isError ? '#ef4444' : '#94a3b8';
-    logContainer.appendChild(msgDiv);
-    logContainer.scrollTop = logContainer.scrollHeight;
-}
-
-function endBattle(data) {
-    addBattleLogMessage(data.resultMessage);
-    
-    const messageEl = document.getElementById('battleMessage');
-    if (data.winner === 'player') {
-        addBattleLogMessage(`🏆 VICTORY! +${data.reward} MMO +${data.ratingGain} rating`);
-        if (messageEl) messageEl.innerHTML = '🎉 VICTORY! 🎉';
-        spawnStars('epic');
-    } else if (data.winner === 'opponent') {
-        addBattleLogMessage(`💀 DEFEAT! -${data.ratingLoss} rating`);
-        if (messageEl) messageEl.innerHTML = '💀 DEFEAT! 💀';
-    } else {
-        addBattleLogMessage(`🤝 DRAW!`);
-        if (messageEl) messageEl.innerHTML = '🤝 DRAW! 🤝';
-    }
-    
-    updateArenaStats(data.newStats);
-    
-    setTimeout(() => {
-        closeBattle();
-    }, 3000);
-}
-
-function closeBattle() {
-    const battleOverlay = document.getElementById('battleOverlay');
-    if (battleOverlay) battleOverlay.classList.remove('show');
-    arenaCurrentBattle = null;
-    disableAttackSelection();
-}
-
-function updateArenaStats(stats) {
-    const leagueEl = document.getElementById('arenaLeague');
-    const ratingEl = document.getElementById('arenaRating');
-    const winsEl = document.getElementById('arenaWins');
-    const lossesEl = document.getElementById('arenaLosses');
-    const drawsEl = document.getElementById('arenaDraws');
-    const tokensEl = document.getElementById('arenaTokens');
-    
-    if (leagueEl) leagueEl.innerHTML = stats.league;
-    if (ratingEl) ratingEl.innerHTML = stats.rating;
-    if (winsEl) winsEl.innerHTML = stats.wins;
-    if (lossesEl) lossesEl.innerHTML = stats.losses;
-    if (drawsEl) drawsEl.innerHTML = stats.draws;
-    if (tokensEl) tokensEl.innerHTML = stats.tokens;
-    
-    if (stats.balance && state.user) {
-        state.user.balance = stats.balance;
-        updateHeader();
-    }
-}
-
 function openMonsterSelector(slotIndex) {
     arenaSelectedSlotIndex = slotIndex;
     
@@ -561,6 +309,27 @@ async function loadArenaStats() {
         }
     } catch (e) {
         console.error('loadArenaStats error:', e);
+    }
+}
+
+function updateArenaStats(stats) {
+    const leagueEl = document.getElementById('arenaLeague');
+    const ratingEl = document.getElementById('arenaRating');
+    const winsEl = document.getElementById('arenaWins');
+    const lossesEl = document.getElementById('arenaLosses');
+    const drawsEl = document.getElementById('arenaDraws');
+    const tokensEl = document.getElementById('arenaTokens');
+    
+    if (leagueEl) leagueEl.innerHTML = stats.league;
+    if (ratingEl) ratingEl.innerHTML = stats.rating;
+    if (winsEl) winsEl.innerHTML = stats.wins;
+    if (lossesEl) lossesEl.innerHTML = stats.losses;
+    if (drawsEl) drawsEl.innerHTML = stats.draws;
+    if (tokensEl) tokensEl.innerHTML = stats.tokens;
+    
+    if (stats.balance && state.user) {
+        state.user.balance = stats.balance;
+        updateHeader();
     }
 }
 
@@ -726,6 +495,7 @@ async function apiRequest(method, path, body = null, signal = null) {
 // HELPER FUNCTIONS
 // ============================================================
 function getCreature(id) { return CREATURES.find(c => c.id === id); }
+
 function formatNum(n) {
     const absN = Math.abs(n);
     const sign = n < 0 ? '-' : '';
@@ -733,17 +503,21 @@ function formatNum(n) {
     if (absN >= 1000) return sign + (absN/1000).toFixed(1) + 'K';
     return sign + Math.floor(absN).toString();
 }
+
 function getUsedSlots() {
     return state.inventory.reduce((s, i) => s + i.count, 0);
 }
+
 function getUpgradeCost() {
     return Math.floor(UPGRADE_BASE_COST * Math.pow(UPGRADE_MULTIPLIER, state.user?.inventoryUpgrades || 0));
 }
+
 function canMerge(creatureId) {
     const item = state.inventory.find(i => i.creatureId === creatureId);
     const c = getCreature(creatureId);
     return item && item.count >= 3 && c && c.rarity !== 'legendary' && c.rarity !== 'mythic';
 }
+
 function getLevelTitle(lvl) {
     const level = lvl || 1;
     if (level >= 20) return 'God Scientist';
@@ -753,6 +527,7 @@ function getLevelTitle(lvl) {
     if (level >= 3) return 'Biologist';
     return 'Researcher';
 }
+
 function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -1625,7 +1400,7 @@ async function upgradeInventory() {
 }
 
 // ============================================================
-// ADS (ОБНОВЛЕННАЯ ВЕРСИЯ С 20 MMO)
+// ADS (ОБНОВЛЕННАЯ ВЕРСИЯ)
 // ============================================================
 async function updateAdsStatus() {
     if (window._adsUpdating) return;
@@ -1888,7 +1663,7 @@ function showCreatureInfo(creatureId) {
 }
 
 // ============================================================
-// MARKETPLACE
+// MARKETPLACE (СОКРАЩЕННО ДЛЯ ЭКОНОМИИ МЕСТА)
 // ============================================================
 function switchMarketplaceTab(tab, event) {
     document.querySelectorAll('.marketplace-subtab').forEach(t => t.classList.remove('active'));
@@ -2299,7 +2074,7 @@ async function renderFriendsList() {
                     <div style="text-align:right">
                         ${isQualified 
                             ? '<div style="font-size:11px;color:#22c55e;font-weight:600">✅ 5+ level</div>'
-                            : `<div style="font-size:11px;color:#f59e0b">📈 needs ${5 - friend.level} levels</div>`
+                            : `<div style="font-size:11px;color:#f59e0b">?? needs ${5 - friend.level} levels</div>`
                         }
                         <div style="font-size:12px;font-weight:700;color:#a855f7">${formatNum(friend.balance)} MMO</div>
                     </div>
@@ -2723,43 +2498,6 @@ async function claimSpecialQuest(questId) {
     spawnFloatingMMO(res.reward);
 }
 
-async function claimSpecialQuestSilent(questId) {
-    if (state.isLoading) return;
-    
-    const questStatus = questStatuses.get(questId);
-    if (questStatus && questStatus.status !== 'available') {
-        return;
-    }
-    
-    if (state.user?.completedSpecialQuests?.includes(questId)) {
-        return;
-    }
-    
-    state.isLoading = true;
-    const res = await apiRequest('POST', '/api/game/complete-special-quest', { questId });
-    state.isLoading = false;
-    
-    if (!res.success) {
-        console.log('Error claiming reward:', res.message);
-        return;
-    }
-    
-    state.user = res.user;
-    updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
-    updateHeader();
-    await loadUserStats();
-    
-    const existing = questStatuses.get(questId);
-    if (existing && existing.timerId) {
-        clearTimeout(existing.timerId);
-    }
-    questStatuses.delete(questId);
-    saveQuestStatusesToStorage();
-    
-    await renderSpecialQuests();
-    showToast(`+${res.reward} MMO received for quest!`, '✅');
-}
-
 async function renderSpecialQuests() {
     const container = document.getElementById('specialQuestsList');
     if (!container) return;
@@ -2870,11 +2608,6 @@ async function renderSpecialQuests() {
             }
         }
     }, 1000);
-}
-
-async function updateSpecialQuests() {
-    await loadGameConfig();
-    renderSpecialQuests();
 }
 
 // ============================================================
@@ -3211,71 +2944,6 @@ function spawnFloatingMMO(amount) {
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 1600);
 }
-// ============================================
-// ПЕРЕОПРЕДЕЛЕНИЕ ОБРАБОТЧИКОВ АРЕНЫ
-// ============================================
-
-// Функция для обновления обработчиков после загрузки battle системы
-function setupArenaBattleHandlers() {
-    if (!arenaSocket) {
-        setTimeout(setupArenaBattleHandlers, 500);
-        return;
-    }
-    
-    if (typeof initBattle !== 'function') {
-        setTimeout(setupArenaBattleHandlers, 500);
-        return;
-    }
-    
-    console.log('🎮 Настройка боевых обработчиков...');
-    
-    // Удалить старые обработчики
-    arenaSocket.removeAllListeners('battle-start');
-    arenaSocket.removeAllListeners('opponent-move');
-    arenaSocket.removeAllListeners('battle-end');
-    
-    // Добавить новые
-    arenaSocket.on('battle-start', (data) => {
-        console.log('⚔️ Бой начался!', data);
-        if (typeof initBattle === 'function') {
-            initBattle(data);
-        }
-    });
-    
-    arenaSocket.on('opponent-move', (data) => {
-        console.log('🎯 Ход противника:', data);
-        if (typeof handleOpponentMove === 'function') {
-            handleOpponentMove(data);
-        }
-    });
-    
-    arenaSocket.on('battle-end', (data) => {
-        console.log('🏁 Бой окончен:', data);
-        if (typeof endBattle === 'function') {
-            endBattle(data);
-        }
-    });
-    
-    console.log('✅ Боевые обработчики настроены');
-}
-
-// Перехватить оригинальную инициализацию сокета
-const originalInitArena = window.initArenaWebSocket || function() {};
-
-window.initArenaWebSocket = function() {
-    console.log('🔌 Инициализация арены...');
-    originalInitArena();
-    
-    // Ждем подключения и настраиваем обработчики
-    setTimeout(setupArenaBattleHandlers, 1000);
-};
-
-// Если arenaSocket уже существует
-if (typeof arenaSocket !== 'undefined' && arenaSocket) {
-    setTimeout(setupArenaBattleHandlers, 500);
-}
-
-console.log('🎮 Battle system ready');
 
 // ============================================================
 // INIT
@@ -3339,7 +3007,6 @@ window.findArenaMatch = findArenaMatch;
 window.cancelArenaSearch = cancelArenaSearch;
 window.acceptBattle = acceptBattle;
 window.declineBattle = declineBattle;
-window.selectAttackTarget = selectAttackTarget;
 window.openMonsterSelector = openMonsterSelector;
 window.selectMonsterForTeam = selectMonsterForTeam;
 window.closeMonsterSelector = closeMonsterSelector;

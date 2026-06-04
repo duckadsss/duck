@@ -3280,3 +3280,114 @@ img {
         padding: 4px 12px;
     }
 }
+/* Дополнительные стили для боевой арены */
+#battleArenaContainer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+    background: linear-gradient(135deg, #0a0e1a 0%, #0d1120 100%);
+    overflow-y: auto;
+}
+
+.battle-arena {
+    max-width: 500px;
+    margin: 0 auto;
+    padding: 16px;
+    min-height: 100vh;
+    padding-top: max(60px, env(safe-area-inset-top));
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+}
+
+.battle-header {
+    position: sticky;
+    top: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: rgba(13, 17, 32, 0.95);
+    border-radius: 20px;
+    margin-bottom: 20px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(168, 85, 247, 0.3);
+    z-index: 10;
+}
+
+.battle-exit-btn {
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    border-radius: 12px;
+    padding: 8px 16px;
+    color: #ef4444;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: 'Orbitron', monospace;
+    cursor: pointer;
+}
+
+.battle-timer {
+    font-family: 'Orbitron', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    color: #f59e0b;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(0,0,0,0.5);
+    padding: 6px 16px;
+    border-radius: 30px;
+}
+
+.battle-team {
+    margin-bottom: 24px;
+}
+
+.team-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 16px;
+}
+
+.team-name {
+    font-family: 'Orbitron', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: #a855f7;
+}
+
+.team-rating {
+    font-size: 10px;
+    color: #94a3b8;
+    margin-left: 6px;
+}
+
+.team-health {
+    font-size: 12px;
+    font-weight: 600;
+    color: #22c55e;
+}
+
+.monsters-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+/* Конфетти */
+@keyframes confettiFall {
+    0% {
+        transform: translateY(0) rotate(0deg);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(100vh) rotate(360deg);
+        opacity: 0;
+    }
+}
