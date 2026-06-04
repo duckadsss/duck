@@ -3508,21 +3508,649 @@ mongoose.connection.once('open', async () => {
     console.log('⚡ Оптимизации: кэш инвентаря, доходов, stats (1 агрегация), увеличен TTL leaderboard до 120с');
 });
 
-// ============================================================
-// WEBSOCKET ARENA
-// ============================================================
+// Добавьте в конец файла server.js (перед запуском сервера)
 
+// ============================================
+// PVP ARENA СИСТЕМА
+// ============================================
+
+const WebSocket = require('ws');
 const http = require('http');
+
+// Создаем HTTP сервер для WebSocket
 const server = http.createServer(app);
-const ArenaServer = require('./arena-server');
+const wss = new WebSocket.Server({ server });
 
-// Запускаем WebSocket сервер
-const arenaServer = new ArenaServer(server);
+// Константы арены
+const ARENA_LEAGUES = [
+    { name: 'Бронза', minRating: 0, color: '#cd7f32', icon: '🥉' },
+    { name: 'Серебро', minRating: 500, color: '#c0c0c0', icon: '🥈' },
+    { name: 'Золото', minRating: 1000, color: '#ffd700', icon: '🥇' },
+    { name: 'Платина', minRating: 1500, color: '#e5e4e2', icon: '💎' },
+    { name: 'Алмаз', minRating: 2000, color: '#b9f2ff', icon: '🔹' },
+    { name: 'Мастер', minRating: 2500, color: '#ff4444', icon: '👑' }
+];
 
-// Заменяем app.listen на server.listen
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`🚀 Сервер запущен на порту ${PORT}`);
-    console.log(`⚔️ Арена WebSocket готова к боям!`);
+const ARENA_TURN_TIME = 30000; // 30 секунд на ход
+const ARENA_SEARCH_TIMEOUT = 60000; // 60 секунд поиска
+
+// Модель статистики арены
+const ArenaStatsSchema = new mongoose.Schema({
+    telegramId: { type: String, required: true, unique: true },
+    rating: { type: Number, default: 1000 },
+    wins: { type: Number, default: 0 },
+    losses: { type: Number, default: 0 },
+    draws: { type: Number, default: 0 },
+    totalBattles: { type: Number, default: 0 },
+    currentLeague: { type: String, default: 'Бронза' },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+});
+
+const ArenaStats = mongoose.model('ArenaStats', ArenaStatsSchema);
+
+// Хранилище активных игроков в очереди
+const arenaQueue = new Map(); // telegramId -> { ws, user, creatures, timestamp }
+const activeBattles = new Map(); // battleId -> battle object
+const battleTimers = new Map(); // battleId -> timer
+
+// Получение лиги по рейтингу
+function getLeagueByRating(rating) {
+    for (let i = ARENA_LEAGUES.length - 1; i >= 0; i--) {
+        if (rating >= ARENA_LEAGUES[i].minRating) {
+            return ARENA_LEAGUES[i];
+        }
+    }
+    return ARENA_LEAGUES[0];
+}
+
+// Обновление статистики после боя
+async function updateArenaStats(telegramId, isWin, isDraw = false) {
+    let stats = await ArenaStats.findOne({ telegramId });
+    if (!stats) {
+        stats = new ArenaStats({ telegramId });
+    }
+    
+    stats.totalBattles++;
+    if (isDraw) {
+        stats.draws++;
+    } else if (isWin) {
+        stats.wins++;
+        stats.rating += 25;
+    } else {
+        stats.losses++;
+        stats.rating = Math.max(0, stats.rating - 15);
+    }
+    
+    const league = getLeagueByRating(stats.rating);
+    stats.currentLeague = league.name;
+    stats.updatedAt = new Date();
+    
+    await stats.save();
+    return stats;
+}
+
+// Добавление существа в инвентарь
+async function addCreatureToInventory(userId, telegramId, creatureId) {
+    let invItem = await Inventory.findOne({ telegramId, creatureId });
+    if (invItem) {
+        invItem.count += 1;
+        await invItem.save();
+    } else {
+        await Inventory.create({ userId, telegramId, creatureId, count: 1 });
+    }
+    
+    const user = await User.findById(userId);
+    if (user && !user.discovered.includes(creatureId)) {
+        user.discovered.push(creatureId);
+        await user.save();
+    }
+    
+    invalidateInventoryCache(telegramId);
+}
+
+// Награда за победу
+async function giveArenaReward(user, isWin) {
+    const reward = isWin ? 500 : 100;
+    user.balance += reward;
+    addTransaction(user, `Arena ${isWin ? 'Victory' : 'Participation'}`, reward);
+    await user.save();
+    
+    await sendNotificationToUser(user.telegramId, 
+        `⚔️ <b>${isWin ? 'ПОБЕДА НА АРЕНЕ!' : 'БОЙ НА АРЕНЕ'}</b>\n\n` +
+        `💰 Награда: +${reward} MMO\n` +
+        `💳 Баланс: ${user.balance.toLocaleString()} MMO`
+    );
+    
+    return reward;
+}
+
+// WebSocket обработчики
+wss.on('connection', (ws, req) => {
+    let currentUser = null;
+    let currentBattleId = null;
+    
+    ws.on('message', async (data) => {
+        try {
+            const message = JSON.parse(data);
+            
+            switch (message.type) {
+                case 'auth':
+                    const token = message.token;
+                    if (!token) {
+                        ws.send(JSON.stringify({ type: 'error', message: 'No token' }));
+                        return;
+                    }
+                    
+                    try {
+                        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+                        const user = await User.findById(decoded.userId);
+                        if (!user || user.isBanned) {
+                            ws.send(JSON.stringify({ type: 'error', message: 'Invalid user' }));
+                            return;
+                        }
+                        
+                        currentUser = user;
+                        ws.userId = user.telegramId;
+                        
+                        let stats = await ArenaStats.findOne({ telegramId: user.telegramId });
+                        if (!stats) {
+                            stats = await ArenaStats.create({ telegramId: user.telegramId, rating: 1000 });
+                        }
+                        
+                        ws.send(JSON.stringify({
+                            type: 'auth_success',
+                            stats: {
+                                rating: stats.rating,
+                                wins: stats.wins,
+                                losses: stats.losses,
+                                draws: stats.draws,
+                                totalBattles: stats.totalBattles,
+                                currentLeague: stats.currentLeague
+                            }
+                        }));
+                    } catch (e) {
+                        ws.send(JSON.stringify({ type: 'error', message: 'Invalid token' }));
+                    }
+                    break;
+                    
+                case 'join_queue':
+                    if (!currentUser) {
+                        ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated' }));
+                        return;
+                    }
+                    
+                    const { creatureIds } = message;
+                    
+                    if (!creatureIds || creatureIds.length !== 3) {
+                        ws.send(JSON.stringify({ type: 'error', message: 'Выберите 3 существа' }));
+                        return;
+                    }
+                    
+                    // Проверяем что существа есть в инвентаре
+                    let hasAll = true;
+                    for (const id of creatureIds) {
+                        const inv = await Inventory.findOne({ telegramId: currentUser.telegramId, creatureId: id });
+                        if (!inv || inv.count < 1) {
+                            hasAll = false;
+                            break;
+                        }
+                    }
+                    
+                    if (!hasAll) {
+                        ws.send(JSON.stringify({ type: 'error', message: 'У вас нет выбранных существ' }));
+                        return;
+                    }
+                    
+                    // Получаем данные существ
+                    const creatures = [];
+                    for (const id of creatureIds) {
+                        const creature = await getCreature(id);
+                        if (creature) {
+                            creatures.push({
+                                id: creature.id,
+                                name: creature.name,
+                                rarity: creature.rarity,
+                                icon: creature.icon,
+                                health: 50 + (RARITY_ORDER.indexOf(creature.rarity) * 20),
+                                maxHealth: 50 + (RARITY_ORDER.indexOf(creature.rarity) * 20),
+                                attack: 10 + (RARITY_ORDER.indexOf(creature.rarity) * 5),
+                                speed: 5 + (RARITY_ORDER.indexOf(creature.rarity) * 2),
+                                isAlive: true
+                            });
+                        }
+                    }
+                    
+                    arenaQueue.set(currentUser.telegramId, {
+                        ws,
+                        user: currentUser,
+                        creatures,
+                        joinedAt: Date.now()
+                    });
+                    
+                    ws.send(JSON.stringify({ type: 'queue_joined' }));
+                    
+                    // Пытаемся найти соперника
+                    findMatch();
+                    break;
+                    
+                case 'leave_queue':
+                    if (currentUser && arenaQueue.has(currentUser.telegramId)) {
+                        arenaQueue.delete(currentUser.telegramId);
+                        ws.send(JSON.stringify({ type: 'queue_left' }));
+                    }
+                    break;
+                    
+                case 'accept_battle':
+                    const { battleId } = message;
+                    const battle = activeBattles.get(battleId);
+                    
+                    if (battle && battle.player1.telegramId === currentUser.telegramId) {
+                        battle.player1.accepted = true;
+                    } else if (battle && battle.player2.telegramId === currentUser.telegramId) {
+                        battle.player2.accepted = true;
+                    }
+                    
+                    if (battle && battle.player1.accepted && battle.player2.accepted) {
+                        battle.status = 'active';
+                        battle.currentTurn = Math.random() < 0.5 ? battle.player1.telegramId : battle.player2.telegramId;
+                        battle.turnStartTime = Date.now();
+                        
+                        // Отправляем обоим игрокам начало боя
+                        sendToBattle(battleId, {
+                            type: 'battle_start',
+                            turn: battle.currentTurn,
+                            player1: {
+                                telegramId: battle.player1.telegramId,
+                                name: battle.player1.name,
+                                creatures: battle.player1.creatures
+                            },
+                            player2: {
+                                telegramId: battle.player2.telegramId,
+                                name: battle.player2.name,
+                                creatures: battle.player2.creatures
+                            }
+                        });
+                        
+                        // Запускаем таймер хода
+                        startTurnTimer(battleId);
+                    }
+                    break;
+                    
+                case 'attack':
+                    const { battleId: battleIdAttack, targetPlayer, targetCreatureIndex } = message;
+                    const battleAttack = activeBattles.get(battleIdAttack);
+                    
+                    if (!battleAttack || battleAttack.status !== 'active') {
+                        ws.send(JSON.stringify({ type: 'error', message: 'Бой не активен' }));
+                        return;
+                    }
+                    
+                    if (battleAttack.currentTurn !== currentUser.telegramId) {
+                        ws.send(JSON.stringify({ type: 'error', message: 'Не ваш ход' }));
+                        return;
+                    }
+                    
+                    // Очищаем таймер хода
+                    if (battleTimers.has(battleIdAttack)) {
+                        clearTimeout(battleTimers.get(battleIdAttack));
+                        battleTimers.delete(battleIdAttack);
+                    }
+                    
+                    // Определяем атакующего и цель
+                    const isPlayer1Attacking = battleAttack.player1.telegramId === currentUser.telegramId;
+                    const attacker = isPlayer1Attacking ? battleAttack.player1 : battleAttack.player2;
+                    const defender = isPlayer1Attacking ? battleAttack.player2 : battleAttack.player1;
+                    
+                    const attackingCreature = attacker.creatures.find(c => c.isAlive);
+                    const targetCreature = defender.creatures[targetCreatureIndex];
+                    
+                    if (!attackingCreature || !targetCreature || !targetCreature.isAlive) {
+                        ws.send(JSON.stringify({ type: 'error', message: 'Цель недействительна' }));
+                        return;
+                    }
+                    
+                    // Расчет урона
+                    const damage = Math.max(1, attackingCreature.attack + Math.floor(Math.random() * 5) - 2);
+                    targetCreature.health -= damage;
+                    
+                    // Отправляем событие атаки
+                    sendToBattle(battleIdAttack, {
+                        type: 'attack_executed',
+                        attackerId: currentUser.telegramId,
+                        targetPlayerId: defender.telegramId,
+                        targetCreatureIndex,
+                        damage,
+                        targetNewHealth: targetCreature.health,
+                        isDead: targetCreature.health <= 0
+                    });
+                    
+                    if (targetCreature.health <= 0) {
+                        targetCreature.isAlive = false;
+                        targetCreature.health = 0;
+                        
+                        // Проверяем остались ли живые существа у защитника
+                        const hasAlive = defender.creatures.some(c => c.isAlive);
+                        
+                        if (!hasAlive) {
+                            // Бой окончен, победил атакующий
+                            battleAttack.status = 'finished';
+                            battleAttack.winner = currentUser.telegramId;
+                            
+                            const isPlayer1Win = battleAttack.player1.telegramId === currentUser.telegramId;
+                            
+                            // Обновляем статистику и даем награды
+                            const winnerStats = await updateArenaStats(currentUser.telegramId, true);
+                            const loserStats = await updateArenaStats(defender.telegramId, false);
+                            
+                            const reward = await giveArenaReward(currentUser, true);
+                            await giveArenaReward(defender.user, false);
+                            
+                            sendToBattle(battleIdAttack, {
+                                type: 'battle_end',
+                                winner: currentUser.telegramId,
+                                winnerReward: reward,
+                                winnerNewRating: winnerStats.rating,
+                                loserNewRating: loserStats.rating
+                            });
+                            
+                            activeBattles.delete(battleIdAttack);
+                            return;
+                        }
+                    }
+                    
+                    // Смена хода
+                    battleAttack.currentTurn = defender.telegramId;
+                    battleAttack.turnStartTime = Date.now();
+                    
+                    sendToBattle(battleIdAttack, {
+                        type: 'turn_change',
+                        turn: defender.telegramId
+                    });
+                    
+                    // Запускаем новый таймер
+                    startTurnTimer(battleIdAttack);
+                    break;
+                    
+                case 'surrender':
+                    const { battleId: battleIdSurrender } = message;
+                    const battleSurrender = activeBattles.get(battleIdSurrender);
+                    
+                    if (battleSurrender && battleSurrender.status === 'active') {
+                        battleSurrender.status = 'finished';
+                        battleSurrender.winner = battleSurrender.player1.telegramId === currentUser.telegramId 
+                            ? battleSurrender.player2.telegramId 
+                            : battleSurrender.player1.telegramId;
+                        
+                        const winner = battleSurrender.winner === battleSurrender.player1.telegramId 
+                            ? battleSurrender.player1 
+                            : battleSurrender.player2;
+                        const loser = battleSurrender.winner === battleSurrender.player1.telegramId 
+                            ? battleSurrender.player2 
+                            : battleSurrender.player1;
+                        
+                        const winnerStats = await updateArenaStats(winner.telegramId, true);
+                        const loserStats = await updateArenaStats(loser.telegramId, false);
+                        
+                        const reward = await giveArenaReward(winner.user, true);
+                        await giveArenaReward(loser.user, false);
+                        
+                        sendToBattle(battleSurrender.id, {
+                            type: 'battle_end',
+                            winner: battleSurrender.winner,
+                            winnerReward: reward,
+                            winnerNewRating: winnerStats.rating,
+                            loserNewRating: loserStats.rating,
+                            surrender: true
+                        });
+                        
+                        activeBattles.delete(battleSurrender.id);
+                    }
+                    break;
+            }
+        } catch (e) {
+            console.error('WebSocket message error:', e);
+            ws.send(JSON.stringify({ type: 'error', message: e.message }));
+        }
+    });
+    
+    ws.on('close', () => {
+        // Удаляем из очереди если был
+        if (currentUser && arenaQueue.has(currentUser.telegramId)) {
+            arenaQueue.delete(currentUser.telegramId);
+        }
+        
+        // Завершаем активный бой
+        if (currentBattleId && activeBattles.has(currentBattleId)) {
+            const battle = activeBattles.get(currentBattleId);
+            if (battle.status === 'active') {
+                const winner = battle.player1.telegramId === currentUser.telegramId 
+                    ? battle.player2 
+                    : battle.player1;
+                
+                battle.status = 'finished';
+                battle.winner = winner.telegramId;
+                
+                sendToBattle(currentBattleId, {
+                    type: 'battle_end',
+                    winner: winner.telegramId,
+                    reason: 'disconnect'
+                });
+            }
+            activeBattles.delete(currentBattleId);
+        }
+    });
+});
+
+// Функция поиска соперника
+async function findMatch() {
+    const players = Array.from(arenaQueue.values());
+    
+    if (players.length < 2) return;
+    
+    // Сортируем по времени ожидания
+    players.sort((a, b) => a.joinedAt - b.joinedAt);
+    
+    for (let i = 0; i < players.length - 1; i++) {
+        const player1 = players[i];
+        const player2 = players[i + 1];
+        
+        // Проверяем что оба еще в очереди
+        if (!arenaQueue.has(player1.user.telegramId) || !arenaQueue.has(player2.user.telegramId)) {
+            continue;
+        }
+        
+        // Создаем бой
+        const battleId = `battle_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        
+        const battle = {
+            id: battleId,
+            player1: {
+                telegramId: player1.user.telegramId,
+                name: player1.user.username || player1.user.firstName || 'Player',
+                creatures: JSON.parse(JSON.stringify(player1.creatures)),
+                user: player1.user,
+                ws: player1.ws,
+                accepted: false
+            },
+            player2: {
+                telegramId: player2.user.telegramId,
+                name: player2.user.username || player2.user.firstName || 'Player',
+                creatures: JSON.parse(JSON.stringify(player2.creatures)),
+                user: player2.user,
+                ws: player2.ws,
+                accepted: false
+            },
+            status: 'waiting_accept',
+            createdAt: Date.now()
+        };
+        
+        // Удаляем из очереди
+        arenaQueue.delete(player1.user.telegramId);
+        arenaQueue.delete(player2.user.telegramId);
+        
+        activeBattles.set(battleId, battle);
+        
+        // Отправляем запрос на принятие боя
+        const battleRequest = {
+            type: 'battle_request',
+            battleId,
+            opponent: {
+                name: battle.player2.name,
+                creatures: battle.player2.creatures.map(c => ({ name: c.name, icon: c.icon, rarity: c.rarity }))
+            }
+        };
+        
+        const battleRequest2 = {
+            type: 'battle_request',
+            battleId,
+            opponent: {
+                name: battle.player1.name,
+                creatures: battle.player1.creatures.map(c => ({ name: c.name, icon: c.icon, rarity: c.rarity }))
+            }
+        };
+        
+        player1.ws.send(JSON.stringify(battleRequest));
+        player2.ws.send(JSON.stringify(battleRequest2));
+        
+        // Таймаут на принятие
+        setTimeout(async () => {
+            const stillActive = activeBattles.get(battleId);
+            if (stillActive && stillActive.status === 'waiting_accept') {
+                if (!stillActive.player1.accepted || !stillActive.player2.accepted) {
+                    const whoRejected = !stillActive.player1.accepted ? stillActive.player1 : stillActive.player2;
+                    const other = !stillActive.player1.accepted ? stillActive.player2 : stillActive.player1;
+                    
+                    sendToPlayer(other.ws, {
+                        type: 'battle_rejected',
+                        message: 'Противник не принял бой'
+                    });
+                    
+                    activeBattles.delete(battleId);
+                    
+                    // Возвращаем в очередь того кто принял
+                    if (other.accepted) {
+                        arenaQueue.set(other.telegramId, {
+                            ws: other.ws,
+                            user: other.user,
+                            creatures: other.creatures,
+                            joinedAt: Date.now()
+                        });
+                        findMatch();
+                    }
+                }
+            }
+        }, 30000);
+        
+        break;
+    }
+}
+
+// Функция отправки сообщения в бой
+function sendToBattle(battleId, message) {
+    const battle = activeBattles.get(battleId);
+    if (battle) {
+        sendToPlayer(battle.player1.ws, message);
+        sendToPlayer(battle.player2.ws, message);
+    }
+}
+
+function sendToPlayer(ws, message) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(message));
+    }
+}
+
+// Запуск таймера хода
+function startTurnTimer(battleId) {
+    if (battleTimers.has(battleId)) {
+        clearTimeout(battleTimers.get(battleId));
+    }
+    
+    const timer = setTimeout(async () => {
+        const battle = activeBattles.get(battleId);
+        if (battle && battle.status === 'active') {
+            // Время вышло, меняем ход
+            const oldTurn = battle.currentTurn;
+            battle.currentTurn = battle.player1.telegramId === oldTurn 
+                ? battle.player2.telegramId 
+                : battle.player1.telegramId;
+            
+            sendToBattle(battleId, {
+                type: 'turn_timeout',
+                oldTurn,
+                newTurn: battle.currentTurn
+            });
+            
+            startTurnTimer(battleId);
+        }
+    }, ARENA_TURN_TIME);
+    
+    battleTimers.set(battleId, timer);
+}
+
+// API для получения статистики арены
+app.get('/api/arena/stats', authMiddleware, async (req, res) => {
+    try {
+        let stats = await ArenaStats.findOne({ telegramId: req.user.telegramId });
+        if (!stats) {
+            stats = await ArenaStats.create({ telegramId: req.user.telegramId, rating: 1000 });
+        }
+        
+        const league = getLeagueByRating(stats.rating);
+        
+        res.json({
+            success: true,
+            stats: {
+                rating: stats.rating,
+                wins: stats.wins,
+                losses: stats.losses,
+                draws: stats.draws,
+                totalBattles: stats.totalBattles,
+                currentLeague: stats.currentLeague,
+                leagueIcon: league.icon,
+                leagueColor: league.color
+            }
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/arena/leaderboard', async (req, res) => {
+    try {
+        const leaderboard = await ArenaStats.find()
+            .sort({ rating: -1 })
+            .limit(50)
+            .lean();
+            
+        // Обогащаем данными пользователей
+        const enriched = await Promise.all(leaderboard.map(async (stat, index) => {
+            const user = await User.findOne({ telegramId: stat.telegramId })
+                .select('username firstName');
+            const league = getLeagueByRating(stat.rating);
+            
+            return {
+                rank: index + 1,
+                name: user?.username || user?.firstName || 'Anonymous',
+                rating: stat.rating,
+                wins: stat.wins,
+                losses: stat.losses,
+                league: league.name,
+                leagueIcon: league.icon
+            };
+        }));
+        
+        res.json({ success: true, leaderboard: enriched });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// Заменяем стандартный listen на server.listen
+const PORT_ARENA = process.env.PORT || 3000;
+server.listen(PORT_ARENA, () => {
+    console.log(`🚀 Сервер запущен на порту ${PORT_ARENA}`);
     console.log(`📌 Режим: ${process.env.NODE_ENV || 'production'}`);
+    console.log(`⚔️ PvP Арена активна!`);
 });

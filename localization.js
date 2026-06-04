@@ -33,15 +33,6 @@ const translations = {
         'encyclopedia.title': 'Коллекция Существ',
         'encyclopedia.subtitle': 'Откройте всех существ',
         
-        
-        // Добавь в объект ru
-'arena.title': 'PvP Арена',
-'arena.selectTeam': 'Выберите 3 существа для битвы',
-'arena.searchBattle': 'НАЙТИ ПРОТИВНИКА',
-'arena.cancelSearch': 'ОТМЕНА',
-'arena.victory': 'ПОБЕДА!',
-'arena.defeat': 'ПОРАЖЕНИЕ!',
-
         // Marketplace
         'marketplace.title': 'Торговая Площадка',
         'marketplace.buy': 'Купить',
@@ -81,6 +72,20 @@ const translations = {
         'friends.qualified': '✅ 5+ уровень',
         'friends.notQualified': '📈 нужно {left} ур.',
         'friends.levelRequirement': '🔥 ВАЖНО: Для получения наград друзья должны достичь 5 уровня!',
+        
+        
+// В translations.ru:
+'nav.arena': 'Арена',
+'arena.title': 'PvP Арена',
+'arena.rating': 'Рейтинг',
+'arena.wins': 'Победы',
+'arena.losses': 'Поражения',
+'arena.league': 'Лига',
+'arena.selectCreatures': 'Выберите 3 существа для боя:',
+'arena.joinQueue': 'ВСТУПИТЬ В ОЧЕРЕДЬ',
+'arena.leaveQueue': 'ВЫЙТИ',
+'arena.searching': 'Поиск соперника...',
+'arena.leaderboard': 'Рейтинг Арены',
         
         // Special Quests
         'specialQuests.title': 'Особые Квесты',
@@ -265,14 +270,6 @@ const translations = {
         'leaderboard.xp': 'XP',
         'leaderboard.you': '(You)',
         
-        // Добавь в объект en
-'arena.title': 'PvP Arena',
-'arena.selectTeam': 'Select 3 creatures for battle',
-'arena.searchBattle': 'FIND OPPONENT',
-'arena.cancelSearch': 'CANCEL',
-'arena.victory': 'VICTORY!',
-'arena.defeat': 'DEFEAT!',
-        
         // Friends
         'friends.inviteTitle': 'INVITE FRIENDS',
         'friends.inviteBtn': 'INVITE FRIEND',
@@ -360,6 +357,22 @@ const translations = {
         'deposit.cancelButton': '❌ CANCEL',
         'deposit.copyWallet': 'Copy wallet',
         'deposit.copyMemo': 'Copy memo',
+        // Добавьте в объект translations.ru и translations.en:
+
+
+// В translations.en:
+'nav.arena': 'Arena',
+'arena.title': 'PvP Arena',
+'arena.rating': 'Rating',
+'arena.wins': 'Wins',
+'arena.losses': 'Losses',
+'arena.league': 'League',
+'arena.selectCreatures': 'Select 3 creatures for battle:',
+'arena.joinQueue': 'JOIN QUEUE',
+'arena.leaveQueue': 'LEAVE',
+'arena.searching': 'Searching for opponent...',
+'arena.leaderboard': 'Arena Leaderboard',
+        
         
         // Transactions
         'transactions.none': 'No transactions yet',

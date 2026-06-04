@@ -1,11 +1,11 @@
 // ============================================================
-// DNA MMO - ПОЛНАЯ КЛИЕНТСКАЯ ЧАСТЬ (С ПОЧАСОВОЙ РЕКЛАМОЙ)
+// DNA MMO - ПОЛНАЯ КЛИЕНТСКАЯ ЧАСТЬ (С АРЕНОЙ)
 // ============================================================
 
 // ============================================================
 // CONFIG
 // ============================================================
-const API_URL = 'serv-production-765e.up.railway.app';
+const API_URL = 'https://serv-production-dbf3.up.railway.app';
 
 // ============================================================
 // ЗАПРЕТ КОНТЕКСТНОГО МЕНЮ И ВЫДЕЛЕНИЯ
@@ -52,7 +52,6 @@ let intervals = {
 let activeQuestTimers = new Map();
 let currentLeaderboardController = null;
 let isMarketplaceTabActive = false;
-let arenaClient = null;  // 👈
 
 // КЭШИ
 let leaderboardCache = { data: null, expiresAt: 0 };
@@ -65,6 +64,16 @@ let currentPaymentAmount = null;
 // Хранилище статусов квестов
 let questStatuses = new Map();
 const QUESTS_STORAGE_KEY = 'dna_mmo_quests_status';
+
+// ============================================================
+// ARENA ПЕРЕМЕННЫЕ
+// ============================================================
+let arenaWS = null;
+let isInQueue = false;
+let currentBattle = null;
+let selectedCreaturesForBattle = [];
+let turnTimerInterval = null;
+let battleEnded = false;
 
 // ============================================================
 // GAME DATA
@@ -81,7 +90,6 @@ let UPGRADE_BASE_COST = 300;
 let UPGRADE_MULTIPLIER = 1.4;
 let MAX_INVENTORY_SLOTS = 50;
 let SPECIAL_QUESTS = [];
-
 
 const RARITY_COLORS = {
     common: '#94a3b8', uncommon: '#22c55e', rare: '#3b82f6',
@@ -301,6 +309,611 @@ async function loadUserStats() {
 }
 
 // ============================================================
+// ARENA ФУНКЦИИ
+// ============================================================
+
+function connectArena() {
+    if (arenaWS && arenaWS.readyState === WebSocket.OPEN) return;
+    
+    const wsUrl = API_URL.replace('https', 'wss').replace('http', 'ws');
+    arenaWS = new WebSocket(`${wsUrl}`);
+    
+    arenaWS.onopen = () => {
+        console.log('✅ Арена WebSocket подключен');
+        if (state.token) {
+            arenaWS.send(JSON.stringify({
+                type: 'auth',
+                token: state.token
+            }));
+        }
+    };
+    
+    arenaWS.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleArenaMessage(data);
+    };
+    
+    arenaWS.onclose = () => {
+        console.log('❌ Арена WebSocket отключен');
+        if (isInQueue) {
+            isInQueue = false;
+            showToast('Соединение потеряно, вы вышли из очереди', '⚠️');
+            updateQueueUI(false);
+        }
+        setTimeout(() => connectArena(), 5000);
+    };
+    
+    arenaWS.onerror = (err) => {
+        console.error('WebSocket error:', err);
+    };
+}
+
+function handleArenaMessage(data) {
+    switch (data.type) {
+        case 'auth_success':
+            console.log('Арена авторизована', data.stats);
+            updateArenaStatsUI(data.stats);
+            break;
+            
+        case 'queue_joined':
+            isInQueue = true;
+            updateQueueUI(true);
+            showToast('Вы в очереди на поиск соперника...', '⚔️');
+            break;
+            
+        case 'queue_left':
+            isInQueue = false;
+            updateQueueUI(false);
+            showToast('Вы вышли из очереди', '👋');
+            break;
+            
+        case 'battle_request':
+            showBattleRequest(data.battleId, data.opponent);
+            break;
+            
+        case 'battle_rejected':
+            showToast(data.message || 'Противник не принял бой', '❌');
+            break;
+            
+        case 'battle_start':
+            startBattleUI(data);
+            break;
+            
+        case 'attack_executed':
+            handleAttackAnimation(data);
+            break;
+            
+        case 'turn_change':
+            handleTurnChange(data.turn);
+            break;
+            
+        case 'turn_timeout':
+            handleTurnTimeout(data.oldTurn, data.newTurn);
+            break;
+            
+        case 'battle_end':
+            handleBattleEnd(data);
+            break;
+            
+        case 'error':
+            showToast(data.message, '❌');
+            break;
+    }
+}
+
+function updateArenaStatsUI(stats) {
+    const arenaRating = document.getElementById('arenaRating');
+    const arenaWins = document.getElementById('arenaWins');
+    const arenaLosses = document.getElementById('arenaLosses');
+    const arenaLeague = document.getElementById('arenaLeague');
+    
+    if (arenaRating) arenaRating.textContent = stats.rating;
+    if (arenaWins) arenaWins.textContent = stats.wins;
+    if (arenaLosses) arenaLosses.textContent = stats.losses;
+    if (arenaLeague) arenaLeague.innerHTML = `${stats.leagueIcon || '🏆'} ${stats.currentLeague}`;
+}
+
+function updateQueueUI(inQueue) {
+    const joinBtn = document.getElementById('arenaJoinBtn');
+    const leaveBtn = document.getElementById('arenaLeaveBtn');
+    const queueStatus = document.getElementById('arenaQueueStatus');
+    
+    if (inQueue) {
+        if (joinBtn) joinBtn.style.display = 'none';
+        if (leaveBtn) leaveBtn.style.display = 'flex';
+        if (queueStatus) queueStatus.style.display = 'flex';
+    } else {
+        if (joinBtn) joinBtn.style.display = 'flex';
+        if (leaveBtn) leaveBtn.style.display = 'none';
+        if (queueStatus) queueStatus.style.display = 'none';
+    }
+}
+
+function showBattleRequest(battleId, opponent) {
+    const creaturesHtml = opponent.creatures.map(c => `
+        <div class="arena-mini-creature">
+            <img src="${c.icon}" alt="${c.name}" style="width:32px;height:32px;object-fit:contain">
+            <span class="arena-mini-creature-name">${escapeHtml(c.name)}</span>
+            <span class="arena-mini-creature-rarity ${c.rarity}">${c.rarity}</span>
+        </div>
+    `).join('');
+    
+    document.getElementById('popup').innerHTML = `
+        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
+        <div class="popup-title">⚔️ БОЙ НА АРЕНЕ!</div>
+        <div class="popup-subtitle">Противник: ${escapeHtml(opponent.name)}</div>
+        <div style="background:#0d1120;border:1px solid #1e2d4a;border-radius:16px;padding:16px;margin:16px 0">
+            <div style="font-size:10px;color:#94a3b8;margin-bottom:10px">Существа противника:</div>
+            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+                ${creaturesHtml}
+            </div>
+        </div>
+        <div style="display:flex;gap:10px">
+            <button class="popup-btn" style="flex:1;background:linear-gradient(135deg,#22c55e,#16a34a)" onclick="acceptBattle('${battleId}')">
+                <i class="fa-solid fa-check"></i> ПРИНЯТЬ БОЙ
+            </button>
+            <button class="popup-btn" style="flex:1;background:#1a2540" onclick="closeOverlay()">
+                <i class="fa-solid fa-times"></i> ОТКАЗАТЬСЯ
+            </button>
+        </div>
+    `;
+    document.getElementById('overlay').classList.add('show');
+    
+    window.pendingBattleId = battleId;
+}
+
+function acceptBattle(battleId) {
+    closeOverlay();
+    if (arenaWS && arenaWS.readyState === WebSocket.OPEN) {
+        arenaWS.send(JSON.stringify({
+            type: 'accept_battle',
+            battleId
+        }));
+    }
+}
+
+function startBattleUI(data) {
+    currentBattle = data;
+    battleEnded = false;
+    
+    const isPlayer1 = data.player1.telegramId === state.user?.telegramId;
+    const myTeam = isPlayer1 ? data.player1.creatures : data.player2.creatures;
+    const enemyTeam = isPlayer1 ? data.player2.creatures : data.player1.creatures;
+    const isMyTurn = data.turn === state.user?.telegramId;
+    
+    renderBattleField(myTeam, enemyTeam, isMyTurn);
+    
+    if (turnTimerInterval) clearInterval(turnTimerInterval);
+    startTurnTimerUI(isMyTurn);
+}
+
+function renderBattleField(myTeam, enemyTeam, isMyTurn) {
+    const myCreaturesHtml = myTeam.map((c, index) => `
+        <div class="arena-creature-card ${!c.isAlive ? 'dead' : ''}" data-creature-index="${index}" data-side="my">
+            <div class="arena-creature-icon">${getIconHtml({ icon: c.icon, name: c.name })}</div>
+            <div class="arena-creature-name">${escapeHtml(c.name)}</div>
+            <div class="arena-creature-rarity ${c.rarity}">${c.rarity}</div>
+            <div class="arena-creature-hp">
+                <div class="arena-hp-bar" style="width: ${(c.health / c.maxHealth) * 100}%"></div>
+                <span>❤️ ${c.health}/${c.maxHealth}</span>
+            </div>
+            <div class="arena-creature-attack">⚔️ ${c.attack}</div>
+        </div>
+    `).join('');
+    
+    const enemyCreaturesHtml = enemyTeam.map((c, index) => `
+        <div class="arena-creature-card enemy ${!c.isAlive ? 'dead' : ''}" data-creature-index="${index}" data-side="enemy" ${c.isAlive && isMyTurn ? 'onclick="selectEnemyTarget(' + index + ')"' : ''}>
+            <div class="arena-creature-icon">${getIconHtml({ icon: c.icon, name: c.name })}</div>
+            <div class="arena-creature-name">${escapeHtml(c.name)}</div>
+            <div class="arena-creature-rarity ${c.rarity}">${c.rarity}</div>
+            <div class="arena-creature-hp">
+                <div class="arena-hp-bar" style="width: ${(c.health / c.maxHealth) * 100}%"></div>
+                <span>❤️ ${c.health}/${c.maxHealth}</span>
+            </div>
+            <div class="arena-creature-attack">⚔️ ${c.attack}</div>
+        </div>
+    `).join('');
+    
+    document.getElementById('popup').innerHTML = `
+        <div class="arena-battle-container">
+            <div class="arena-header">
+                <div class="arena-turn-indicator ${isMyTurn ? 'my-turn' : 'enemy-turn'}">
+                    ${isMyTurn ? '⭐ ВАШ ХОД ⭐' : '⏳ ХОД ПРОТИВНИКА...'}
+                </div>
+                <div class="arena-timer" id="arenaTimer">30s</div>
+                <button class="arena-surrender-btn" onclick="surrenderBattle()">СДАЧА</button>
+            </div>
+            
+            <div class="arena-enemy-field">
+                <div class="arena-field-label">👤 ${escapeHtml(currentBattle.player1.telegramId === state.user?.telegramId ? currentBattle.player2.name : currentBattle.player1.name)}</div>
+                <div class="arena-creatures-row" id="arenaEnemyCreatures">
+                    ${enemyCreaturesHtml}
+                </div>
+            </div>
+            
+            <div class="arena-vs">VS</div>
+            
+            <div class="arena-my-field">
+                <div class="arena-field-label">👤 ${escapeHtml(currentBattle.player1.telegramId === state.user?.telegramId ? currentBattle.player1.name : currentBattle.player2.name)} (ВЫ)</div>
+                <div class="arena-creatures-row" id="arenaMyCreatures">
+                    ${myCreaturesHtml}
+                </div>
+            </div>
+            
+            <div class="arena-action-log" id="arenaActionLog">
+                <div>⚔️ Бой начался!</div>
+            </div>
+            
+            <button class="arena-attack-btn" onclick="executeAttack()" ${!isMyTurn ? 'disabled' : ''}>⚔️ АТАКОВАТЬ</button>
+        </div>
+    `;
+    document.getElementById('overlay').classList.add('show');
+    
+    window.selectedTarget = null;
+    window.battleMyTeam = myTeam;
+    window.battleEnemyTeam = enemyTeam;
+}
+
+function selectEnemyTarget(index) {
+    if (battleEnded) return;
+    if (!window.battleEnemyTeam[index] || !window.battleEnemyTeam[index].isAlive) {
+        showToast('Это существо уже побеждено!', '⚠️');
+        return;
+    }
+    
+    window.selectedTarget = index;
+    
+    document.querySelectorAll('.arena-creature-card.enemy').forEach((el, i) => {
+        if (i === index) {
+            el.classList.add('selected-target');
+        } else {
+            el.classList.remove('selected-target');
+        }
+    });
+    
+    showToast(`Цель выбрана: ${window.battleEnemyTeam[index].name}. Нажмите "АТАКОВАТЬ"`, '🎯');
+}
+
+function executeAttack() {
+    if (battleEnded) return;
+    if (window.selectedTarget === undefined) {
+        showToast('Выберите цель для атаки!', '⚠️');
+        return;
+    }
+    
+    if (arenaWS && arenaWS.readyState === WebSocket.OPEN) {
+        arenaWS.send(JSON.stringify({
+            type: 'attack',
+            battleId: currentBattle.battleId || window.currentBattleId,
+            targetPlayer: 'enemy',
+            targetCreatureIndex: window.selectedTarget
+        }));
+    }
+    
+    window.selectedTarget = undefined;
+    document.querySelectorAll('.arena-creature-card.enemy').forEach(el => {
+        el.classList.remove('selected-target');
+    });
+}
+
+function handleAttackAnimation(data) {
+    const isAttackerMe = data.attackerId === state.user?.telegramId;
+    
+    addToActionLog(`${isAttackerMe ? 'Вы' : 'Противник'} наносит ${data.damage} урона!`);
+    
+    const targetCard = document.querySelector(`.arena-creature-card.${isAttackerMe ? 'enemy' : ''}[data-creature-index="${data.targetCreatureIndex}"]`);
+    if (targetCard) {
+        targetCard.classList.add('taking-damage');
+        setTimeout(() => targetCard.classList.remove('taking-damage'), 300);
+        
+        const hpBar = targetCard.querySelector('.arena-hp-bar');
+        const hpText = targetCard.querySelector('.arena-creature-hp span');
+        if (hpBar) hpBar.style.width = `${(data.targetNewHealth / 100) * 100}%`;
+        if (hpText) hpText.textContent = `❤️ ${data.targetNewHealth}/100`;
+        
+        if (data.isDead) {
+            targetCard.classList.add('dead');
+            addToActionLog(`Существо повержено!`);
+        }
+    }
+    
+    if (isAttackerMe) {
+        if (window.battleEnemyTeam[data.targetCreatureIndex]) {
+            window.battleEnemyTeam[data.targetCreatureIndex].health = data.targetNewHealth;
+            window.battleEnemyTeam[data.targetCreatureIndex].isAlive = !data.isDead;
+        }
+    } else {
+        if (window.battleMyTeam[data.targetCreatureIndex]) {
+            window.battleMyTeam[data.targetCreatureIndex].health = data.targetNewHealth;
+            window.battleMyTeam[data.targetCreatureIndex].isAlive = !data.isDead;
+        }
+    }
+}
+
+function handleTurnChange(turnPlayerId) {
+    const isMyTurn = turnPlayerId === state.user?.telegramId;
+    
+    const turnIndicator = document.querySelector('.arena-turn-indicator');
+    const attackBtn = document.querySelector('.arena-attack-btn');
+    
+    if (turnIndicator) {
+        turnIndicator.className = `arena-turn-indicator ${isMyTurn ? 'my-turn' : 'enemy-turn'}`;
+        turnIndicator.textContent = isMyTurn ? '⭐ ВАШ ХОД ⭐' : '⏳ ХОД ПРОТИВНИКА...';
+    }
+    
+    if (attackBtn) {
+        if (isMyTurn && !battleEnded) {
+            attackBtn.disabled = false;
+        } else {
+            attackBtn.disabled = true;
+        }
+    }
+    
+    startTurnTimerUI(isMyTurn);
+    
+    document.querySelectorAll('.arena-creature-card.enemy').forEach(el => {
+        if (isMyTurn && !battleEnded) {
+            el.style.cursor = 'pointer';
+        } else {
+            el.style.cursor = 'default';
+        }
+    });
+    
+    if (!isMyTurn) {
+        window.selectedTarget = undefined;
+        document.querySelectorAll('.arena-creature-card.enemy').forEach(el => {
+            el.classList.remove('selected-target');
+        });
+    }
+    
+    addToActionLog(isMyTurn ? 'Ваш ход! Выберите цель и атакуйте.' : 'Ход противника...');
+}
+
+function startTurnTimerUI(isMyTurn) {
+    if (turnTimerInterval) clearInterval(turnTimerInterval);
+    
+    let timeLeft = 30;
+    const timerEl = document.getElementById('arenaTimer');
+    
+    if (!isMyTurn) {
+        if (timerEl) timerEl.textContent = '--s';
+        return;
+    }
+    
+    turnTimerInterval = setInterval(() => {
+        if (battleEnded) {
+            clearInterval(turnTimerInterval);
+            return;
+        }
+        
+        timeLeft--;
+        if (timerEl) timerEl.textContent = `${timeLeft}s`;
+        
+        if (timeLeft <= 0) {
+            clearInterval(turnTimerInterval);
+            addToActionLog('⚠️ Время вышло! Ход переходит противнику.');
+        }
+    }, 1000);
+}
+
+function handleTurnTimeout(oldTurn, newTurn) {
+    const wasMyTurn = oldTurn === state.user?.telegramId;
+    addToActionLog(wasMyTurn ? '⏰ Время вышло! Ход переходит противнику.' : 'Противник долго думал, ход ваш!');
+    handleTurnChange(newTurn);
+}
+
+function addToActionLog(message) {
+    const logContainer = document.getElementById('arenaActionLog');
+    if (logContainer) {
+        const logEntry = document.createElement('div');
+        logEntry.textContent = message;
+        logEntry.style.opacity = '0';
+        logEntry.style.transform = 'translateY(10px)';
+        logContainer.appendChild(logEntry);
+        
+        setTimeout(() => {
+            logEntry.style.opacity = '1';
+            logEntry.style.transform = 'translateY(0)';
+        }, 10);
+        
+        logContainer.scrollTop = logContainer.scrollHeight;
+        
+        setTimeout(() => {
+            if (logContainer.children.length > 20) {
+                logContainer.removeChild(logContainer.children[0]);
+            }
+        }, 100);
+    }
+}
+
+function handleBattleEnd(data) {
+    battleEnded = true;
+    if (turnTimerInterval) clearInterval(turnTimerInterval);
+    
+    const isWinner = data.winner === state.user?.telegramId;
+    const isSurrender = data.surrender;
+    
+    let message = '';
+    if (isSurrender && !isWinner) {
+        message = '😔 Вы сдались. Бой окончен.';
+    } else if (isWinner) {
+        message = `🏆 ПОБЕДА! +${data.winnerReward || 500} MMO\nРейтинг: ${data.winnerNewRating || '↑'}`;
+    } else {
+        message = `😔 Поражение...\nРейтинг: ${data.loserNewRating || '↓'}`;
+    }
+    
+    addToActionLog(message);
+    
+    setTimeout(() => {
+        showToast(isWinner ? 'ПОБЕДА НА АРЕНЕ!' : 'Поражение на арене...', isWinner ? '🏆' : '😔');
+        closeOverlay();
+        
+        if (arenaWS && arenaWS.readyState === WebSocket.OPEN) {
+            arenaWS.send(JSON.stringify({ type: 'get_stats' }));
+        }
+        
+        refreshUserProfile();
+        loadArenaStats();
+    }, 3000);
+}
+
+function surrenderBattle() {
+    if (battleEnded) return;
+    
+    if (confirm('Вы уверены, что хотите сдаться?')) {
+        if (arenaWS && arenaWS.readyState === WebSocket.OPEN) {
+            arenaWS.send(JSON.stringify({
+                type: 'surrender',
+                battleId: currentBattle.battleId || window.currentBattleId
+            }));
+        }
+    }
+}
+
+function joinArenaQueue() {
+    if (selectedCreaturesForBattle.length !== 3) {
+        showToast('Выберите 3 существа для боя!', '⚠️');
+        return;
+    }
+    
+    if (!arenaWS || arenaWS.readyState !== WebSocket.OPEN) {
+        connectArena();
+        setTimeout(() => joinArenaQueue(), 1000);
+        return;
+    }
+    
+    arenaWS.send(JSON.stringify({
+        type: 'join_queue',
+        creatureIds: selectedCreaturesForBattle
+    }));
+}
+
+function leaveArenaQueue() {
+    if (arenaWS && arenaWS.readyState === WebSocket.OPEN) {
+        arenaWS.send(JSON.stringify({ type: 'leave_queue' }));
+    }
+}
+
+function toggleCreatureForBattle(creatureId, creatureName, icon) {
+    const index = selectedCreaturesForBattle.indexOf(creatureId);
+    
+    if (index === -1) {
+        if (selectedCreaturesForBattle.length >= 3) {
+            showToast('Можно выбрать только 3 существа для боя!', '⚠️');
+            return;
+        }
+        selectedCreaturesForBattle.push(creatureId);
+        addToBattleSelectionUI(creatureId, creatureName, icon);
+    } else {
+        selectedCreaturesForBattle.splice(index, 1);
+        removeFromBattleSelectionUI(creatureId);
+    }
+    
+    updateBattleSelectionUI();
+    renderArenaSelection();
+}
+
+function updateBattleSelectionUI() {
+    const selectBtn = document.getElementById('arenaJoinBtn');
+    if (selectBtn) {
+        if (selectedCreaturesForBattle.length === 3) {
+            selectBtn.style.opacity = '1';
+            selectBtn.disabled = false;
+        } else {
+            selectBtn.style.opacity = '0.5';
+            selectBtn.disabled = true;
+        }
+    }
+}
+
+function addToBattleSelectionUI(creatureId, creatureName, icon) {
+    const container = document.getElementById('arenaSelectedCreatures');
+    if (container) {
+        const el = document.createElement('div');
+        el.className = 'arena-selected-creature';
+        el.id = `arena_selected_${creatureId}`;
+        el.innerHTML = `
+            <img src="${icon}" alt="${creatureName}" style="width:32px;height:32px;object-fit:contain">
+            <span class="arena-selected-name">${escapeHtml(creatureName)}</span>
+        `;
+        container.appendChild(el);
+    }
+}
+
+function removeFromBattleSelectionUI(creatureId) {
+    const el = document.getElementById(`arena_selected_${creatureId}`);
+    if (el) el.remove();
+}
+
+function renderArenaSelection() {
+    const container = document.getElementById('arenaSelectionGrid');
+    if (!container) return;
+    
+    if (!state.inventory.length) {
+        container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:#4a5568">Откройте капсулы, чтобы получить существ</div>';
+        return;
+    }
+    
+    const uniqueCreatures = [];
+    const seen = new Set();
+    for (const item of state.inventory) {
+        if (!seen.has(item.creatureId) && item.count > 0) {
+            seen.add(item.creatureId);
+            const c = getCreature(item.creatureId);
+            if (c) uniqueCreatures.push({ ...c, count: item.count });
+        }
+    }
+    
+    const selectedSet = new Set(selectedCreaturesForBattle);
+    
+    container.innerHTML = uniqueCreatures.map(c => `
+        <div class="arena-select-card ${selectedSet.has(c.id) ? 'selected' : ''} ${selectedCreaturesForBattle.length >= 3 && !selectedSet.has(c.id) ? 'disabled' : ''}" 
+             onclick="toggleCreatureForBattle('${c.id}', '${c.name}', '${c.icon}')">
+            ${getIconHtml(c)}
+            <div class="arena-select-name">${escapeHtml(c.name)}</div>
+            <div class="arena-creature-rarity ${c.rarity}">${c.rarity}</div>
+            <div style="font-size:9px;color:#4a5568">x${c.count}</div>
+        </div>
+    `).join('');
+}
+
+async function loadArenaStats() {
+    try {
+        const res = await apiRequest('GET', '/api/arena/stats');
+        if (res && res.success) {
+            updateArenaStatsUI(res.stats);
+        }
+    } catch (e) {
+        console.error('loadArenaStats error:', e);
+    }
+}
+
+async function loadArenaLeaderboard() {
+    const container = document.getElementById('arenaLeaderboardList');
+    if (!container) return;
+    
+    try {
+        const res = await apiRequest('GET', '/api/arena/leaderboard');
+        if (res && res.success && res.leaderboard) {
+            container.innerHTML = res.leaderboard.map(p => `
+                <div class="arena-lb-item">
+                    <div class="arena-lb-rank">#${p.rank}</div>
+                    <div class="arena-lb-name">${escapeHtml(p.name)}</div>
+                    <div class="arena-lb-league">${p.leagueIcon} ${p.league}</div>
+                    <div class="arena-lb-rating">${p.rating}⭐</div>
+                    <div class="arena-lb-stats">${p.wins}W / ${p.losses}L</div>
+                </div>
+            `).join('');
+        } else {
+            container.innerHTML = '<div class="empty-listings">Нет данных</div>';
+        }
+    } catch (e) {
+        console.error('loadArenaLeaderboard error:', e);
+        container.innerHTML = '<div class="empty-listings">Ошибка загрузки</div>';
+    }
+}
+
+// ============================================================
 // TELEGRAM WEBAPP INIT
 // ============================================================
 function clearAllIntervals() {
@@ -382,6 +995,7 @@ async function refreshUserProfile() {
         renderCards();
         updateFriendRewardButtons();
         await loadUserStats();
+        renderArenaSelection();
         
         const friendCountDisplay = document.getElementById('friendCountDisplay');
         if (friendCountDisplay && state.user) {
@@ -486,8 +1100,6 @@ async function initTelegramApp() {
     state.user = loginRes.user;
     state.inventory = loginRes.inventory || [];
 
-    // ========== ГЛАВНОЕ ИСПРАВЛЕНИЕ ==========
-    // ИНИЦИАЛИЗИРУЕМ serverBalance и lastServerSync СРАЗУ
     state.serverBalance = state.user.balance;
     state.lastServerSync = Date.now();
     state.incomePerHour = 0;
@@ -497,7 +1109,6 @@ async function initTelegramApp() {
     console.log('   - serverBalance:', state.serverBalance);
     console.log('   - Инвентарь:', state.inventory.length, 'предметов');
 
-    // ЗАГРУЖАЕМ ПРОФИЛЬ ДЛЯ ПОЛУЧЕНИЯ incomePerHour
     const profileRes = await apiRequest('GET', '/api/user/profile');
     if (profileRes && profileRes.success) {
         state.user = profileRes.user;
@@ -542,6 +1153,9 @@ async function initTelegramApp() {
     setTimeout(() => {
         checkActiveRequests();
         loadUserStats();
+        connectArena();
+        loadArenaStats();
+        loadArenaLeaderboard();
     }, 1000);
     
     updateAdsStatus();
@@ -557,16 +1171,6 @@ async function initTelegramApp() {
             }
         });
     });
-    // В конце функции initTelegramApp(), после всех await и перед закрывающей скобкой, добавь:
-
-// Инициализация арены
-setTimeout(() => {
-    if (typeof ArenaClient !== 'undefined') {
-        arenaClient = new ArenaClient();
-        arenaClient.init();
-    }
-}, 1500);
-    
 }
 
 // ============================================================
@@ -725,6 +1329,7 @@ function renderAll() {
     renderLeaderboard();
     renderSpecialQuests();
     updateFriendRewardButtons();
+    renderArenaSelection();
 }
 
 function updateHeader() {
@@ -898,6 +1503,7 @@ async function openCapsule(type) {
 
     updateHeader();
     renderCards();
+    renderArenaSelection();
     await loadUserStats();
 
     setTimeout(() => showCapsulePopup(res.creature), 300);
@@ -1046,6 +1652,7 @@ async function executeMerge(creatureId) {
 
     updateHeader();
     renderCards();
+    renderArenaSelection();
     await loadUserStats();
     showMergeResultPopup(res.fromCreature, res.resultCreature, res.upgraded);
 }
@@ -1108,10 +1715,9 @@ async function upgradeInventory() {
 }
 
 // ============================================================
-// ADS (ОБНОВЛЕННАЯ ВЕРСИЯ С 20 MMO)
+// ADS
 // ============================================================
 async function updateAdsStatus() {
-    // Защита от слишком частых запросов
     if (window._adsUpdating) return;
     window._adsUpdating = true;
     
@@ -1226,7 +1832,6 @@ async function watchAd() {
         
         updateAdsStatus();
 
-        
         if (btn && res.adsAvailable > 0 && state.adsCooldown === 0) {
             btn.style.opacity = '1';
             btn.disabled = false;
@@ -1245,7 +1850,6 @@ async function watchAd() {
 function updateAdsTimer() {
     if (!state.user) return;
     
-    // Обновляем отображение таймера без запроса к серверу
     if (state.adsCooldown > 0) {
         state.adsCooldown--;
         const timerEl = document.getElementById('adsTimer');
@@ -1258,15 +1862,12 @@ function updateAdsTimer() {
         }
     }
     
-    // Обновляем статус ТОЛЬКО когда кулдаун закончился или раз в минуту
     if (state.adsCooldown === 0) {
-        // Не делаем запрос каждую секунду, а только когда нужно
         if (!window.lastAdsUpdate || Date.now() - window.lastAdsUpdate > 60000) {
             updateAdsStatus();
             window.lastAdsUpdate = Date.now();
         }
         
-        // Обновляем UI для готовности
         const timerEl = document.getElementById('adsTimer');
         if (timerEl) {
             timerEl.textContent = 'Ready';
@@ -1631,6 +2232,7 @@ async function buyFromMarketplace(listingId, price, creatureId) {
     const c = getCreature(creatureId);
     updateHeader();
     renderCards();
+    renderArenaSelection();
     await loadUserStats();
     marketplaceCache.expiresAt = 0;
     renderMarketplaceBuy();
@@ -1843,6 +2445,7 @@ async function claimFriendReward(requiredFriends, creatureId, creatureName, crea
     updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
     updateHeader();
     renderCards();
+    renderArenaSelection();
     await loadUserStats();
     updateFriendRewardButtons();
     renderSpecialQuests();
@@ -1915,7 +2518,7 @@ function updateFriendRewardButtons() {
 }
 
 // ============================================================
-// SPECIAL QUESTS (С СОХРАНЕНИЕМ В localStorage)
+// SPECIAL QUESTS
 // ============================================================
 
 function loadQuestStatusesFromStorage() {
@@ -2211,43 +2814,6 @@ async function claimSpecialQuest(questId) {
     spawnFloatingMMO(res.reward);
 }
 
-async function claimSpecialQuestSilent(questId) {
-    if (state.isLoading) return;
-    
-    const questStatus = questStatuses.get(questId);
-    if (questStatus && questStatus.status !== 'available') {
-        return;
-    }
-    
-    if (state.user?.completedSpecialQuests?.includes(questId)) {
-        return;
-    }
-    
-    state.isLoading = true;
-    const res = await apiRequest('POST', '/api/game/complete-special-quest', { questId });
-    state.isLoading = false;
-    
-    if (!res.success) {
-        console.log('Ошибка получения награды:', res.message);
-        return;
-    }
-    
-    state.user = res.user;
-    updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
-    updateHeader();
-    await loadUserStats();
-    
-    const existing = questStatuses.get(questId);
-    if (existing && existing.timerId) {
-        clearTimeout(existing.timerId);
-    }
-    questStatuses.delete(questId);
-    saveQuestStatusesToStorage();
-    
-    await renderSpecialQuests();
-    showToast(`+${res.reward} MMO получено за квест!`, '✅');
-}
-
 async function renderSpecialQuests() {
     const container = document.getElementById('specialQuestsList');
     if (!container) return;
@@ -2358,11 +2924,6 @@ async function renderSpecialQuests() {
             }
         }
     }, 1000);
-}
-
-async function updateSpecialQuests() {
-    await loadGameConfig();
-    renderSpecialQuests();
 }
 
 // ============================================================
@@ -2626,22 +3187,12 @@ function copyToClipboard(text) {
 // ============================================================
 // NAVIGATION
 // ============================================================
-// В функции switchTab(tab) добавь:
 function switchTab(tab) {
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.getElementById(`tab-${tab}`).classList.add('active');
     document.getElementById(`nav-${tab}`).classList.add('active');
     document.getElementById('mainContent').scrollTop = 0;
-    
-    // ДОБАВЬ ЭТИ СТРОКИ ДЛЯ АРЕНЫ:
-    if (tab === 'arena' && arenaClient && !arenaClient.isInBattle && !arenaClient.isSearching) {
-        setTimeout(() => {
-            if (arenaClient && !arenaClient.isInBattle) {
-                arenaClient.renderTeamSelection();
-            }
-        }, 100);
-    }
     
     isMarketplaceTabActive = (tab === 'shop');
 
@@ -2657,6 +3208,11 @@ function switchTab(tab) {
     }
     if (tab === 'shop') renderMarketplaceBuy();
     if (tab === 'friends') renderFriendsList();
+    if (tab === 'arena') {
+        renderArenaSelection();
+        loadArenaStats();
+        loadArenaLeaderboard();
+    }
 }
 
 // ============================================================
@@ -2763,3 +3319,16 @@ window.copyToClipboard = copyToClipboard;
 window.checkActiveRequests = checkActiveRequests;
 window.loadUserStats = loadUserStats;
 window.refreshUserProfile = refreshUserProfile;
+
+// ARENA экспорты
+window.connectArena = connectArena;
+window.joinArenaQueue = joinArenaQueue;
+window.leaveArenaQueue = leaveArenaQueue;
+window.toggleCreatureForBattle = toggleCreatureForBattle;
+window.selectEnemyTarget = selectEnemyTarget;
+window.executeAttack = executeAttack;
+window.surrenderBattle = surrenderBattle;
+window.acceptBattle = acceptBattle;
+window.renderArenaSelection = renderArenaSelection;
+window.loadArenaStats = loadArenaStats;
+window.loadArenaLeaderboard = loadArenaLeaderboard;

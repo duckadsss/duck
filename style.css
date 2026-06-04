@@ -1710,253 +1710,264 @@ img {
     user-drag: none;
 }
 /* ============================================
-   ARENA PVP STYLES
+   PVP ARENA СТИЛИ
    ============================================ */
 
-/* Arena Section */
-.arena-section {
-    margin-top: 8px;
-}
-
-.arena-elo, .arena-league {
-    font-size: 10px;
-    margin-left: auto;
-    background: rgba(0,0,0,0.3);
-    padding: 2px 8px;
-    border-radius: 20px;
-}
-
-.arena-stats-bar {
-    background: rgba(0,0,0,0.3);
-    border-radius: 12px;
-    padding: 8px 12px;
-    margin-bottom: 12px;
-    font-size: 11px;
+/* Арена таб */
+.arena-stats {
+    background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(6,182,212,0.08));
+    border: 1px solid rgba(124,58,237,0.2);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 16px;
     display: flex;
     justify-content: space-around;
 }
 
-/* Team Selector */
-.arena-team-selector {
+.arena-stat {
+    text-align: center;
+}
+
+.arena-stat-value {
+    font-family: 'Orbitron', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent3);
+}
+
+.arena-stat-label {
+    font-size: 9px;
+    color: var(--text2);
+    text-transform: uppercase;
+    margin-top: 4px;
+}
+
+.arena-league {
+    background: rgba(168,85,247,0.2);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+/* Выбор существ */
+.arena-creature-select {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 16px;
-    margin-bottom: 12px;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 16px;
 }
 
-.arena-team-title {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text2);
-    margin-bottom: 12px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.arena-team-grid {
+.arena-selection-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 8px;
-    margin-bottom: 16px;
-    max-height: 300px;
-    overflow-y: auto;
+    margin: 12px 0;
 }
 
-.arena-creature-select {
+.arena-select-card {
     background: var(--bg2);
-    border: 1px solid var(--border);
+    border: 2px solid var(--border);
     border-radius: 12px;
-    padding: 8px;
+    padding: 10px;
     text-align: center;
     cursor: pointer;
     transition: all 0.2s;
-    position: relative;
 }
 
-.arena-creature-select.selected {
+.arena-select-card.selected {
     border-color: var(--accent3);
-    background: rgba(168,85,247,0.1);
-    box-shadow: 0 0 8px rgba(168,85,247,0.3);
+    background: rgba(124,58,237,0.15);
+    box-shadow: 0 0 12px rgba(124,58,237,0.3);
 }
 
-.arena-creature-select .select-icon {
-    font-size: 28px;
-    margin-bottom: 4px;
+.arena-select-card.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
 }
 
-.arena-creature-select .select-name {
-    font-size: 9px;
+.arena-select-card img {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+}
+
+.arena-select-name {
+    font-size: 10px;
     font-weight: 600;
-    color: var(--text);
+    margin-top: 5px;
 }
 
-.arena-creature-select .select-rarity {
-    font-size: 7px;
-    font-weight: 700;
-    padding: 1px 4px;
-    border-radius: 4px;
-    margin-top: 2px;
-    display: inline-block;
+.arena-selected-creatures {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 12px;
 }
 
-.arena-creature-select .select-count {
-    font-size: 8px;
-    color: var(--text3);
-    margin-top: 2px;
-}
-
-.arena-creature-select .select-badge {
-    position: absolute;
-    top: -6px;
-    right: -6px;
-    background: var(--accent3);
-    color: #fff;
-    font-size: 8px;
-    font-weight: 700;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
+.arena-selected-creature {
+    background: rgba(124,58,237,0.2);
+    border-radius: 8px;
+    padding: 6px 12px;
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 6px;
+    font-size: 11px;
 }
 
-.arena-search-btn, .arena-cancel-btn {
-    width: 100%;
+.arena-queue-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.arena-queue-btn {
+    flex: 1;
     padding: 12px;
     border: none;
     border-radius: 12px;
-    font-size: 12px;
-    font-weight: 700;
     font-family: 'Orbitron', monospace;
+    font-weight: 700;
+    font-size: 12px;
     cursor: pointer;
     transition: all 0.2s;
 }
 
-.arena-search-btn {
+.arena-queue-btn.join {
     background: linear-gradient(135deg, var(--accent), var(--accent3));
     color: #fff;
 }
 
-.arena-cancel-btn {
+.arena-queue-btn.leave {
     background: var(--surface2);
     border: 1px solid var(--border);
     color: var(--mythic);
 }
 
-/* Battle Scene */
+.arena-queue-status {
+    background: rgba(245,158,11,0.15);
+    border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 12px;
+    padding: 10px;
+    text-align: center;
+    font-size: 12px;
+    margin-top: 12px;
+    display: none;
+}
+
+/* Поле боя */
 .arena-battle-container {
-    background: linear-gradient(135deg, rgba(8,11,20,0.95), rgba(13,17,32,0.98));
-    border: 1px solid var(--border);
-    border-radius: 20px;
+    width: 100%;
+    max-width: 450px;
+    background: linear-gradient(135deg, #0d1120, #080b14);
+    border-radius: 24px;
     padding: 16px;
+}
+
+.arena-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+}
+
+.arena-turn-indicator {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 20px;
+}
+
+.arena-turn-indicator.my-turn {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: #fff;
+    animation: turnPulse 1s infinite;
+}
+
+.arena-turn-indicator.enemy-turn {
+    background: #1e2d4a;
+    color: var(--text2);
+}
+
+@keyframes turnPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+    50% { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+}
+
+.arena-timer {
+    font-family: 'Orbitron', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--legendary);
+}
+
+.arena-surrender-btn {
+    background: rgba(239,68,68,0.2);
+    border: 1px solid rgba(239,68,68,0.4);
+    border-radius: 20px;
+    padding: 6px 12px;
+    color: var(--mythic);
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.arena-field-label {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text2);
     margin-bottom: 12px;
 }
 
-.arena-battle-scene {
-    position: relative;
-}
-
-.arena-versus {
-    text-align: center;
-    margin-bottom: 16px;
-}
-
-.vs-text {
-    font-family: 'Orbitron', monospace;
-    font-size: 24px;
-    font-weight: 900;
-    color: var(--mythic);
-    text-shadow: 0 0 10px rgba(239,68,68,0.5);
-}
-
-.arena-opponent-info {
-    text-align: center;
-    margin-bottom: 16px;
-    padding: 8px;
-    background: rgba(0,0,0,0.3);
-    border-radius: 12px;
-}
-
-.arena-player-name {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text);
-}
-
-.arena-player-elo, .arena-player-league {
-    font-size: 10px;
-    color: var(--text2);
-}
-
-.arena-teams {
+.arena-creatures-row {
     display: flex;
-    flex-direction: column;
-    gap: 16px;
-    margin-bottom: 16px;
-}
-
-.arena-team {
-    background: rgba(0,0,0,0.2);
-    border-radius: 16px;
-    padding: 12px;
-}
-
-.arena-team-label {
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--text2);
-    margin-bottom: 8px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.arena-creatures {
-    display: flex;
-    gap: 12px;
     justify-content: center;
+    gap: 12px;
     flex-wrap: wrap;
 }
 
-/* Battle Creature Card */
-.battle-creature {
-    flex: 1;
-    min-width: 80px;
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 8px;
+.arena-creature-card {
+    width: 100px;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    padding: 10px;
     text-align: center;
-    cursor: pointer;
     transition: all 0.2s;
     position: relative;
 }
 
-.battle-creature.selected-attacker {
-    border-color: var(--uncommon);
-    box-shadow: 0 0 12px rgba(34,197,94,0.5);
-    transform: scale(1.02);
+.arena-creature-card.enemy {
+    cursor: pointer;
 }
 
-.battle-creature.selected-target {
-    border-color: var(--mythic);
-    box-shadow: 0 0 12px rgba(239,68,68,0.5);
-    transform: scale(1.02);
+.arena-creature-card.enemy:hover {
+    transform: translateY(-5px);
+    border-color: var(--accent3);
 }
 
-.battle-creature.dead {
+.arena-creature-card.selected-target {
+    border-color: var(--legendary);
+    box-shadow: 0 0 16px rgba(245,158,11,0.5);
+    animation: targetPulse 0.5s ease;
+}
+
+@keyframes targetPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.arena-creature-card.dead {
     opacity: 0.5;
     filter: grayscale(0.5);
 }
 
-.battle-creature.taking-damage {
-    animation: damageShake 0.3s ease-in-out;
+.arena-creature-card.taking-damage {
+    animation: damageShake 0.3s ease;
     background: rgba(239,68,68,0.3);
-}
-
-.battle-creature.dying {
-    animation: deathFade 0.5s ease-out forwards;
 }
 
 @keyframes damageShake {
@@ -1965,198 +1976,162 @@ img {
     75% { transform: translateX(5px); }
 }
 
-@keyframes deathFade {
-    0% { opacity: 1; transform: scale(1); }
-    100% { opacity: 0; transform: scale(0.8); }
+.arena-creature-icon img {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
 }
 
-.battle-creature-icon {
-    font-size: 32px;
-    margin-bottom: 4px;
-}
-
-.battle-creature-name {
-    font-size: 9px;
+.arena-creature-name {
+    font-size: 10px;
     font-weight: 600;
-    color: var(--text);
-    margin-bottom: 4px;
+    margin: 5px 0;
 }
 
-.battle-creature-hp {
+.arena-creature-rarity {
+    font-size: 8px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    display: inline-block;
+    margin-bottom: 6px;
+}
+
+.arena-creature-rarity.common { background: rgba(148,163,184,0.2); color: var(--common); }
+.arena-creature-rarity.uncommon { background: rgba(34,197,94,0.2); color: var(--uncommon); }
+.arena-creature-rarity.rare { background: rgba(59,130,246,0.2); color: var(--rare); }
+.arena-creature-rarity.epic { background: rgba(168,85,247,0.2); color: var(--epic); }
+.arena-creature-rarity.legendary { background: rgba(245,158,11,0.2); color: var(--legendary); }
+
+.arena-creature-hp {
+    margin: 8px 0;
     position: relative;
-    height: 12px;
-    background: rgba(0,0,0,0.5);
-    border-radius: 6px;
+    height: 20px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 10px;
     overflow: hidden;
-    margin: 4px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.hp-bar {
+.arena-hp-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
     height: 100%;
-    background: linear-gradient(90deg, #22c55e, #16a34a);
-    border-radius: 6px;
+    background: linear-gradient(90deg, #ef4444, #dc2626);
     transition: width 0.3s ease;
 }
 
-.hp-text {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 7px;
-    font-weight: 700;
-    color: #fff;
-    text-shadow: 0 0 2px #000;
-}
-
-.battle-creature-damage {
+.arena-creature-hp span {
+    position: relative;
+    z-index: 1;
     font-size: 9px;
     font-weight: 700;
-    color: var(--mythic);
+    color: #fff;
+    text-shadow: 0 0 2px black;
 }
 
-.dead-mark {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 24px;
-    opacity: 0.7;
-}
-
-.damage-number {
-    position: absolute;
-    top: 20%;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 16px;
-    font-weight: 900;
-    color: var(--mythic);
-    text-shadow: 0 0 4px #000;
-    animation: damageFloat 0.8s ease-out forwards;
-    pointer-events: none;
-    z-index: 10;
-}
-
-.damage-number.critical {
+.arena-creature-attack {
+    font-size: 10px;
     color: var(--legendary);
-    font-size: 22px;
-    text-shadow: 0 0 8px #f59e0b;
 }
 
-@keyframes damageFloat {
-    0% { opacity: 1; transform: translateX(-50%) translateY(0); }
-    100% { opacity: 0; transform: translateX(-50%) translateY(-30px); }
-}
-
-/* Turn Indicator */
-.arena-turn-indicator {
+.arena-vs {
     text-align: center;
-    padding: 12px;
+    font-size: 20px;
+    font-weight: 900;
+    color: var(--accent3);
     margin: 16px 0;
+    text-shadow: 0 0 10px var(--accent);
+}
+
+.arena-action-log {
+    margin-top: 16px;
+    padding: 10px;
     background: rgba(0,0,0,0.3);
     border-radius: 12px;
-    border: 1px solid var(--border);
-    font-size: 13px;
-    font-weight: 600;
-    transition: all 0.3s;
-}
-
-/* Battle Log */
-.arena-battle-log {
-    background: rgba(0,0,0,0.4);
-    border-radius: 12px;
-    padding: 8px;
-    max-height: 150px;
+    height: 80px;
     overflow-y: auto;
-}
-
-.log-title {
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--text2);
-    margin-bottom: 6px;
-    padding-bottom: 4px;
-    border-bottom: 1px solid var(--border);
-}
-
-.log-messages {
     font-size: 10px;
     color: var(--text2);
 }
 
-.log-message {
+.arena-action-log div {
     padding: 3px 0;
-    border-bottom: 1px solid rgba(30,45,74,0.3);
-    font-family: monospace;
-}
-
-/* Battle Controls */
-.arena-battle-controls {
-    margin: 16px 0;
-}
-
-.arena-attack-btn {
-    width: 100%;
-    padding: 14px;
-    border: none;
-    border-radius: 12px;
-    background: linear-gradient(135deg, var(--mythic), #dc2626);
-    color: #fff;
-    font-size: 14px;
-    font-weight: 700;
-    font-family: 'Orbitron', monospace;
-    cursor: pointer;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
     transition: all 0.2s;
 }
 
-.arena-attack-btn:active {
-    transform: scale(0.97);
+/* Арена лидерборд */
+.arena-leaderboard-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 300px;
+    overflow-y: auto;
 }
 
-.arena-attack-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+.arena-lb-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
-/* Victory Sparkle */
-.victory-sparkle {
-    position: fixed;
-    pointer-events: none;
-    z-index: 250;
-    font-size: 24px;
-    animation: sparkleBurst 1s ease-out forwards;
-}
-
-@keyframes sparkleBurst {
-    0% { transform: scale(0) rotate(0deg); opacity: 1; }
-    100% { transform: scale(1.5) rotate(180deg); opacity: 0; }
-}
-
-/* Search Timer */
-.arena-search-timer {
-    font-size: 11px;
+.arena-lb-rank {
+    width: 35px;
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    font-weight: 700;
     color: var(--legendary);
-    text-align: center;
-    margin-top: 8px;
 }
 
-/* Responsive */
+.arena-lb-name {
+    flex: 1;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.arena-lb-league {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: rgba(168,85,247,0.2);
+}
+
+.arena-lb-rating {
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--uncommon);
+}
+
+.arena-lb-stats {
+    font-size: 9px;
+    color: var(--text2);
+}
+
+/* Адаптив для арены */
 @media (max-width: 480px) {
-    .arena-creatures {
-        gap: 6px;
-    }
-    
-    .battle-creature {
-        min-width: 65px;
+    .arena-creature-card {
+        width: 80px;
         padding: 6px;
     }
     
-    .battle-creature-icon {
-        font-size: 24px;
+    .arena-creature-icon img {
+        width: 36px;
+        height: 36px;
     }
     
-    .battle-creature-name {
+    .arena-creature-name {
+        font-size: 8px;
+    }
+    
+    .arena-creature-hp span {
         font-size: 7px;
     }
 }

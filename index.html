@@ -8,9 +8,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="format-detection" content="telephone=no">
 <meta name="msapplication-tap-highlight" content="no">
-<title>DNA MMO — Merge & Evolve | PvP Arena</title>
+<title>DNA MMO — Merge & Evolve</title>
 <meta property="og:title" content="DNA MMO — Merge & Evolve">
-<meta property="og:description" content="Open DNA capsules, collect creatures, merge to evolve and earn MMO tokens. Fight in PvP Arena!">
+<meta property="og:description" content="Open DNA capsules, collect creatures, merge to evolve and earn MMO tokens.">
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -18,8 +18,6 @@
 <link rel="stylesheet" href="style.css">
 <!-- Telegram WebApp SDK -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<!-- Socket.IO Client -->
-<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <!-- Giga Pub Enhanced Reliability Script -->
 <script data-project-id="6820">
   !function(){
@@ -43,6 +41,7 @@
   }();
 </script>
 </head>
+
 <body ondragstart="return false" oncontextmenu="return false" onselectstart="return false">
 <canvas id="particles-canvas"></canvas>
 
@@ -56,12 +55,13 @@
                 <div class="player-level" id="playerLevelLabel">LVL 1 · Researcher</div>
             </div>
         </div>
+        
         <div style="display:flex;align-items:center;gap:10px">
             <div class="balance-area">
                 <div class="balance-icon"><i class="fa-solid fa-dna"></i></div>
                 <div>
                     <div class="balance-amount" id="balanceDisplay">0</div>
-                    <div class="income-inline" id="incomeInline">+0/hr</div>
+                    <div class="income-inline" id="incomeInline" style="font-size:8px; color:var(--uncommon); margin-top:2px;">+0/hr</div>
                 </div>
             </div>
         </div>
@@ -130,11 +130,6 @@
     </div>
 </div>
 
-<!-- ARENA TAB -->
-<div class="tab-content" id="tab-arena">
-    <!-- Арена будет добавлена динамически через ArenaClient -->
-</div>
-
 <!-- MARKETPLACE TAB -->
 <div class="tab-content" id="tab-shop">
     <div class="section-title"><i class="fa-solid fa-store" style="color:var(--accent2)"></i> <span data-i18n="marketplace.title">Marketplace</span></div>
@@ -189,6 +184,7 @@
     </div>
     
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px">
+        <!-- 10 Friends - Rare Wolf -->
         <div class="friends-reward-card" id="reward-10" data-reward="10">
             <div class="reward-icon">
                 <img src="https://ndammo.github.io/Mmodna/wr.png" alt="Rare Wolf" style="width:48px;height:48px;object-fit:contain">
@@ -198,6 +194,8 @@
             <div class="reward-income"><i class="fa-solid fa-bolt"></i> 25/hr</div>
             <button class="reward-btn" id="reward-10-btn">🔒</button>
         </div>
+        
+        <!-- 50 Friends - Epic Wolf -->
         <div class="friends-reward-card" id="reward-50" data-reward="50">
             <div class="reward-icon">
                 <img src="https://ndammo.github.io/Mmodna/we.png" alt="Epic Wolf" style="width:48px;height:48px;object-fit:contain">
@@ -207,6 +205,8 @@
             <div class="reward-income"><i class="fa-solid fa-bolt"></i> 80/hr</div>
             <button class="reward-btn" id="reward-50-btn">🔒</button>
         </div>
+        
+        <!-- 150 Friends - Legendary Wolf -->
         <div class="friends-reward-card" id="reward-150" data-reward="150">
             <div class="reward-icon">
                 <img src="https://ndammo.github.io/Mmodna/wl.png" alt="Legendary Wolf" style="width:48px;height:48px;object-fit:contain">
@@ -226,6 +226,57 @@
 <div class="tab-content" id="tab-special">
     <div class="section-title"><i class="fa-solid fa-star" style="color:var(--legendary)"></i> <span data-i18n="specialQuests.title">Special Quests</span></div>
     <div id="specialQuestsList"></div>
+</div>
+
+<!-- ARENA TAB -->
+<div class="tab-content" id="tab-arena">
+    <div class="section-title"><i class="fa-solid fa-shield-haltered" style="color:var(--legendary)"></i> <span data-i18n="arena.title">PvP Arena</span></div>
+    
+    <!-- Статистика -->
+    <div class="arena-stats">
+        <div class="arena-stat">
+            <div class="arena-stat-value" id="arenaRating">1000</div>
+            <div class="arena-stat-label" data-i18n="arena.rating">Рейтинг</div>
+        </div>
+        <div class="arena-stat">
+            <div class="arena-stat-value" id="arenaWins">0</div>
+            <div class="arena-stat-label" data-i18n="arena.wins">Победы</div>
+        </div>
+        <div class="arena-stat">
+            <div class="arena-stat-value" id="arenaLosses">0</div>
+            <div class="arena-stat-label" data-i18n="arena.losses">Поражения</div>
+        </div>
+        <div class="arena-stat">
+            <div class="arena-league" id="arenaLeague">🏆 Бронза</div>
+            <div class="arena-stat-label" data-i18n="arena.league">Лига</div>
+        </div>
+    </div>
+    
+    <!-- Выбор существ -->
+    <div class="arena-creature-select">
+        <div style="font-size:11px;color:var(--text2);margin-bottom:8px">
+            <i class="fa-solid fa-dragon"></i> <span data-i18n="arena.selectCreatures">Выберите 3 существа для боя:</span>
+        </div>
+        <div class="arena-selection-grid" id="arenaSelectionGrid">
+            <!-- Существа будут добавлены динамически -->
+        </div>
+        <div class="arena-selected-creatures" id="arenaSelectedCreatures"></div>
+        <div class="arena-queue-buttons">
+            <button class="arena-queue-btn join" id="arenaJoinBtn" onclick="joinArenaQueue()" disabled style="opacity:0.5">
+                <i class="fa-solid fa-search"></i> <span data-i18n="arena.joinQueue">ВСТУПИТЬ В ОЧЕРЕДЬ</span>
+            </button>
+            <button class="arena-queue-btn leave" id="arenaLeaveBtn" onclick="leaveArenaQueue()" style="display:none">
+                <i class="fa-solid fa-times"></i> <span data-i18n="arena.leaveQueue">ВЫЙТИ</span>
+            </button>
+        </div>
+        <div class="arena-queue-status" id="arenaQueueStatus">
+            <i class="fa-solid fa-spinner fa-pulse"></i> <span data-i18n="arena.searching">Поиск соперника...</span>
+        </div>
+    </div>
+    
+    <!-- Лидерборд арены -->
+    <div class="section-title" style="margin-top:16px"><i class="fa-solid fa-ranking-star" style="color:var(--legendary)"></i> <span data-i18n="arena.leaderboard">Рейтинг Арены</span></div>
+    <div class="arena-leaderboard-list" id="arenaLeaderboardList"></div>
 </div>
 
 <!-- WALLET TAB -->
@@ -279,10 +330,6 @@
         <i class="fa-solid fa-dna"></i>
         <span data-i18n="nav.game">Game</span>
     </div>
-    <div class="nav-item" onclick="switchTab('arena')" id="nav-arena">
-        <i class="fa-solid fa-sword"></i>
-        <span>Арена</span>
-    </div>
     <div class="nav-item" onclick="switchTab('shop')" id="nav-shop">
         <i class="fa-solid fa-store"></i>
         <span data-i18n="nav.market">Market</span>
@@ -298,6 +345,10 @@
     <div class="nav-item" onclick="switchTab('special')" id="nav-special">
         <i class="fa-solid fa-star"></i>
         <span data-i18n="nav.special">Special</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('arena')" id="nav-arena">
+        <i class="fa-solid fa-shield-haltered"></i>
+        <span data-i18n="nav.arena">Arena</span>
     </div>
     <div class="nav-item" onclick="switchTab('wallet')" id="nav-wallet">
         <i class="fa-solid fa-wallet"></i>
@@ -315,6 +366,5 @@
 <!-- SCRIPTS -->
 <script src="script.js"></script>
 <script src="localization.js"></script>
-<script src="arena.js"></script>
 </body>
 </html>
