@@ -318,36 +318,37 @@ function tryFindMatch() {
             const battleId = `battle_${Date.now()}_${player1.userId}_${player2.userId}`;
             
             const battle = {
-                battleId,
-                status: 'waiting',
-                player: {
-                    id: player1.userId,
-                    socketId: player1.socketId,
-                    name: player1.name,
-                    rating: player1.rating,
-                    league: player1.league,
-                    team: player1.team,
-                    accepted: false,
-                    monsters: null,
-                    totalHealth: 0,
-                    maxHealth: 0
-                },
-                opponent: {
-                    id: player2.userId,
-                    socketId: player2.socketId,
-                    name: player2.name,
-                    rating: player2.rating,
-                    league: player2.league,
-                    team: player2.team,
-                    accepted: false,
-                    monsters: null,
-                    totalHealth: 0,
-                    maxHealth: 0
-                },
-                createdAt: Date.now(),
-                currentTurn: null,
-                turnStartTime: null
-            };
+    battleId,
+    status: 'waiting',
+    player: {
+        id: player1.userId,
+        socketId: player1.socketId,
+        name: player1.name,
+        rating: player1.rating,
+        league: player1.league,
+        team: player1.team,
+        accepted: false,
+        monsters: null,
+        totalHealth: 0,
+        maxHealth: 0
+    },
+    opponent: {
+        id: player2.userId,
+        socketId: player2.socketId,
+        name: player2.name,
+        rating: player2.rating,
+        league: player2.league,
+        team: player2.team,
+        accepted: false,
+        monsters: null,
+        totalHealth: 0,
+        maxHealth: 0
+    },
+    createdAt: Date.now(),
+    currentTurn: null,
+    turnStartTime: null,
+    timerInterval: null  // <-- ДОБАВИТЬ ЭТУ СТРОКУ
+};
             
             activeBattles.set(battleId, battle);
             
@@ -388,11 +389,21 @@ function startTurnTimer(battle) {
         clearTimeout(battleTimers.get(battle.battleId));
     }
     
+    // Очищаем предыдущий интервал обновления, если есть
+    if (battle.timerInterval) {
+        clearInterval(battle.timerInterval);
+    }
+    
     const timer = setTimeout(async () => {
         if (!activeBattles.has(battle.battleId)) return;
         
+        // Очищаем интервал обновления таймера
+        if (battle.timerInterval) {
+            clearInterval(battle.timerInterval);
+            battle.timerInterval = null;
+        }
+        
         const currentPlayer = battle.currentTurn === 'player' ? battle.player : battle.opponent;
-        const nextPlayer = battle.currentTurn === 'player' ? battle.opponent : battle.player;
         
         battle.currentTurn = battle.currentTurn === 'player' ? 'opponent' : 'player';
         battle.turnStartTime = Date.now();
@@ -411,26 +422,31 @@ function startTurnTimer(battle) {
     battleTimers.set(battle.battleId, timer);
     
     // Update timer display every second
-    const updateInterval = setInterval(() => {
+    battle.timerInterval = setInterval(() => {
         if (!activeBattles.has(battle.battleId)) {
-            clearInterval(updateInterval);
+            clearInterval(battle.timerInterval);
             return;
         }
         const timeLeft = Math.max(0, 30 - Math.floor((Date.now() - battle.turnStartTime) / 1000));
         io.to(battle.player.socketId).emit('turn-update', { timeLeft });
         io.to(battle.opponent.socketId).emit('turn-update', { timeLeft });
         
-        if (timeLeft <= 0) clearInterval(updateInterval);
+        if (timeLeft <= 0) clearInterval(battle.timerInterval);
     }, 1000);
 }
 
-function processBattleMove(battle, attackerId, targetIndex) {
+// Замените функцию processBattleMove в server.js на эту:
+
+function processBattleMove(battle, attackerId, attackerIndex, targetIndex) {
     const isPlayerAttacking = attackerId === battle.player.id;
     const attacker = isPlayerAttacking ? battle.player : battle.opponent;
     const defender = isPlayerAttacking ? battle.opponent : battle.player;
     
-    const attackerMonster = attacker.monsters.find(m => m.hp > 0);
-    if (!attackerMonster) return { success: false, message: 'No alive monsters' };
+    // Используем конкретного монстра по индексу, а не ищем первого живого
+    const attackerMonster = attacker.monsters[attackerIndex];
+    if (!attackerMonster || attackerMonster.hp <= 0) {
+        return { success: false, message: 'This monster is defeated!' };
+    }
     
     const targetMonster = defender.monsters[targetIndex];
     if (!targetMonster || targetMonster.hp <= 0) {
@@ -441,14 +457,14 @@ function processBattleMove(battle, attackerId, targetIndex) {
     
     targetMonster.hp = Math.max(0, targetMonster.hp - damage);
     
-    let logMessage = `${isPlayerAttacking ? 'YOU' : battle.opponent.name} attacked ${targetMonster.name} for ${damage} damage${isCritical ? ' (CRITICAL!)' : ''}${multiplier !== 1 ? ` (${multiplier > 1 ? 'SUPER EFFECTIVE!' : 'NOT VERY EFFECTIVE...'})` : ''}`;
+    let logMessage = `${isPlayerAttacking ? 'YOU' : battle.opponent.name}'s ${attackerMonster.name} attacked ${targetMonster.name} for ${damage} damage${isCritical ? ' (CRITICAL!)' : ''}${multiplier !== 1 ? ` (${multiplier > 1 ? 'SUPER EFFECTIVE!' : 'NOT VERY EFFECTIVE...'})` : ''}`;
     
     if (targetMonster.hp <= 0) {
         logMessage += ` 💀 ${targetMonster.name} defeated!`;
     }
     
-    const playerTotalHealth = getTotalHealth(battle.player.monsters);
-    const opponentTotalHealth = getTotalHealth(battle.opponent.monsters);
+    const playerTotalHealth = battle.player.monsters.reduce((sum, m) => sum + m.hp, 0);
+    const opponentTotalHealth = battle.opponent.monsters.reduce((sum, m) => sum + m.hp, 0);
     
     battle.player.totalHealth = playerTotalHealth;
     battle.opponent.totalHealth = opponentTotalHealth;
@@ -729,59 +745,61 @@ function setupArenaServer() {
         });
         
         socket.on('make-move', async (data) => {
-            const battle = activeBattles.get(data.battleId);
-            if (!battle) return;
-            if (battle.status !== 'active') return;
-            
-            const isPlayerTurn = (battle.currentTurn === 'player' && battle.player.socketId === socket.id) ||
-                                (battle.currentTurn === 'opponent' && battle.opponent.socketId === socket.id);
-            
-            if (!isPlayerTurn) {
-                socket.emit('error', { message: 'Not your turn!' });
-                return;
-            }
-            
-            if (battleTimers.has(data.battleId)) {
-                clearTimeout(battleTimers.get(data.battleId));
-                battleTimers.delete(data.battleId);
-            }
-            
-            const result = processBattleMove(battle, 
-                battle.player.socketId === socket.id ? battle.player.id : battle.opponent.id,
-                data.targetIndex
-            );
-            
-            if (!result.success) {
-                socket.emit('error', { message: result.message });
-                return;
-            }
-            
-            const moveData = {
-                logMessage: result.logMessage,
-                playerHealth: {
-                    current: battle.player.totalHealth,
-                    max: battle.player.maxHealth,
-                    monsters: battle.player.monsters
-                },
-                opponentHealth: {
-                    current: battle.opponent.totalHealth,
-                    max: battle.opponent.maxHealth,
-                    monsters: battle.opponent.monsters
-                },
-                attackerIndex: data.attackerIndex,
-                targetIndex: data.targetIndex,
-                nextTurn: result.nextTurn
-            };
-            
-            io.to(battle.player.socketId).emit('opponent-move', moveData);
-            io.to(battle.opponent.socketId).emit('opponent-move', moveData);
-            
-            if (result.battleEnded) {
-                await endBattle(battle, result.winner);
-            } else {
-                startTurnTimer(battle);
-            }
-        });
+    const battle = activeBattles.get(data.battleId);
+    if (!battle) return;
+    if (battle.status !== 'active') return;
+    
+    const isPlayerTurn = (battle.currentTurn === 'player' && battle.player.socketId === socket.id) ||
+                        (battle.currentTurn === 'opponent' && battle.opponent.socketId === socket.id);
+    
+    if (!isPlayerTurn) {
+        socket.emit('error', { message: 'Not your turn!' });
+        return;
+    }
+    
+    if (battleTimers.has(data.battleId)) {
+        clearTimeout(battleTimers.get(data.battleId));
+        battleTimers.delete(data.battleId);
+    }
+    
+    // ИСПРАВЛЕНО: передаем attackerIndex
+    const result = processBattleMove(battle, 
+        battle.player.socketId === socket.id ? battle.player.id : battle.opponent.id,
+        data.attackerIndex,  // <-- теперь используем attackerIndex
+        data.targetIndex
+    );
+    
+    if (!result.success) {
+        socket.emit('error', { message: result.message });
+        return;
+    }
+    
+    const moveData = {
+        logMessage: result.logMessage,
+        playerHealth: {
+            current: battle.player.totalHealth,
+            max: battle.player.maxHealth,
+            monsters: battle.player.monsters
+        },
+        opponentHealth: {
+            current: battle.opponent.totalHealth,
+            max: battle.opponent.maxHealth,
+            monsters: battle.opponent.monsters
+        },
+        attackerIndex: data.attackerIndex,
+        targetIndex: data.targetIndex,
+        nextTurn: result.nextTurn
+    };
+    
+    io.to(battle.player.socketId).emit('opponent-move', moveData);
+    io.to(battle.opponent.socketId).emit('opponent-move', moveData);
+    
+    if (result.battleEnded) {
+        await endBattle(battle, result.winner);
+    } else {
+        startTurnTimer(battle);
+    }
+});
         
         socket.on('disconnect', () => {
             const waitIndex = waitingPlayers.findIndex(p => p.socketId === socket.id);
