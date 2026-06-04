@@ -111,35 +111,33 @@ class ArenaClient {
         }, 60000);
     }
     
-    // В arena-client.js, в методе startBattle, убедитесь что есть этот код:
-startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
-    this.state.battleActive = true;
-    this.state.currentBattleId = battleId;
-    this.state.currentBattleIsPlayer1 = isPlayer1;
-    this.state.isSearching = false;
-    this.state.myTeam = myTeam;
-    this.state.enemyTeam = enemyTeam;
-    this.state.battleLog = [];
-    
-    this.stopSearch();
-    this.startBattleTimer();
-    
-    if (this.callbacks.onBattleStart) {
-        this.callbacks.onBattleStart(battleId, isPlayer1, myTeam, enemyTeam);
+    startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
+        this.state.battleActive = true;
+        this.state.currentBattleId = battleId;
+        this.state.currentBattleIsPlayer1 = isPlayer1;
+        this.state.isSearching = false;
+        this.state.myTeam = myTeam;
+        this.state.enemyTeam = enemyTeam;
+        this.state.battleLog = [];
+        
+        this.stopSearch();
+        this.startBattleTimer();
+        
+        if (this.callbacks.onBattleStart) {
+            this.callbacks.onBattleStart(battleId, isPlayer1, myTeam, enemyTeam);
+        }
+        
+        if (this.callbacks.onBattleStartUI) {
+            this.callbacks.onBattleStartUI({
+                battleId: battleId,
+                isPlayer1: isPlayer1,
+                myTeam: myTeam,
+                opponentTeam: enemyTeam,
+                currentTurn: isPlayer1 ? 'player1' : 'player2',
+                battleLog: []
+            });
+        }
     }
-    
-    // ЭТО ВАЖНО - вызываем для отображения UI
-    if (this.callbacks.onBattleStartUI) {
-        this.callbacks.onBattleStartUI({
-            battleId: battleId,
-            isPlayer1: isPlayer1,
-            myTeam: myTeam,
-            opponentTeam: enemyTeam,
-            currentTurn: isPlayer1 ? 'player1' : 'player2',
-            battleLog: []
-        });
-    }
-}
     
     updateBattle(data) {
         if (!this.state.battleActive) return;
@@ -218,6 +216,18 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
     // WEBSOCKET (для Railway)
     // ============================================================
     
+    // FIXED: Добавлен метод-алиас connectSSE для совместимости с script.js
+    connectSSE(token, apiUrl) {
+        console.log('🔌 connectSSE called, delegating to connectSocket');
+        this.connectSocket(token, apiUrl);
+    }
+    
+    // FIXED: Добавлен метод-алиас disconnectSSE для совместимости с script.js
+    disconnectSSE() {
+        console.log('🔌 disconnectSSE called');
+        this.disconnectSocket();
+    }
+    
     connectSocket(token, apiUrl) {
         this.disconnectSocket();
         
@@ -226,10 +236,15 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
             return;
         }
         
-        console.log(`🔌 Подключение WebSocket к ${apiUrl}`);
+        let socketUrl = apiUrl;
+        if (socketUrl.startsWith('https://')) {
+            socketUrl = socketUrl.replace('https://', 'wss://');
+        }
+        
+        console.log(`🔌 Подключение WebSocket к ${socketUrl}`);
         
         try {
-            const socket = io(apiUrl, {
+            const socket = io(socketUrl, {
                 transports: ['websocket', 'polling'],
                 auth: { token },
                 reconnection: true,
@@ -290,7 +305,6 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
                         this.callbacks.onBattleStartUI(data);
                     }
                 } else if (data.hasBattle && data.status === 'pending_confirmation' && !this.state.confirmationShown) {
-                    // Сохраняем battleId для подтверждения
                     this.state.currentBattleId = data.battleId;
                     this.state.confirmationShown = true;
                     if (this.callbacks.onMatchFound) {
@@ -301,7 +315,6 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
             
             socket.on('match_found', (data) => {
                 console.log('⚔️ Match found!', data);
-                // КРИТИЧНО: сохраняем battleId чтобы acceptBattleWebhook мог его использовать
                 this.state.currentBattleId = data.battleId;
                 this.state.confirmationShown = true;
                 if (this.callbacks.onMatchFound) {
