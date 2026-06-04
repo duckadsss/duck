@@ -1,5 +1,5 @@
 // ============================================
-// server.js - ПОЛНАЯ ВЕРСИЯ С АРЕНОЙ
+// server.js - ПОЛНАЯ ВЕРСИЯ С ИСПРАВЛЕНИЯМИ
 // ============================================
 
 require('dotenv').config();
@@ -10,8 +10,6 @@ const crypto = require('crypto');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
-const http = require('http');
-const socketIo = require('socket.io');
 
 const app = express();
 
@@ -29,21 +27,6 @@ app.use(cors({
 app.use(express.json());
 app.use(compression());
 
-// Create HTTP server and Socket.IO
-const server = http.createServer(app);
-const io = socketIo(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"],
-        credentials: true
-    },
-    transports: ['websocket', 'polling'],
-    allowEIO3: true,
-    pingTimeout: 60000,
-    pingInterval: 25000,
-    maxHttpBufferSize: 1e6
-});
-
 // ============================================
 // НОВАЯ СИСТЕМА РЕКЛАМЫ - ПОЧАСОВОЕ ВОССТАНОВЛЕНИЕ
 // ============================================
@@ -57,18 +40,20 @@ const AD_COOLDOWN_SECONDS = 60;
 const rateLimit = new Map();
 const RATE_LIMIT_MAX = 100;
 const RATE_LIMIT_WINDOW = 60 * 1000;
-
 // ============================================
 // ЗАЩИТА ОТ ФАРМА
 // ============================================
-const MAX_COMMON_PRICE = 1100;
-
+const MAX_COMMON_PRICE = 1100;  // Common существ нельзя продавать дороже 500 MMO
 setInterval(() => {
     const now = Date.now();
+    let deletedCount = 0;
     for (const [ip, record] of rateLimit.entries()) {
         if (now > record.resetAt) {
             rateLimit.delete(ip);
+            deletedCount++;
         }
+    }
+    if (deletedCount > 0) {
     }
 }, RATE_LIMIT_WINDOW);
 
@@ -163,15 +148,6 @@ const REFERRAL_BONUS_PERCENT = 2;
 const MAX_ACTIVE_LISTINGS = 2;
 const MIN_MARKETPLACE_PRICE = 500;
 
-// Arena Constants
-const LEAGUES = {
-    'BRONZE': { min: 0, max: 999, color: '#cd7c3a', reward: 100 },
-    'SILVER': { min: 1000, max: 1999, color: '#94a3b8', reward: 150 },
-    'GOLD': { min: 2000, max: 2999, color: '#f59e0b', reward: 250 },
-    'PLATINUM': { min: 3000, max: 3999, color: '#06b6d4', reward: 400 },
-    'DIAMOND': { min: 4000, max: 9999, color: '#a855f7', reward: 600 }
-};
-
 const getDateKey = (date) => {
     return `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}`;
 };
@@ -191,11 +167,6 @@ const INCOME_CACHE_TTL = 10000;
 
 // Блокировки для рекламы
 const adLocks = new Map();
-
-// Arena WebSocket хранилища
-let waitingPlayers = [];
-let activeBattles = new Map();
-let battleTimers = new Map();
 
 // ============================================
 // ФУНКЦИЯ ВОССТАНОВЛЕНИЯ РЕКЛАМЫ
@@ -224,601 +195,6 @@ async function regenerateAds(user) {
     user.adsLastRegen = newLastRegen;
  
     return newCount;
-}
-
-// ============================================
-// АРЕНА - ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-// ============================================
-
-function getLeagueFromRating(rating) {
-    for (const [league, data] of Object.entries(LEAGUES)) {
-        if (rating >= data.min && rating <= data.max) return league;
-    }
-    return 'BRONZE';
-}
-
-function getRewardForLeague(league) {
-    return LEAGUES[league]?.reward || 100;
-}
-
-function calculateRatingChange(winnerRating, loserRating) {
-    const expected = 1 / (1 + Math.pow(10, (loserRating - winnerRating) / 400));
-    const k = 32;
-    return Math.floor(k * (1 - expected));
-}
-
-function getCreatureType(creature) {
-    const name = creature.name.toLowerCase();
-    if (name.includes('dragon') || name.includes('fire')) return 'fire';
-    if (name.includes('shark') || name.includes('water')) return 'water';
-    if (name.includes('duck') || name.includes('owl')) return 'grass';
-    if (name.includes('electric')) return 'electric';
-    if (name.includes('dark')) return 'dark';
-    return 'light';
-}
-
-function calculateDamageWithType(attacker, defender) {
-    const typeAdvantages = {
-        'fire': { strong: ['grass'], weak: ['water'] },
-        'water': { strong: ['fire'], weak: ['electric', 'grass'] },
-        'grass': { strong: ['water'], weak: ['fire'] },
-        'electric': { strong: ['water'], weak: [] },
-        'dark': { strong: [], weak: [] },
-        'light': { strong: [], weak: [] }
-    };
-    
-    const attackerType = getCreatureType(attacker);
-    const defenderType = getCreatureType(defender);
-    
-    let multiplier = 1.0;
-    const adv = typeAdvantages[attackerType];
-    if (adv && adv.strong.includes(defenderType)) multiplier = 1.5;
-    if (adv && adv.weak.includes(defenderType)) multiplier = 0.75;
-    
-    const isCritical = Math.random() < 0.1;
-    const critMultiplier = isCritical ? 2 : 1;
-    
-    let damage = Math.max(1, Math.floor((attacker.atk - defender.def) * multiplier * critMultiplier));
-    damage = Math.floor(damage * (0.8 + Math.random() * 0.4));
-    
-    return { damage, multiplier, isCritical };
-}
-
-function createBattleMonster(creature, multiplier = 1) {
-    return {
-        id: creature.id,
-        name: creature.name,
-        icon: creature.icon,
-        rarity: creature.rarity,
-        atk: Math.floor((creature.incomeBase || 10) * 2 * multiplier),
-        def: Math.floor((creature.incomeBase || 10) * 1.5 * multiplier),
-        hp: Math.floor((creature.incomeBase || 10) * 10 * multiplier),
-        maxHp: Math.floor((creature.incomeBase || 10) * 10 * multiplier)
-    };
-}
-
-function getTotalHealth(monsters) {
-    return monsters.reduce((sum, m) => sum + (m.hp || 0), 0);
-}
-
-function getMaxHealth(monsters) {
-    return monsters.reduce((sum, m) => sum + (m.maxHp || 0), 0);
-}
-
-// ============================================
-// АРЕНА - WEBHOOK HANDLERS
-// ============================================
-
-function tryFindMatch() {
-    if (waitingPlayers.length < 2) return;
-    
-    waitingPlayers.sort((a, b) => a.rating - b.rating);
-    
-    for (let i = 0; i < waitingPlayers.length - 1; i++) {
-        const player1 = waitingPlayers[i];
-        const player2 = waitingPlayers[i + 1];
-        
-        if (Math.abs(player1.rating - player2.rating) <= 200) {
-            waitingPlayers.splice(i, 2);
-            
-            const battleId = `battle_${Date.now()}_${player1.userId}_${player2.userId}`;
-            
-            const battle = {
-                battleId,
-                status: 'waiting',
-                player: {
-                    id: player1.userId,
-                    socketId: player1.socketId,
-                    name: player1.name,
-                    rating: player1.rating,
-                    league: player1.league,
-                    team: player1.team,
-                    accepted: false,
-                    monsters: null,
-                    totalHealth: 0,
-                    maxHealth: 0
-                },
-                opponent: {
-                    id: player2.userId,
-                    socketId: player2.socketId,
-                    name: player2.name,
-                    rating: player2.rating,
-                    league: player2.league,
-                    team: player2.team,
-                    accepted: false,
-                    monsters: null,
-                    totalHealth: 0,
-                    maxHealth: 0
-                },
-                createdAt: Date.now(),
-                currentTurn: null,
-                turnStartTime: null
-            };
-            
-            activeBattles.set(battleId, battle);
-            
-            io.to(player1.socketId).emit('match-found', {
-                matchId: battleId,
-                opponent: {
-                    name: player2.name,
-                    rating: player2.rating,
-                    league: player2.league
-                }
-            });
-            
-            io.to(player2.socketId).emit('match-found', {
-                matchId: battleId,
-                opponent: {
-                    name: player1.name,
-                    rating: player1.rating,
-                    league: player1.league
-                }
-            });
-            
-            setTimeout(() => {
-                const battle = activeBattles.get(battleId);
-                if (battle && battle.status === 'waiting') {
-                    activeBattles.delete(battleId);
-                    io.to(player1.socketId).emit('match-cancelled', { reason: 'Timeout' });
-                    io.to(player2.socketId).emit('match-cancelled', { reason: 'Timeout' });
-                }
-            }, 30000);
-            
-            break;
-        }
-    }
-}
-
-function startTurnTimer(battle) {
-    if (battleTimers.has(battle.battleId)) {
-        clearTimeout(battleTimers.get(battle.battleId));
-    }
-    
-    const timer = setTimeout(async () => {
-        if (!activeBattles.has(battle.battleId)) return;
-        
-        const currentPlayer = battle.currentTurn === 'player' ? battle.player : battle.opponent;
-        const nextPlayer = battle.currentTurn === 'player' ? battle.opponent : battle.player;
-        
-        battle.currentTurn = battle.currentTurn === 'player' ? 'opponent' : 'player';
-        battle.turnStartTime = Date.now();
-        
-        const moveData = {
-            logMessage: `${currentPlayer.name} ran out of time! Turn passed.`,
-            nextTurn: battle.currentTurn
-        };
-        
-        io.to(battle.player.socketId).emit('opponent-move', moveData);
-        io.to(battle.opponent.socketId).emit('opponent-move', moveData);
-        
-        startTurnTimer(battle);
-    }, 30000);
-    
-    battleTimers.set(battle.battleId, timer);
-    
-    // Update timer display every second
-    const updateInterval = setInterval(() => {
-        if (!activeBattles.has(battle.battleId)) {
-            clearInterval(updateInterval);
-            return;
-        }
-        const timeLeft = Math.max(0, 30 - Math.floor((Date.now() - battle.turnStartTime) / 1000));
-        io.to(battle.player.socketId).emit('turn-update', { timeLeft });
-        io.to(battle.opponent.socketId).emit('turn-update', { timeLeft });
-        
-        if (timeLeft <= 0) clearInterval(updateInterval);
-    }, 1000);
-}
-
-function processBattleMove(battle, attackerId, targetIndex) {
-    const isPlayerAttacking = attackerId === battle.player.id;
-    const attacker = isPlayerAttacking ? battle.player : battle.opponent;
-    const defender = isPlayerAttacking ? battle.opponent : battle.player;
-    
-    const attackerMonster = attacker.monsters.find(m => m.hp > 0);
-    if (!attackerMonster) return { success: false, message: 'No alive monsters' };
-    
-    const targetMonster = defender.monsters[targetIndex];
-    if (!targetMonster || targetMonster.hp <= 0) {
-        return { success: false, message: 'Target already defeated' };
-    }
-    
-    const { damage, multiplier, isCritical } = calculateDamageWithType(attackerMonster, targetMonster);
-    
-    targetMonster.hp = Math.max(0, targetMonster.hp - damage);
-    
-    let logMessage = `${isPlayerAttacking ? 'YOU' : battle.opponent.name} attacked ${targetMonster.name} for ${damage} damage${isCritical ? ' (CRITICAL!)' : ''}${multiplier !== 1 ? ` (${multiplier > 1 ? 'SUPER EFFECTIVE!' : 'NOT VERY EFFECTIVE...'})` : ''}`;
-    
-    if (targetMonster.hp <= 0) {
-        logMessage += ` 💀 ${targetMonster.name} defeated!`;
-    }
-    
-    const playerTotalHealth = getTotalHealth(battle.player.monsters);
-    const opponentTotalHealth = getTotalHealth(battle.opponent.monsters);
-    
-    battle.player.totalHealth = playerTotalHealth;
-    battle.opponent.totalHealth = opponentTotalHealth;
-    
-    const playerDefeated = playerTotalHealth <= 0;
-    const opponentDefeated = opponentTotalHealth <= 0;
-    
-    let winner = null;
-    if (playerDefeated && opponentDefeated) winner = 'draw';
-    else if (playerDefeated) winner = 'opponent';
-    else if (opponentDefeated) winner = 'player';
-    
-    if (winner) {
-        return { success: true, logMessage, winner, battleEnded: true };
-    }
-    
-    battle.currentTurn = isPlayerAttacking ? 'opponent' : 'player';
-    battle.turnStartTime = Date.now();
-    
-    return { success: true, logMessage, battleEnded: false, nextTurn: battle.currentTurn };
-}
-
-async function endBattle(battle, winner) {
-    if (battleTimers.has(battle.battleId)) {
-        clearTimeout(battleTimers.get(battle.battleId));
-        battleTimers.delete(battle.battleId);
-    }
-    
-    const player = await User.findById(battle.player.id);
-    const opponent = await User.findById(battle.opponent.id);
-    
-    if (!player || !opponent) return;
-    
-    let playerStats = player.pvpStats || { rating: 500, wins: 0, losses: 0, draws: 0, tokens: 3, lastReset: new Date() };
-    let opponentStats = opponent.pvpStats || { rating: 500, wins: 0, losses: 0, draws: 0, tokens: 3, lastReset: new Date() };
-    
-    let playerRatingChange = 0;
-    let opponentRatingChange = 0;
-    let playerReward = 0;
-    let opponentReward = 0;
-    
-    if (winner === 'player') {
-        playerRatingChange = calculateRatingChange(playerStats.rating, opponentStats.rating);
-        opponentRatingChange = -playerRatingChange;
-        playerStats.wins++;
-        opponentStats.losses++;
-        
-        const league = getLeagueFromRating(playerStats.rating);
-        playerReward = getRewardForLeague(league);
-        
-        playerStats.tokens = Math.max(0, playerStats.tokens - 1);
-        opponentStats.tokens = Math.max(0, opponentStats.tokens - 1);
-        
-        player.balance += playerReward;
-        
-    } else if (winner === 'opponent') {
-        opponentRatingChange = calculateRatingChange(opponentStats.rating, playerStats.rating);
-        playerRatingChange = -opponentRatingChange;
-        playerStats.losses++;
-        opponentStats.wins++;
-        
-        const league = getLeagueFromRating(opponentStats.rating);
-        opponentReward = getRewardForLeague(league);
-        
-        playerStats.tokens = Math.max(0, playerStats.tokens - 1);
-        opponentStats.tokens = Math.max(0, opponentStats.tokens - 1);
-        
-        opponent.balance += opponentReward;
-        
-    } else {
-        playerStats.draws++;
-        opponentStats.draws++;
-        playerStats.tokens = Math.max(0, playerStats.tokens - 1);
-        opponentStats.tokens = Math.max(0, opponentStats.tokens - 1);
-    }
-    
-    playerStats.rating = Math.max(0, playerStats.rating + playerRatingChange);
-    opponentStats.rating = Math.max(0, opponentStats.rating + opponentRatingChange);
-    
-    playerStats.league = getLeagueFromRating(playerStats.rating);
-    opponentStats.league = getLeagueFromRating(opponentStats.rating);
-    
-    player.pvpStats = playerStats;
-    opponent.pvpStats = opponentStats;
-    
-    player.battleHistory = player.battleHistory || [];
-    opponent.battleHistory = opponent.battleHistory || [];
-    
-    player.battleHistory.unshift({
-        opponentId: opponent._id,
-        opponentName: opponent.username || opponent.firstName || 'Player',
-        result: winner === 'player' ? 'win' : winner === 'opponent' ? 'loss' : 'draw',
-        ratingChange: playerRatingChange,
-        date: new Date()
-    });
-    
-    opponent.battleHistory.unshift({
-        opponentId: player._id,
-        opponentName: player.username || player.firstName || 'Player',
-        result: winner === 'opponent' ? 'win' : winner === 'player' ? 'loss' : 'draw',
-        ratingChange: opponentRatingChange,
-        date: new Date()
-    });
-    
-    if (player.battleHistory.length > 50) player.battleHistory = player.battleHistory.slice(0, 50);
-    if (opponent.battleHistory.length > 50) opponent.battleHistory = opponent.battleHistory.slice(0, 50);
-    
-    await player.save();
-    await opponent.save();
-    
-    const playerResult = {
-        winner: winner === 'player' ? 'player' : winner === 'opponent' ? 'opponent' : 'draw',
-        resultMessage: winner === 'player' ? 'You won!' : winner === 'opponent' ? 'You lost!' : 'Draw!',
-        reward: playerReward,
-        ratingGain: playerRatingChange > 0 ? playerRatingChange : 0,
-        ratingLoss: playerRatingChange < 0 ? -playerRatingChange : 0,
-        newStats: {
-            rating: playerStats.rating,
-            league: playerStats.league,
-            wins: playerStats.wins,
-            losses: playerStats.losses,
-            draws: playerStats.draws,
-            tokens: playerStats.tokens,
-            balance: player.balance
-        }
-    };
-    
-    const opponentResult = {
-        winner: winner === 'player' ? 'player' : winner === 'opponent' ? 'opponent' : 'draw',
-        resultMessage: winner === 'opponent' ? 'You won!' : winner === 'player' ? 'You lost!' : 'Draw!',
-        reward: opponentReward,
-        ratingGain: opponentRatingChange > 0 ? opponentRatingChange : 0,
-        ratingLoss: opponentRatingChange < 0 ? -opponentRatingChange : 0,
-        newStats: {
-            rating: opponentStats.rating,
-            league: opponentStats.league,
-            wins: opponentStats.wins,
-            losses: opponentStats.losses,
-            draws: opponentStats.draws,
-            tokens: opponentStats.tokens,
-            balance: opponent.balance
-        }
-    };
-    
-    io.to(battle.player.socketId).emit('battle-end', playerResult);
-    io.to(battle.opponent.socketId).emit('battle-end', opponentResult);
-    
-    activeBattles.delete(battle.battleId);
-}
-
-function formatBattleStart(battle, perspective) {
-    const isPlayer = perspective === 'player';
-    
-    // Убеждаемся, что монстры имеют корректные поля
-    const playerMonsters = (isPlayer ? battle.player.team : battle.opponent.team).map(m => ({
-        id: m.id,
-        name: m.name,
-        icon: m.icon,
-        rarity: m.rarity,
-        hp: m.hp,
-        maxHp: m.maxHp
-    }));
-    
-    const opponentMonsters = (isPlayer ? battle.opponent.team : battle.player.team).map(m => ({
-        id: m.id,
-        name: m.name,
-        icon: m.icon,
-        rarity: m.rarity,
-        hp: m.hp,
-        maxHp: m.maxHp
-    }));
-    
-    return {
-        battleId: battle.battleId,
-        currentTurn: battle.currentTurn,
-        player: {
-            id: isPlayer ? battle.player.id : battle.opponent.id,
-            name: isPlayer ? battle.player.name : battle.opponent.name,
-            rating: isPlayer ? battle.player.rating : battle.opponent.rating,
-            league: isPlayer ? battle.player.league : battle.opponent.league,
-            monsters: playerMonsters,
-            totalHealth: isPlayer ? battle.player.totalHealth : battle.opponent.totalHealth,
-            maxHealth: isPlayer ? battle.player.maxHealth : battle.opponent.maxHealth
-        },
-        opponent: {
-            id: isPlayer ? battle.opponent.id : battle.player.id,
-            name: isPlayer ? battle.opponent.name : battle.player.name,
-            rating: isPlayer ? battle.opponent.rating : battle.player.rating,
-            league: isPlayer ? battle.opponent.league : battle.player.league,
-            monsters: opponentMonsters,
-            totalHealth: isPlayer ? battle.opponent.totalHealth : battle.player.totalHealth,
-            maxHealth: isPlayer ? battle.opponent.maxHealth : battle.player.maxHealth
-        }
-    };
-}
-// ============================================
-// АРЕНА - WEBHOOK SETUP
-// ============================================
-
-function setupArenaServer() {
-    io.on('connection', (socket) => {
-        let userId = null;
-        
-        const token = socket.handshake.query.token;
-        if (!token) {
-            socket.disconnect();
-            return;
-        }
-        
-        try {
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            userId = decoded.userId;
-        } catch (e) {
-            socket.disconnect();
-            return;
-        }
-        
-        console.log(`🏟️ Arena connected: ${userId}`);
-        
-        socket.on('find-match', async (data) => {
-            if (!data.team || data.team.length !== 3) {
-                socket.emit('error', { message: 'Need 3 monsters' });
-                return;
-            }
-            
-            const dbUser = await User.findById(userId);
-            if (!dbUser) return;
-            
-            const pvpStats = dbUser.pvpStats || { rating: 500, tokens: 3, lastReset: new Date() };
-            
-            if (pvpStats.tokens <= 0) {
-                socket.emit('error', { message: 'No arena tokens left' });
-                return;
-            }
-            
-            waitingPlayers.push({
-                socketId: socket.id,
-                userId: userId,
-                name: dbUser.username || dbUser.firstName || 'Player',
-                rating: pvpStats.rating || 500,
-                league: pvpStats.league || 'BRONZE',
-                team: data.team,
-                joinedAt: Date.now()
-            });
-            
-            socket.emit('searching', { status: true });
-            
-            setTimeout(() => tryFindMatch(), 100);
-        });
-        
-        socket.on('cancel-search', () => {
-            const index = waitingPlayers.findIndex(p => p.socketId === socket.id);
-            if (index !== -1) waitingPlayers.splice(index, 1);
-            socket.emit('search-cancelled');
-        });
-        
-        socket.on('accept-battle', async (data) => {
-            const battle = activeBattles.get(data.matchId);
-            if (!battle) return;
-            
-            if (battle.player.socketId === socket.id) {
-                battle.player.accepted = true;
-            } else if (battle.opponent.socketId === socket.id) {
-                battle.opponent.accepted = true;
-            }
-            
-            if (battle.player.accepted && battle.opponent.accepted) {
-                battle.status = 'active';
-                battle.currentTurn = Math.random() < 0.5 ? 'player' : 'opponent';
-                battle.turnStartTime = Date.now();
-                
-                battle.player.monsters = battle.player.team.map(m => createBattleMonster(m));
-                battle.opponent.monsters = battle.opponent.team.map(m => createBattleMonster(m));
-                
-                battle.player.totalHealth = getTotalHealth(battle.player.monsters);
-                battle.player.maxHealth = getMaxHealth(battle.player.monsters);
-                battle.opponent.totalHealth = getTotalHealth(battle.opponent.monsters);
-                battle.opponent.maxHealth = getMaxHealth(battle.opponent.monsters);
-                
-                io.to(battle.player.socketId).emit('battle-start', formatBattleStart(battle, 'player'));
-                io.to(battle.opponent.socketId).emit('battle-start', formatBattleStart(battle, 'opponent'));
-                
-                startTurnTimer(battle);
-            }
-        });
-        
-        socket.on('decline-battle', (data) => {
-            const battle = activeBattles.get(data.matchId);
-            if (battle) {
-                const decliner = battle.player.socketId === socket.id ? 'player' : 'opponent';
-                const other = decliner === 'player' ? battle.opponent : battle.player;
-                
-                io.to(other.socketId).emit('match-cancelled', { reason: 'Opponent declined' });
-                activeBattles.delete(data.matchId);
-            }
-        });
-        
-        socket.on('make-move', async (data) => {
-            const battle = activeBattles.get(data.battleId);
-            if (!battle) return;
-            if (battle.status !== 'active') return;
-            
-            const isPlayerTurn = (battle.currentTurn === 'player' && battle.player.socketId === socket.id) ||
-                                (battle.currentTurn === 'opponent' && battle.opponent.socketId === socket.id);
-            
-            if (!isPlayerTurn) {
-                socket.emit('error', { message: 'Not your turn!' });
-                return;
-            }
-            
-            if (battleTimers.has(data.battleId)) {
-                clearTimeout(battleTimers.get(data.battleId));
-                battleTimers.delete(data.battleId);
-            }
-            
-            const result = processBattleMove(battle, 
-                battle.player.socketId === socket.id ? battle.player.id : battle.opponent.id,
-                data.targetIndex
-            );
-            
-            if (!result.success) {
-                socket.emit('error', { message: result.message });
-                return;
-            }
-            
-            const moveData = {
-                logMessage: result.logMessage,
-                playerHealth: {
-                    current: battle.player.totalHealth,
-                    max: battle.player.maxHealth,
-                    monsters: battle.player.monsters
-                },
-                opponentHealth: {
-                    current: battle.opponent.totalHealth,
-                    max: battle.opponent.maxHealth,
-                    monsters: battle.opponent.monsters
-                },
-                attackerIndex: data.attackerIndex,
-                targetIndex: data.targetIndex,
-                nextTurn: result.nextTurn
-            };
-            
-            io.to(battle.player.socketId).emit('opponent-move', moveData);
-            io.to(battle.opponent.socketId).emit('opponent-move', moveData);
-            
-            if (result.battleEnded) {
-                await endBattle(battle, result.winner);
-            } else {
-                startTurnTimer(battle);
-            }
-        });
-        
-        socket.on('disconnect', () => {
-            const waitIndex = waitingPlayers.findIndex(p => p.socketId === socket.id);
-            if (waitIndex !== -1) waitingPlayers.splice(waitIndex, 1);
-            
-            for (const [battleId, battle] of activeBattles) {
-                if (battle.player.socketId === socket.id || battle.opponent.socketId === socket.id) {
-                    const winner = battle.player.socketId === socket.id ? 'opponent' : 'player';
-                    endBattle(battle, winner);
-                }
-            }
-        });
-    });
 }
 
 // ============================================
@@ -851,10 +227,77 @@ const adminAuthMiddleware = async (req, res, next) => {
     next();
 };
 
+app.post('/api/admin/login', async (req, res) => {
+    try {
+        const { login, password } = req.body;
+        const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+        
+        if (!login || !password) {
+            return res.status(400).json({ success: false, message: 'Введите логин и пароль' });
+        }
+        
+        let attempts = adminLoginAttempts.get(ip);
+        const now = Date.now();
+        
+        if (!attempts) {
+            attempts = { count: 0, resetAt: now + 15 * 60 * 1000 };
+            adminLoginAttempts.set(ip, attempts);
+        }
+        
+        if (now > attempts.resetAt) {
+            attempts.count = 0;
+            attempts.resetAt = now + 15 * 60 * 1000;
+        }
+        
+        if (attempts.count >= 5) {
+            return res.status(429).json({ 
+                success: false, 
+                message: 'Слишком много попыток. Попробуйте через 15 минут.' 
+            });
+        }
+        
+        if (login !== ADMIN_LOGIN || password !== ADMIN_PASSWORD) {
+            attempts.count++;
+            adminLoginAttempts.set(ip, attempts);
+            return res.status(401).json({ success: false, message: 'Неверный логин или пароль' });
+        }
+        
+        adminLoginAttempts.delete(ip);
+        
+        const token = crypto.randomBytes(32).toString('hex');
+        
+        adminSessions.set(token, {
+            login: login,
+            expiresAt: Date.now() + 24 * 60 * 60 * 1000
+        });
+        
+        res.json({ success: true, token: token });
+        
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/admin/logout', async (req, res) => {
+    const token = req.headers['x-admin-token'];
+    if (token) {
+        adminSessions.delete(token);
+    }
+    res.json({ success: true });
+});
+
+setInterval(() => {
+    const now = Date.now();
+    for (const [token, session] of adminSessions.entries()) {
+        if (session.expiresAt < now) {
+            adminSessions.delete(token);
+        }
+    }
+}, 60 * 60 * 1000);
+
 // ============================================
 // МОДЕЛИ
 // ============================================
-
 const TransactionRequestSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     telegramId: { type: String, required: true },
@@ -867,7 +310,11 @@ const TransactionRequestSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now },
     processedAt: { type: Date, default: null }
 });
+// Добавь это после других Schema, примерно на строке 350-400
 
+// ============================================
+// РАССЫЛКА (BROADCAST)
+// ============================================
 const BroadcastSchema = new mongoose.Schema({
     message: { type: String, required: true },
     imageUrl: { type: String, default: null },
@@ -883,6 +330,7 @@ const BroadcastSchema = new mongoose.Schema({
 });
 
 const Broadcast = mongoose.model('Broadcast', BroadcastSchema);
+
 const TransactionRequest = mongoose.model('TransactionRequest', TransactionRequestSchema);
 
 const PendingDepositSchema = new mongoose.Schema({
@@ -992,24 +440,7 @@ const UserSchema = new mongoose.Schema({
     lastLogin: { type: Date, default: Date.now },
     createdAt: { type: Date, default: Date.now },
     cachedIncome: { type: Number, default: 0 },
-    incomeCacheExpires: { type: Date, default: Date.now },
-    // Arena PvP Stats
-    pvpStats: {
-        rating: { type: Number, default: 500 },
-        wins: { type: Number, default: 0 },
-        losses: { type: Number, default: 0 },
-        draws: { type: Number, default: 0 },
-        league: { type: String, default: 'BRONZE' },
-        tokens: { type: Number, default: 3 },
-        lastReset: { type: Date, default: Date.now }
-    },
-    battleHistory: [{
-        opponentId: mongoose.Schema.Types.ObjectId,
-        opponentName: String,
-        result: String,
-        ratingChange: Number,
-        date: Date
-    }]
+    incomeCacheExpires: { type: Date, default: Date.now }
 });
 
 UserSchema.pre('save', function(next) {
@@ -1065,33 +496,11 @@ async function sendNotificationToUser(telegramId, message) {
     }
 }
 
-async function notifyAdmins(message, replyMarkup = null) {
-    const BOT_TOKEN = process.env.BOT_TOKEN;
-    
-    if (!BOT_TOKEN || ADMIN_IDS.length === 0) return;
-    
-    for (const adminId of ADMIN_IDS) {
-        try {
-            const body = {
-                chat_id: adminId,
-                text: message,
-                parse_mode: 'HTML'
-            };
-            if (replyMarkup) {
-                body.reply_markup = replyMarkup;
-            }
-            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            });
-            console.log(`✅ Уведомление отправлено админу ${adminId}`);
-        } catch (e) {
-            console.error('Failed to send admin notification:', e);
-        }
-    }
-}
+// Добавь после функции notifyAdmins()
 
+// ============================================
+// ФУНКЦИЯ РАССЫЛКИ
+// ============================================
 async function sendBroadcastAsync(broadcastId, users, testMode) {
     const broadcast = await Broadcast.findById(broadcastId);
     if (!broadcast) return;
@@ -1182,6 +591,33 @@ async function sendBroadcastAsync(broadcastId, users, testMode) {
         `🕐 ${new Date().toLocaleString()}`);
 }
 
+async function notifyAdmins(message, replyMarkup = null) {
+    const BOT_TOKEN = process.env.BOT_TOKEN;
+    
+    if (!BOT_TOKEN || ADMIN_IDS.length === 0) return;
+    
+    for (const adminId of ADMIN_IDS) {
+        try {
+            const body = {
+                chat_id: adminId,
+                text: message,
+                parse_mode: 'HTML'
+            };
+            if (replyMarkup) {
+                body.reply_markup = replyMarkup;
+            }
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            console.log(`✅ Уведомление отправлено админу ${adminId}`);
+        } catch (e) {
+            console.error('Failed to send admin notification:', e);
+        }
+    }
+}
+
 // ============================================
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ С КЭШИРОВАНИЕМ
 // ============================================
@@ -1193,7 +629,14 @@ function escapeRegex(str) {
 
 let creaturesCache = null;
 
+// ============================================
+// FORMAT INVENTORY - БЕЗ КЭША (ПРЯМОЕ ЧТЕНИЕ ИЗ БД)
+// ============================================
+// ============================================
+// FORMAT INVENTORY - С ПРОВЕРКОЙ КЭША
+// ============================================
 async function formatInventory(telegramId) {
+    
     const inventory = await Inventory.find({ telegramId }).lean();
     
     if (inventory.length === 0) {
@@ -1224,7 +667,6 @@ async function formatInventory(telegramId) {
     inventoryCache.set(telegramId, { data: result, expiresAt: Date.now() + INVENTORY_CACHE_TTL });
     return result;
 }
-
 function invalidateInventoryCache(telegramId) {
     inventoryCache.delete(telegramId);
     userIncomeCache.delete(telegramId);
@@ -1474,24 +916,391 @@ const lastMergeTimes = new Map();
 
 function cleanupOldRecords() {
     const now = Date.now();
+    let deletedOpen = 0, deletedMerge = 0;
     
     for (const [id, time] of lastOpenTimes) {
         if (now - time > RECORD_TTL) {
             lastOpenTimes.delete(id);
+            deletedOpen++;
         }
     }
     
     for (const [id, time] of lastMergeTimes) {
         if (now - time > RECORD_TTL) {
             lastMergeTimes.delete(id);
+            deletedMerge++;
         }
+    }
+    
+    if (deletedOpen > 0 || deletedMerge > 0) {
     }
 }
 
 setInterval(cleanupOldRecords, CLEANUP_INTERVAL);
 
 // ============================================
-// MIDDLEWARE (ОСНОВНОЙ API)
+// ХРАНИЛИЩЕ ДЛЯ РЕАЛЬНЫХ МЕТРИК
+// ============================================
+let recentErrors = [];
+let requestLog = [];
+const REQUEST_LOG_MAX = 1000;
+
+app.use((req, res, next) => {
+    const startTime = Date.now();
+    
+    res.on('finish', () => {
+        const duration = Date.now() - startTime;
+        
+        if (res.statusCode >= 500) {
+            recentErrors.unshift({
+                timestamp: new Date().toISOString(),
+                status: res.statusCode,
+                path: req.path,
+                method: req.method,
+                message: res.statusMessage || 'Server error'
+            });
+            if (recentErrors.length > 100) recentErrors.pop();
+            console.error(`❌ ${req.method} ${req.path} -> ${res.statusCode} (${duration}ms)`);
+        }
+        
+        requestLog.unshift({
+            timestamp: Date.now(),
+            path: req.path,
+            status: res.statusCode
+        });
+        if (requestLog.length > REQUEST_LOG_MAX) requestLog.pop();
+    });
+    
+    next();
+});
+
+app.get('/api/admin/metrics', adminAuthMiddleware, async (req, res) => {
+    try {
+        const oneMinuteAgo = Date.now() - 60 * 1000;
+        
+        const requestsLastMinute = requestLog.filter(log => log.timestamp > oneMinuteAgo).length;
+        const errorsLastMinute = requestLog.filter(log => 
+            log.timestamp > oneMinuteAgo && log.status >= 500 && log.status < 600
+        ).length;
+        
+        const errorRate5xx = requestsLastMinute > 0 
+            ? (errorsLastMinute / requestsLastMinute * 100).toFixed(3)
+            : 0;
+        
+        const memUsage = process.memoryUsage();
+        res.json({
+            success: true,
+            requestsLastMinute: requestsLastMinute,
+            errorRate5xx: parseFloat(errorRate5xx),
+            uptime: Math.floor(process.uptime()),
+            memoryUsage: Math.round(memUsage.rss / 1024 / 1024),
+            recentErrors: recentErrors.slice(0, 20),
+            timestamp: Date.now()
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.delete('/api/admin/metrics/errors', adminAuthMiddleware, async (req, res) => {
+    recentErrors = [];
+    res.json({ success: true, message: 'Ошибки очищены' });
+});
+
+// ============================================
+// SUSPICIOUS EVENTS
+// ============================================
+let suspiciousEvents = [];
+
+app.get('/api/admin/suspicious-events', adminAuthMiddleware, async (req, res) => {
+    try {
+        res.json({ success: true, events: suspiciousEvents });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/admin/suspicious-events', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { userId, userName, reason } = req.body;
+        if (!userId || !reason) {
+            return res.status(400).json({ success: false, message: 'Не все поля заполнены' });
+        }
+        
+        const event = {
+            id: Date.now().toString(),
+            userId,
+            userName: userName || 'Unknown',
+            reason,
+            timestamp: new Date().toISOString(),
+            status: 'open'
+        };
+        
+        suspiciousEvents.unshift(event);
+        if (suspiciousEvents.length > 100) suspiciousEvents.pop();
+        
+        res.json({ success: true, event });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ============================================
+// LOGS ПОЛЬЗОВАТЕЛЯ
+// ============================================
+app.get('/api/admin/users/:id/logs', adminAuthMiddleware, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id).select('transactions');
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'Пользователь не найден' });
+        }
+        res.json({ success: true, logs: user.transactions || [] });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ============================================
+// ИСТОРИЯ ПРОДАЖ МАРКЕТА (АДМИН)
+// ============================================
+app.get('/api/admin/market-sales-history', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { limit = 50 } = req.query;
+        
+        const history = await MarketSaleHistory.find()
+            .sort({ soldAt: -1 })
+            .limit(parseInt(limit))
+            .lean();
+        
+        let creatures = creaturesCache;
+        if (!creatures) {
+            creatures = await Creature.find({ isActive: true }).lean();
+        }
+        
+        const creatureMap = new Map();
+        for (const c of creatures) {
+            creatureMap.set(c.id, c);
+        }
+        
+        const enrichedHistory = history.map(sale => ({
+            ...sale,
+            creature: creatureMap.get(sale.creatureId) || { name: sale.creatureId, rarity: 'common', icon: '🧬' }
+        }));
+        
+        res.json({ success: true, history: enrichedHistory });
+    } catch (e) {
+        console.error('market-sales-history error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ============================================
+// АДМИН: УПРАВЛЕНИЕ РЕКЛАМОЙ
+// ============================================
+
+app.get('/api/admin/ads-stats', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { limit = 100, sortBy = 'adsWatched' } = req.query;
+        
+        // Исправленная агрегация - обрабатываем null и отсутствующие поля
+        const adsStats = await User.aggregate([
+            {
+                $addFields: {
+                    // Преобразуем transactions в массив, если это null или не массив
+                    transactionsArray: {
+                        $cond: {
+                            if: { $isArray: "$transactions" },
+                            then: "$transactions",
+                            else: []
+                        }
+                    }
+                }
+            },
+            {
+                $project: {
+                    telegramId: 1,
+                    username: 1,
+                    firstName: 1,
+                    level: 1,
+                    adsAvailable: 1,
+                    adsLastRegen: 1,
+                    adsWatched: {
+                        $size: {
+                            $filter: {
+                                input: "$transactionsArray",
+                                as: "tx",
+                                cond: { $eq: ["$$tx.name", "Watch Ad Reward"] }
+                            }
+                        }
+                    }
+                }
+            },
+            { $sort: { [sortBy]: -1 } },
+            { $limit: parseInt(limit) }
+        ]);
+        
+        // Исправленная агрегация для общей статистики
+        const totalStats = await User.aggregate([
+            {
+                $addFields: {
+                    transactionsArray: {
+                        $cond: {
+                            if: { $isArray: "$transactions" },
+                            then: "$transactions",
+                            else: []
+                        }
+                    }
+                }
+            },
+            {
+                $project: {
+                    adsWatched: {
+                        $size: {
+                            $filter: {
+                                input: "$transactionsArray",
+                                as: "tx",
+                                cond: { $eq: ["$$tx.name", "Watch Ad Reward"] }
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalAdsWatched: { $sum: "$adsWatched" },
+                    avgAdsPerUser: { $avg: "$adsWatched" }
+                }
+            }
+        ]);
+        
+        res.json({
+            success: true,
+            stats: adsStats,
+            total: totalStats[0] || { totalAdsWatched: 0, avgAdsPerUser: 0 }
+        });
+    } catch (e) {
+        console.error('ads-stats error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/admin/user/:id/reset-ads-stats', adminAuthMiddleware, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'Пользователь не найден' });
+        }
+        
+        const originalCount = user.transactions.filter(tx => tx.name === 'Watch Ad Reward').length;
+        user.transactions = user.transactions.filter(tx => tx.name !== 'Watch Ad Reward');
+        
+        user.adsAvailable = MAX_ADS_AVAILABLE;
+        user.adsLastRegen = new Date();
+        user.adsCooldownUntil = null;
+        
+        await user.save();
+        
+        res.json({
+            success: true,
+            message: `Удалено ${originalCount} записей о просмотре рекламы у ${user.username || user.firstName}`,
+            removedCount: originalCount
+        });
+    } catch (e) {
+        console.error('reset-ads-stats error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/admin/reset-all-ads-stats', adminAuthMiddleware, async (req, res) => {
+    try {
+        const users = await User.find({});
+        let totalRemoved = 0;
+        
+        for (const user of users) {
+            const removedCount = user.transactions.filter(tx => tx.name === 'Watch Ad Reward').length;
+            if (removedCount > 0) {
+                user.transactions = user.transactions.filter(tx => tx.name !== 'Watch Ad Reward');
+                user.adsAvailable = MAX_ADS_AVAILABLE;
+                user.adsLastRegen = new Date();
+                user.adsCooldownUntil = null;
+                await user.save();
+                totalRemoved += removedCount;
+            }
+        }
+        
+        res.json({
+            success: true,
+            message: `Удалено ${totalRemoved} записей о просмотре рекламы у всех пользователей`,
+            totalRemoved
+        });
+    } catch (e) {
+        console.error('reset-all-ads-stats error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/admin/give-ads-to-all', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { amount } = req.body;
+        
+        if (!amount || amount <= 0 || amount > 50) {
+            return res.status(400).json({ success: false, message: 'Укажите количество от 1 до 50' });
+        }
+        
+        const result = await User.updateMany(
+            {},
+            { 
+                $inc: { adsAvailable: amount },
+                $set: { adsLastRegen: new Date() }
+            }
+        );
+        
+        await User.updateMany(
+            { adsAvailable: { $gt: MAX_ADS_AVAILABLE } },
+            { $set: { adsAvailable: MAX_ADS_AVAILABLE } }
+        );
+        
+        res.json({
+            success: true,
+            message: `Выдано +${amount} рекламы ${result.modifiedCount} игрокам`,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (e) {
+        console.error('give-ads-to-all error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.put('/api/admin/ads-config', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { adReward, adCooldownSeconds } = req.body;
+        
+        let config = await GameConfig.findOne();
+        if (!config) {
+            config = new GameConfig();
+        }
+        
+        if (adReward !== undefined) config.adReward = adReward;
+        if (adCooldownSeconds !== undefined) config.adCooldown = adCooldownSeconds;
+        
+        await config.save();
+        
+        await notifyAdmins(`⚙️ <b>Изменены настройки рекламы</b>\n\n` +
+            `💰 Награда: ${adReward || config.adReward} MMO\n` +
+            `🔄 Кулдаун: ${adCooldownSeconds || config.adCooldown} сек`);
+        
+        await invalidateConfigCache();
+        
+        res.json({ success: true, message: 'Настройки рекламы обновлены' });
+    } catch (e) {
+        console.error('ads-config error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ============================================
+// MIDDLEWARE (ОСНОВНОЙ API) - ОПРЕДЕЛЕНИЕ
 // ============================================
 const authMiddleware = async (req, res, next) => {
     try {
@@ -1511,19 +1320,52 @@ const authMiddleware = async (req, res, next) => {
 };
 
 // ============================================
-// API ENDPOINTS
+// ПОЛУЧИТЬ СТАТИСТИКУ ПОЛЬЗОВАТЕЛЯ
 // ============================================
+app.get('/api/user/stats', authMiddleware, async (req, res) => {
+    try {
+        const user = req.user;
+        
+        const adsWatched = user.transactions.filter(tx => tx.name === 'Watch Ad Reward').length;
+        const adsEarned = user.transactions
+            .filter(tx => tx.name === 'Watch Ad Reward')
+            .reduce((sum, tx) => sum + tx.amount, 0);
+        
+        const totalWithdrawn = user.transactions
+            .filter(tx => tx.name && (tx.name.includes('Withdraw') || tx.name.includes('Вывод')) && tx.amount < 0)
+            .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+        
+        const referralEarned = user.totalReferralBonus || 0;
+        
+        res.json({
+            success: true,
+            stats: {
+                adsWatched,
+                adsEarned,
+                totalWithdrawn,
+                referralEarned
+            }
+        });
+    } catch (e) {
+        console.error('user stats error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
 
-// Health Check
+// ============================================
+// HEALTH CHECK
+// ============================================
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString(), db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' });
 });
 
 app.get('/', (req, res) => {
-    res.json({ success: true, message: '🚀 DNA MMO Backend работает!', version: '5.0.8' });
+    res.json({ success: true, message: '🚀 DNA MMO Backend работает!', version: '5.0.7' });
 });
 
-// Public endpoints
+// ============================================
+// ПУБЛИЧНЫЕ ЭНДПОИНТЫ
+// ============================================
 app.get('/api/game/config', async (req, res) => {
     try {
         const config = await getGameConfig();
@@ -1558,98 +1400,9 @@ app.get('/api/game/creatures', async (req, res) => {
     }
 });
 
-// User stats
-app.get('/api/user/stats', authMiddleware, async (req, res) => {
-    try {
-        const user = req.user;
-        
-        const adsWatched = user.transactions.filter(tx => tx.name === 'Watch Ad Reward').length;
-        const adsEarned = user.transactions
-            .filter(tx => tx.name === 'Watch Ad Reward')
-            .reduce((sum, tx) => sum + tx.amount, 0);
-        
-        const totalWithdrawn = user.transactions
-            .filter(tx => tx.name && (tx.name.includes('Withdraw') || tx.name.includes('Вывод')) && tx.amount < 0)
-            .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
-        
-        const referralEarned = user.totalReferralBonus || 0;
-        
-        res.json({
-            success: true,
-            stats: {
-                adsWatched,
-                adsEarned,
-                totalWithdrawn,
-                referralEarned
-            }
-        });
-    } catch (e) {
-        console.error('user stats error:', e);
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
-
-// Arena Stats
-app.get('/api/arena/stats', authMiddleware, async (req, res) => {
-    try {
-        const user = req.user;
-        const stats = user.pvpStats || {
-            rating: 500,
-            wins: 0,
-            losses: 0,
-            draws: 0,
-            league: 'BRONZE',
-            tokens: 3
-        };
-        
-        const lastReset = stats.lastReset ? new Date(stats.lastReset) : new Date();
-        const now = new Date();
-        if (now.toDateString() !== lastReset.toDateString()) {
-            stats.tokens = 3;
-            stats.lastReset = now;
-            user.pvpStats = stats;
-            await user.save();
-        }
-        
-        res.json({ success: true, stats });
-    } catch (e) {
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
-
-// Battle History
-app.get('/api/arena/history', authMiddleware, async (req, res) => {
-    try {
-        const user = req.user;
-        const history = user.battleHistory || [];
-        res.json({ success: true, history });
-    } catch (e) {
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
-
-// Buy Arena Tokens
-app.post('/api/arena/buy-tokens', authMiddleware, async (req, res) => {
-    try {
-        const { amount } = req.body;
-        const cost = amount * 500;
-        
-        if (req.user.balance < cost) {
-            return res.status(400).json({ success: false, message: 'Not enough MMO' });
-        }
-        
-        req.user.balance -= cost;
-        if (!req.user.pvpStats) req.user.pvpStats = { tokens: 0, rating: 500, wins: 0, losses: 0, draws: 0, league: 'BRONZE', lastReset: new Date() };
-        req.user.pvpStats.tokens += amount;
-        await req.user.save();
-        
-        res.json({ success: true, tokens: req.user.pvpStats.tokens, balance: req.user.balance });
-    } catch (e) {
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
-
-// AUTH
+// ============================================
+// AUTH (ИСПРАВЛЕННЫЙ)
+// ============================================
 const verifyTelegramData = (initData, botToken) => {
     try {
         const urlParams = new URLSearchParams(initData);
@@ -1708,16 +1461,7 @@ app.post('/api/auth/login', async (req, res) => {
                 photoUrl: userData.photo_url || '',
                 balance: 4000,
                 adsAvailable: MAX_ADS_AVAILABLE,
-                adsLastRegen: new Date(),
-                pvpStats: {
-                    rating: 500,
-                    wins: 0,
-                    losses: 0,
-                    draws: 0,
-                    league: 'BRONZE',
-                    tokens: 3,
-                    lastReset: new Date()
-                }
+                adsLastRegen: new Date()
             });
 
             let referrerInfo = null;
@@ -1776,7 +1520,393 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-// User Profile
+// ============================================
+// ДЕПОЗИТЫ
+// ============================================
+app.post('/api/wallet/get-payment-details', authMiddleware, async (req, res) => {
+    try {
+        const { amount } = req.body;
+        const user = req.user;
+        
+        if (amount < MIN_TRANSACTION_AMOUNT) {
+            return res.status(400).json({ success: false, message: `Минимальная сумма ${MIN_TRANSACTION_AMOUNT.toLocaleString()} MMO` });
+        }
+        
+        const walletAddress = process.env.TON_DEPOSIT_WALLET || 'UQAERj-q7eOitwIl9rHrgsb_6i35E6MwYoDwU0WeS8O5LBzX';
+        const generatedMemo = crypto.randomBytes(16).toString('hex');
+        
+        await PendingDeposit.create({
+            memo: generatedMemo,
+            telegramId: user.telegramId,
+            userId: user._id,
+            amount: amount
+        });
+        
+        res.json({
+            success: true,
+            wallet: walletAddress,
+            memo: generatedMemo,
+            amount: amount
+        });
+        
+    } catch (e) {
+        console.error('get-payment-details error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/wallet/create-deposit-request', authMiddleware, async (req, res) => {
+    try {
+        const { memo } = req.body;
+        const user = req.user;
+        
+        const pending = await PendingDeposit.findOne({ memo });
+        if (!pending) {
+            return res.status(404).json({ success: false, message: 'Данные платежа не найдены или истекли. Начните заново.' });
+        }
+        
+        if (pending.telegramId !== user.telegramId) {
+            return res.status(403).json({ success: false, message: 'Неверный мемо' });
+        }
+        
+        const pendingCount = await TransactionRequest.countDocuments({
+            telegramId: user.telegramId,
+            status: 'pending'
+        });
+        
+        if (pendingCount >= MAX_ACTIVE_REQUESTS) {
+            return res.status(400).json({ success: false, message: `У вас уже ${MAX_ACTIVE_REQUESTS} активных заявок` });
+        }
+        
+        const request = await TransactionRequest.create({
+            userId: user._id,
+            telegramId: user.telegramId,
+            type: 'deposit',
+            amount: pending.amount,
+            wallet: process.env.TON_DEPOSIT_WALLET,
+            memo: memo
+        });
+        
+        await PendingDeposit.deleteOne({ memo });
+        
+        const replyMarkup = {
+            inline_keyboard: [
+                [
+                    { text: "✅ ПОДТВЕРДИТЬ", callback_data: `approve_${request._id}` },
+                    { text: "❌ ОТКЛОНИТЬ", callback_data: `reject_${request._id}` }
+                ]
+            ]
+        };
+        
+        const adminMessage = `💎 <b>НОВАЯ ЗАЯВКА НА ДЕПОЗИТ</b>\n\n` +
+            `🆔 #${request._id.toString().slice(-8)}\n` +
+            `👤 ${user.username || user.firstName || user.telegramId}\n` +
+            `💰 Сумма: ${request.amount.toLocaleString()} MMO\n` +
+            `🏦 Кошелек TON: ${request.wallet}\n` +
+            `📝 Мемо: <code>${request.memo}</code>\n` +
+            `🕐 ${new Date().toLocaleString()}\n\n` +
+            `⚠️ Проверьте получение средств по мемо и подтвердите заявку.`;
+        
+        await notifyAdmins(adminMessage, replyMarkup);
+        
+        res.json({
+            success: true,
+            request,
+            message: 'Заявка создана! Администратор проверит платеж и начислит средства.'
+        });
+        
+    } catch (e) {
+        console.error('create-deposit-request error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ============================================
+// API ДЛЯ БОТА
+// ============================================
+app.get('/api/bot/user/:telegramId', async (req, res) => {
+    const botKey = req.headers['x-bot-key'];
+    if (!process.env.BOT_INTERNAL_KEY || botKey !== process.env.BOT_INTERNAL_KEY) {
+        return res.status(403).json({ success: false, message: 'Доступ запрещён' });
+    }
+    
+    try {
+        const user = await User.findOne({ telegramId: req.params.telegramId });
+        if (!user) {
+            return res.json({ success: false, message: 'User not found' });
+        }
+        res.json({
+            success: true,
+            user: {
+                telegramId: user.telegramId,
+                username: user.username,
+                firstName: user.firstName,
+                balance: user.balance,
+                level: user.level,
+                xp: user.xp,
+                mergeCount: user.mergeCount,
+                capsulesOpened: user.capsulesOpened,
+                inventorySlots: user.inventorySlots,
+                referralCode: user.referralCode,
+                referralCount: user.referralCount
+            }
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ============================================
+// ВЫВОДЫ
+// ============================================
+app.post('/api/wallet/withdraw-request', authMiddleware, async (req, res) => {
+    try {
+        const { amount, wallet } = req.body;
+        const user = req.user;
+        
+        if (amount < MIN_TRANSACTION_AMOUNT) {
+            return res.status(400).json({ success: false, message: `Минимальная сумма ${MIN_TRANSACTION_AMOUNT.toLocaleString()} MMO` });
+        }
+        
+        if (!wallet || wallet.trim().length < 20) {
+            return res.status(400).json({ success: false, message: 'Введите корректный TON кошелек (минимум 20 символов)' });
+        }
+        
+        if (user.balance < amount) {
+            return res.status(400).json({ success: false, message: 'Недостаточно средств' });
+        }
+        
+        const pendingCount = await TransactionRequest.countDocuments({
+            telegramId: user.telegramId,
+            status: 'pending'
+        });
+        
+        if (pendingCount >= MAX_ACTIVE_REQUESTS) {
+            return res.status(400).json({ success: false, message: `У вас уже ${MAX_ACTIVE_REQUESTS} активных заявок. Дождитесь обработки.` });
+        }
+        
+        const updatedUser = await User.findOneAndUpdate(
+            { _id: user._id, balance: { $gte: amount } },
+            {
+                $inc: { balance: -amount },
+                $push: {
+                    transactions: {
+                        $each: [{ 
+                            name: `Withdraw request: ${amount} MMO to ${wallet.slice(0, 10)}...`, 
+                            amount: -amount, 
+                            time: new Date() 
+                        }],
+                        $position: 0,
+                        $slice: 30
+                    }
+                }
+            },
+            { new: true }
+        );
+        
+        if (!updatedUser) {
+            return res.status(400).json({ success: false, message: 'Ошибка списания средств' });
+        }
+        
+        const request = await TransactionRequest.create({
+            userId: user._id,
+            telegramId: user.telegramId,
+            type: 'withdraw',
+            amount,
+            wallet: wallet.trim(),
+            status: 'pending'
+        });
+        
+        const replyMarkup = {
+            inline_keyboard: [
+                [
+                    { text: "✅ ПОДТВЕРДИТЬ", callback_data: `approve_${request._id}` },
+                    { text: "❌ ОТКЛОНИТЬ", callback_data: `reject_${request._id}` }
+                ]
+            ]
+        };
+        
+        const adminMessage = `💸 <b>НОВАЯ ЗАЯВКА НА ВЫВОД</b>\n\n` +
+            `🆔 #${request._id.toString().slice(-8)}\n` +
+            `👤 ${user.username || user.firstName || user.telegramId}\n` +
+            `💰 Сумма: ${amount.toLocaleString()} MMO\n` +
+            `🏦 TON Кошелек: <code>${wallet}</code>\n` +
+            `📊 Баланс после списания: ${updatedUser.balance.toLocaleString()} MMO\n` +
+            `🕐 ${new Date().toLocaleString()}\n\n` +
+            `⚠️ Средства уже списаны с баланса пользователя.\n` +
+            `Подтвердите вывод, чтобы отправить средства на кошелек.`;
+        
+        await notifyAdmins(adminMessage, replyMarkup);
+        
+        try {
+            await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: user.telegramId,
+                    text: `💸 <b>Заявка на вывод создана</b>\n\n` +
+                        `Сумма: -${amount.toLocaleString()} MMO\n` +
+                        `Кошелек: <code>${wallet}</code>\n` +
+                        `Статус: ⏳ Ожидает подтверждения администратора\n\n` +
+                        `После подтверждения средства будут отправлены на ваш кошелек.`,
+                    parse_mode: 'HTML'
+                })
+            });
+        } catch (e) {}
+        
+        res.json({ 
+            success: true, 
+            request, 
+            balance: updatedUser.balance,
+            message: 'Заявка создана, средства списаны. Ожидайте подтверждения администратора.' 
+        });
+        
+    } catch (e) {
+        console.error('withdraw-request error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ============================================
+// АДМИН ОБРАБОТКА ЗАЯВОК
+// ============================================
+app.post('/api/admin/transaction-request/:id', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { action, note } = req.body;
+        
+        const request = await TransactionRequest.findById(id);
+        if (!request) {
+            return res.status(404).json({ success: false, message: 'Заявка не найдена' });
+        }
+        
+        if (request.status !== 'pending') {
+            return res.status(400).json({ success: false, message: 'Заявка уже обработана' });
+        }
+        
+        const user = await User.findById(request.userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'Пользователь не найден' });
+        }
+        
+        if (action === 'approve') {
+            if (request.type === 'deposit') {
+                user.balance += request.amount;
+                addTransaction(user, `Deposit (Подтвержден)`, request.amount);
+                await user.save();
+                
+                if (user.referredBy) {
+                    const referrer = await User.findOne({ telegramId: user.referredBy });
+                    if (referrer) {
+                        const referralBonus = Math.floor(request.amount * REFERRAL_BONUS_PERCENT / 100);
+                        if (referralBonus > 0) {
+                            referrer.balance += referralBonus;
+                            referrer.totalReferralBonus = (referrer.totalReferralBonus || 0) + referralBonus;
+                            addTransaction(referrer, `Referral bonus from ${user.username || user.firstName || user.telegramId} (${REFERRAL_BONUS_PERCENT}% of deposit)`, referralBonus);
+                            await referrer.save();
+                            
+                            await sendNotificationToUser(referrer.telegramId, 
+                                `🎉 <b>Реферальный бонус!</b>\n\n` +
+                                `Ваш друг ${user.username || user.firstName || 'игрок'} пополнил баланс на ${request.amount.toLocaleString()} MMO\n` +
+                                `Вы получили ${REFERRAL_BONUS_PERCENT}%: +${referralBonus.toLocaleString()} MMO\n\n` +
+                                `💰 Ваш баланс: ${referrer.balance.toLocaleString()} MMO\n` +
+                                `🏆 Всего получено бонусов: ${referrer.totalReferralBonus.toLocaleString()} MMO`
+                            );
+                            
+                            console.log(`✅ Реферальный бонус: ${referrer.username || referrer.firstName} получил +${referralBonus} MMO за депозит ${user.telegramId}`);
+                        }
+                    }
+                }
+                
+                const successMessage = `✅ <b>Депозит подтвержден!</b>\n\n` +
+                    `┌─────────────────────┐\n` +
+                    `│ 💰 Сумма: +${request.amount.toLocaleString()} MMO\n` +
+                    `│ 💳 Баланс: ${user.balance.toLocaleString()} MMO\n` +
+                    `└─────────────────────┘\n\n` +
+                    `Спасибо за пополнение! 🎉`;
+                await sendNotificationToUser(user.telegramId, successMessage);
+                
+            } else if (request.type === 'withdraw') {
+                const successMessage = `✅ <b>Вывод подтвержден!</b>\n\n` +
+                    `┌─────────────────────────┐\n` +
+                    `│ 💰 Сумма: -${request.amount.toLocaleString()} MMO\n` +
+                    `│ 💳 Баланс: ${user.balance.toLocaleString()} MMO\n` +
+                    `│ 🏦 Кошелек: ${request.wallet}\n` +
+                    `└─────────────────────────┘\n\n` +
+                    `⏱ Средства поступят в течение 1-30 минут.`;
+                await sendNotificationToUser(user.telegramId, successMessage);
+            }
+            
+            request.status = 'approved';
+            
+        } else if (action === 'reject') {
+            
+            if (request.type === 'withdraw') {
+                await User.findByIdAndUpdate(user._id, {
+                    $inc: { balance: request.amount },
+                    $push: {
+                        transactions: {
+                            $each: [{ 
+                                name: `Withdraw rejected: refund ${request.amount} MMO`, 
+                                amount: request.amount, 
+                                time: new Date() 
+                            }],
+                            $position: 0,
+                            $slice: 30
+                        }
+                    }
+                });
+                
+                const rejectMessage = `❌ <b>Вывод отклонен</b>\n\n` +
+                    `Средства возвращены на баланс.`;
+                await sendNotificationToUser(user.telegramId, rejectMessage);
+                
+            } else if (request.type === 'deposit') {
+                const rejectMessage = `❌ Депозит отклонен\n\n` +
+                    `💰 Сумма: ${request.amount.toLocaleString()} MMO\n` +
+                    `📝 Причина: ${note || 'Свяжитесь с администратором'}\n\n` +
+                    `Если вы отправляли средства, обратитесь к администратору.`;
+                await sendNotificationToUser(user.telegramId, rejectMessage);
+            }
+            
+            request.status = 'rejected';
+        }
+        
+        request.adminNote = note || request.adminNote;
+        request.processedAt = new Date();
+        await request.save();
+        
+        await notifyAdmins(`🔄 <b>ЗАЯВКА ОБРАБОТАНА</b>\n\n` +
+            `🆔 #${request._id.toString().slice(-8)}\n` +
+            `👤 ${user.username || user.firstName || user.telegramId}\n` +
+            `💰 Сумма: ${request.amount.toLocaleString()} MMO\n` +
+            `📊 Статус: ${action === 'approve' ? '✅ ПОДТВЕРЖДЕНА' : '❌ ОТКЛОНЕНА'}\n` +
+            `🕐 ${new Date().toLocaleString()}`);
+        
+        res.json({ success: true, request, message: `Заявка ${action === 'approve' ? 'подтверждена' : 'отклонена'}` });
+        
+    } catch (e) {
+        console.error('admin transaction request error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/wallet/requests', authMiddleware, async (req, res) => {
+    try {
+        const requests = await TransactionRequest.find({
+            telegramId: req.user.telegramId,
+            status: 'pending'
+        }).sort({ createdAt: -1 });
+        
+        res.json({ success: true, requests });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ============================================
+// USER PROFILE
+// ============================================
 app.get('/api/user/profile', authMiddleware, async (req, res) => {
     try {
         const user = req.user;
@@ -1799,7 +1929,6 @@ app.get('/api/user/profile', authMiddleware, async (req, res) => {
     }
 });
 
-// Collect Income
 app.post('/api/game/collect-income', authMiddleware, async (req, res) => {
     try {
         const user = req.user;
@@ -1821,7 +1950,9 @@ app.post('/api/game/collect-income', authMiddleware, async (req, res) => {
     }
 });
 
-// Referrals
+// ============================================
+// РЕФЕРАЛЬНАЯ ИНФОРМАЦИЯ
+// ============================================
 app.get('/api/user/referrals', authMiddleware, async (req, res) => {
     try {
         const user = req.user;
@@ -1865,7 +1996,9 @@ async function getQualifiedReferralsCount(telegramId) {
     return qualifiedUsers.length;
 }
 
-// Claim Friend Reward
+// ============================================
+// НАГРАДЫ ЗА ДРУЗЕЙ
+// ============================================
 app.post('/api/game/claim-friend-reward', authMiddleware, async (req, res) => {
     try {
         const { requiredFriends, creatureId } = req.body;
@@ -1924,7 +2057,9 @@ app.post('/api/game/claim-friend-reward', authMiddleware, async (req, res) => {
     }
 });
 
-// Open Capsule
+// ============================================
+// GAME: OPEN CAPSULE
+// ============================================
 app.post('/api/game/open-capsule', authMiddleware, async (req, res) => {
     try {
         const { type } = req.body;
@@ -2017,7 +2152,9 @@ app.post('/api/game/open-capsule', authMiddleware, async (req, res) => {
     }
 });
 
-// Merge
+// ============================================
+// GAME: MERGE
+// ============================================
 app.post('/api/game/merge', authMiddleware, async (req, res) => {
     try {
         const { creatureId } = req.body;
@@ -2111,7 +2248,9 @@ app.post('/api/game/merge', authMiddleware, async (req, res) => {
     }
 });
 
-// Upgrade Inventory
+// ============================================
+// GAME: UPGRADE INVENTORY
+// ============================================
 app.post('/api/game/upgrade-inventory', authMiddleware, async (req, res) => {
     try {
         const user = req.user;
@@ -2154,7 +2293,9 @@ app.post('/api/game/upgrade-inventory', authMiddleware, async (req, res) => {
     }
 });
 
-// Watch Ad
+// ============================================
+// GAME: WATCH AD (НОВАЯ ВЕРСИЯ)
+// ============================================
 app.post('/api/game/watch-ad', authMiddleware, async (req, res) => {
     const userId = req.user.telegramId;
     if (adLocks.get(userId)) {
@@ -2253,7 +2394,9 @@ app.post('/api/game/watch-ad', authMiddleware, async (req, res) => {
     }
 });
 
-// Ads Status
+// ============================================
+// GAME: GET ADS STATUS (НОВАЯ ВЕРСИЯ)
+// ============================================
 app.get('/api/game/ads-status', authMiddleware, async (req, res) => {
     try {
         const user = req.user;
@@ -2285,7 +2428,31 @@ app.get('/api/game/ads-status', authMiddleware, async (req, res) => {
     }
 });
 
-// Special Quest Complete
+// ============================================
+// ФОНОВАЯ РЕГЕНЕРАЦИЯ РЕКЛАМЫ (каждые 5 минут)
+// ============================================
+setInterval(async () => {
+    try {
+        const now = Date.now();
+        const users = await User.find({
+            adsAvailable: { $lt: MAX_ADS_AVAILABLE },
+            adsLastRegen: { $lte: new Date(now - ADS_REGEN_INTERVAL) }
+        }).limit(100);
+        
+        for (const user of users) {
+            await regenerateAds(user);
+        }
+        
+        if (users.length > 0) {
+        }
+    } catch (e) {
+        console.error('Фоновая регенерация ошибка:', e);
+    }
+}, 5 * 60 * 1000);
+
+// ============================================
+// GAME: SPECIAL QUEST COMPLETE
+// ============================================
 app.post('/api/game/complete-special-quest', authMiddleware, async (req, res) => {
     try {
         const { questId } = req.body;
@@ -2337,42 +2504,9 @@ app.post('/api/game/complete-special-quest', authMiddleware, async (req, res) =>
     }
 });
 
-// Marketplace endpoints (simplified)
-app.get('/api/marketplace/listings', async (req, res) => {
-    try {
-        if (Date.now() < marketplaceListingsCache.expiresAt && marketplaceListingsCache.data) {
-            return res.json({ success: true, listings: marketplaceListingsCache.data });
-        }
-        
-        const listings = await Marketplace.find({ active: true })
-            .sort({ createdAt: -1 })
-            .limit(50)
-            .lean();
-            
-        marketplaceListingsCache = {
-            data: listings,
-            expiresAt: Date.now() + 60 * 1000
-        };
-        
-        res.json({ success: true, listings });
-    } catch (e) {
-        res.status(500).json({ success: false, message: 'Ошибка сервера' });
-    }
-});
-
-app.get('/api/marketplace/my-listings', authMiddleware, async (req, res) => {
-    try {
-        const listings = await Marketplace.find({
-            sellerTgId: req.user.telegramId,
-            active: true
-        }).sort({ createdAt: -1 }).lean();
-
-        res.json({ success: true, listings });
-    } catch (e) {
-        res.status(500).json({ success: false, message: 'Ошибка сервера' });
-    }
-});
-
+// ============================================
+// MARKETPLACE
+// ============================================
 app.post('/api/marketplace/list', authMiddleware, async (req, res) => {
     try {
         const { creatureId, price } = req.body;
@@ -2381,6 +2515,7 @@ app.post('/api/marketplace/list', authMiddleware, async (req, res) => {
         const config = await getGameConfig();
         const limits = config.limits;
 
+        // Проверка на Common
         const creature = await getCreature(creatureId);
         if (!creature) return res.status(400).json({ success: false, message: 'Существо не найдено' });
         
@@ -2561,6 +2696,41 @@ app.post('/api/marketplace/buy', authMiddleware, async (req, res) => {
     }
 });
 
+app.get('/api/marketplace/listings', async (req, res) => {
+    try {
+        if (Date.now() < marketplaceListingsCache.expiresAt && marketplaceListingsCache.data) {
+            return res.json({ success: true, listings: marketplaceListingsCache.data });
+        }
+        
+        const listings = await Marketplace.find({ active: true })
+            .sort({ createdAt: -1 })
+            .limit(50)
+            .lean();
+            
+        marketplaceListingsCache = {
+            data: listings,
+            expiresAt: Date.now() + 60 * 1000
+        };
+        
+        res.json({ success: true, listings });
+    } catch (e) {
+        res.status(500).json({ success: false, message: 'Ошибка сервера' });
+    }
+});
+
+app.get('/api/marketplace/my-listings', authMiddleware, async (req, res) => {
+    try {
+        const listings = await Marketplace.find({
+            sellerTgId: req.user.telegramId,
+            active: true
+        }).sort({ createdAt: -1 }).lean();
+
+        res.json({ success: true, listings });
+    } catch (e) {
+        res.status(500).json({ success: false, message: 'Ошибка сервера' });
+    }
+});
+
 app.post('/api/marketplace/cancel', authMiddleware, async (req, res) => {
     try {
         const { listingId } = req.body;
@@ -2608,7 +2778,9 @@ app.post('/api/marketplace/cancel', authMiddleware, async (req, res) => {
     }
 });
 
-// Leaderboard
+// ============================================
+// LEADERBOARD
+// ============================================
 app.get('/api/user/leaderboard', authMiddleware, async (req, res) => {
     try {
         if (Date.now() < leaderboardCache.expiresAt && leaderboardCache.data) {
@@ -2653,250 +2825,9 @@ app.get('/api/user/leaderboard', authMiddleware, async (req, res) => {
     }
 });
 
-// Deposit endpoints (simplified)
-app.post('/api/wallet/get-payment-details', authMiddleware, async (req, res) => {
-    try {
-        const { amount } = req.body;
-        const user = req.user;
-        
-        if (amount < MIN_TRANSACTION_AMOUNT) {
-            return res.status(400).json({ success: false, message: `Минимальная сумма ${MIN_TRANSACTION_AMOUNT.toLocaleString()} MMO` });
-        }
-        
-        const walletAddress = process.env.TON_DEPOSIT_WALLET || 'UQAERj-q7eOitwIl9rHrgsb_6i35E6MwYoDwU0WeS8O5LBzX';
-        const generatedMemo = crypto.randomBytes(16).toString('hex');
-        
-        await PendingDeposit.create({
-            memo: generatedMemo,
-            telegramId: user.telegramId,
-            userId: user._id,
-            amount: amount
-        });
-        
-        res.json({
-            success: true,
-            wallet: walletAddress,
-            memo: generatedMemo,
-            amount: amount
-        });
-        
-    } catch (e) {
-        console.error('get-payment-details error:', e);
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
-
-app.post('/api/wallet/create-deposit-request', authMiddleware, async (req, res) => {
-    try {
-        const { memo } = req.body;
-        const user = req.user;
-        
-        const pending = await PendingDeposit.findOne({ memo });
-        if (!pending) {
-            return res.status(404).json({ success: false, message: 'Данные платежа не найдены или истекли. Начните заново.' });
-        }
-        
-        if (pending.telegramId !== user.telegramId) {
-            return res.status(403).json({ success: false, message: 'Неверный мемо' });
-        }
-        
-        const pendingCount = await TransactionRequest.countDocuments({
-            telegramId: user.telegramId,
-            status: 'pending'
-        });
-        
-        if (pendingCount >= MAX_ACTIVE_REQUESTS) {
-            return res.status(400).json({ success: false, message: `У вас уже ${MAX_ACTIVE_REQUESTS} активных заявок` });
-        }
-        
-        const request = await TransactionRequest.create({
-            userId: user._id,
-            telegramId: user.telegramId,
-            type: 'deposit',
-            amount: pending.amount,
-            wallet: process.env.TON_DEPOSIT_WALLET,
-            memo: memo
-        });
-        
-        await PendingDeposit.deleteOne({ memo });
-        
-        const replyMarkup = {
-            inline_keyboard: [
-                [
-                    { text: "✅ ПОДТВЕРДИТЬ", callback_data: `approve_${request._id}` },
-                    { text: "❌ ОТКЛОНИТЬ", callback_data: `reject_${request._id}` }
-                ]
-            ]
-        };
-        
-        const adminMessage = `💎 <b>НОВАЯ ЗАЯВКА НА ДЕПОЗИТ</b>\n\n` +
-            `🆔 #${request._id.toString().slice(-8)}\n` +
-            `👤 ${user.username || user.firstName || user.telegramId}\n` +
-            `💰 Сумма: ${request.amount.toLocaleString()} MMO\n` +
-            `🏦 Кошелек TON: ${request.wallet}\n` +
-            `📝 Мемо: <code>${request.memo}</code>\n` +
-            `🕐 ${new Date().toLocaleString()}\n\n` +
-            `⚠️ Проверьте получение средств по мемо и подтвердите заявку.`;
-        
-        await notifyAdmins(adminMessage, replyMarkup);
-        
-        res.json({
-            success: true,
-            request,
-            message: 'Заявка создана! Администратор проверит платеж и начислит средства.'
-        });
-        
-    } catch (e) {
-        console.error('create-deposit-request error:', e);
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
-
-app.post('/api/wallet/withdraw-request', authMiddleware, async (req, res) => {
-    try {
-        const { amount, wallet } = req.body;
-        const user = req.user;
-        
-        if (amount < MIN_TRANSACTION_AMOUNT) {
-            return res.status(400).json({ success: false, message: `Минимальная сумма ${MIN_TRANSACTION_AMOUNT.toLocaleString()} MMO` });
-        }
-        
-        if (!wallet || wallet.trim().length < 20) {
-            return res.status(400).json({ success: false, message: 'Введите корректный TON кошелек (минимум 20 символов)' });
-        }
-        
-        if (user.balance < amount) {
-            return res.status(400).json({ success: false, message: 'Недостаточно средств' });
-        }
-        
-        const pendingCount = await TransactionRequest.countDocuments({
-            telegramId: user.telegramId,
-            status: 'pending'
-        });
-        
-        if (pendingCount >= MAX_ACTIVE_REQUESTS) {
-            return res.status(400).json({ success: false, message: `У вас уже ${MAX_ACTIVE_REQUESTS} активных заявок. Дождитесь обработки.` });
-        }
-        
-        const updatedUser = await User.findOneAndUpdate(
-            { _id: user._id, balance: { $gte: amount } },
-            {
-                $inc: { balance: -amount },
-                $push: {
-                    transactions: {
-                        $each: [{ 
-                            name: `Withdraw request: ${amount} MMO to ${wallet.slice(0, 10)}...`, 
-                            amount: -amount, 
-                            time: new Date() 
-                        }],
-                        $position: 0,
-                        $slice: 30
-                    }
-                }
-            },
-            { new: true }
-        );
-        
-        if (!updatedUser) {
-            return res.status(400).json({ success: false, message: 'Ошибка списания средств' });
-        }
-        
-        const request = await TransactionRequest.create({
-            userId: user._id,
-            telegramId: user.telegramId,
-            type: 'withdraw',
-            amount,
-            wallet: wallet.trim(),
-            status: 'pending'
-        });
-        
-        const replyMarkup = {
-            inline_keyboard: [
-                [
-                    { text: "✅ ПОДТВЕРДИТЬ", callback_data: `approve_${request._id}` },
-                    { text: "❌ ОТКЛОНИТЬ", callback_data: `reject_${request._id}` }
-                ]
-            ]
-        };
-        
-        const adminMessage = `💸 <b>НОВАЯ ЗАЯВКА НА ВЫВОД</b>\n\n` +
-            `🆔 #${request._id.toString().slice(-8)}\n` +
-            `👤 ${user.username || user.firstName || user.telegramId}\n` +
-            `💰 Сумма: ${amount.toLocaleString()} MMO\n` +
-            `🏦 TON Кошелек: <code>${wallet}</code>\n` +
-            `📊 Баланс после списания: ${updatedUser.balance.toLocaleString()} MMO\n` +
-            `🕐 ${new Date().toLocaleString()}\n\n` +
-            `⚠️ Средства уже списаны с баланса пользователя.\n` +
-            `Подтвердите вывод, чтобы отправить средства на кошелек.`;
-        
-        await notifyAdmins(adminMessage, replyMarkup);
-        
-        try {
-            await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendMessage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    chat_id: user.telegramId,
-                    text: `💸 <b>Заявка на вывод создана</b>\n\n` +
-                        `Сумма: -${amount.toLocaleString()} MMO\n` +
-                        `Кошелек: <code>${wallet}</code>\n` +
-                        `Статус: ⏳ Ожидает подтверждения администратора\n\n` +
-                        `После подтверждения средства будут отправлены на ваш кошелек.`,
-                    parse_mode: 'HTML'
-                })
-            });
-        } catch (e) {}
-        
-        res.json({ 
-            success: true, 
-            request, 
-            balance: updatedUser.balance,
-            message: 'Заявка создана, средства списаны. Ожидайте подтверждения администратора.' 
-        });
-        
-    } catch (e) {
-        console.error('withdraw-request error:', e);
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
-
-app.get('/api/wallet/requests', authMiddleware, async (req, res) => {
-    try {
-        const requests = await TransactionRequest.find({
-            telegramId: req.user.telegramId,
-            status: 'pending'
-        }).sort({ createdAt: -1 });
-        
-        res.json({ success: true, requests });
-    } catch (e) {
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
-
 // ============================================
-// BACKGROUND TASKS
+// ИНИЦИАЛИЗАЦИЯ СУЩЕСТВ
 // ============================================
-
-setInterval(async () => {
-    try {
-        const now = Date.now();
-        const users = await User.find({
-            adsAvailable: { $lt: MAX_ADS_AVAILABLE },
-            adsLastRegen: { $lte: new Date(now - ADS_REGEN_INTERVAL) }
-        }).limit(100);
-        
-        for (const user of users) {
-            await regenerateAds(user);
-        }
-    } catch (e) {
-        console.error('Фоновая регенерация ошибка:', e);
-    }
-}, 5 * 60 * 1000);
-
-// ============================================
-// INITIALIZATION
-// ============================================
-
 async function initCreatures() {
     const staticCreatures = [
         { id: 'duck_c', name: 'Duck', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/dc.png', incomeBase: 2, desc: 'Young waterfowl.' },
@@ -2943,10 +2874,626 @@ async function initCreatures() {
     console.log('✅ Существа инициализированы');
 }
 
-// Setup Arena WebSocket Server
-setupArenaServer();
+// ============================================
+// АДМИН-ПАНЕЛЬ API (КОРОТКАЯ ВЕРСИЯ)
+// ============================================
+app.get('/api/admin/special-quests', adminAuthMiddleware, async (req, res) => {
+    try {
+        const config = await getGameConfig();
+        res.json({ success: true, specialQuests: config.specialQuests });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
 
-// Start server
+app.post('/api/admin/special-quests', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { id, title, description, icon, reward, type, link, required_count, isActive } = req.body;
+        
+        if (!id || !title || !reward || !type) {
+            return res.status(400).json({ success: false, message: 'Не все обязательные поля заполнены' });
+        }
+        
+        const config = await getGameConfig();
+        
+        if (config.specialQuests.some(q => q.id === id)) {
+            return res.status(400).json({ success: false, message: 'Квест с таким ID уже существует' });
+        }
+        
+        config.specialQuests.push({
+            id, title, description: description || '', icon: icon || '🎯', reward, type,
+            link: link || '', required_count: required_count || 1, isActive: isActive !== false
+        });
+        
+        await config.save();
+        await invalidateConfigCache();
+        
+        res.json({ success: true, specialQuests: config.specialQuests });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.put('/api/admin/special-quests/:id', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { title, description, icon, reward, type, link, required_count, isActive } = req.body;
+        
+        const config = await getGameConfig();
+        const quest = config.specialQuests.find(q => q.id === id);
+        
+        if (!quest) {
+            return res.status(404).json({ success: false, message: 'Квест не найден' });
+        }
+        
+        if (title) quest.title = title;
+        if (description !== undefined) quest.description = description;
+        if (icon) quest.icon = icon;
+        if (reward) quest.reward = reward;
+        if (type) quest.type = type;
+        if (link !== undefined) quest.link = link;
+        if (required_count) quest.required_count = required_count;
+        if (isActive !== undefined) quest.isActive = isActive;
+        
+        await config.save();
+        await invalidateConfigCache();
+        
+        res.json({ success: true, specialQuests: config.specialQuests });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.delete('/api/admin/special-quests/:id', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const config = await getGameConfig();
+        
+        const questIndex = config.specialQuests.findIndex(q => q.id === id);
+        if (questIndex === -1) {
+            return res.status(404).json({ success: false, message: 'Квест не найден' });
+        }
+        
+        config.specialQuests.splice(questIndex, 1);
+        await config.save();
+        await invalidateConfigCache();
+        
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/admin/users', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { search, limit = 50, skip = 0 } = req.query;
+        let query = {};
+        if (search) {
+            const escapedSearch = escapeRegex(search);
+            query = {
+                $or: [
+                    { telegramId: { $regex: escapedSearch, $options: 'i' } },
+                    { username: { $regex: escapedSearch, $options: 'i' } },
+                    { firstName: { $regex: escapedSearch, $options: 'i' } }
+                ]
+            };
+        }
+        const users = await User.find(query)
+            .sort({ createdAt: -1 })
+            .skip(parseInt(skip))
+            .limit(parseInt(limit))
+            .select('-transactions');
+        const total = await User.countDocuments(query);
+        res.json({ success: true, users, total });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/admin/users/:id', adminAuthMiddleware, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'Пользователь не найден' });
+        
+        let inventory = await Inventory.find({ telegramId: user.telegramId }).lean();
+        inventory = await Promise.all(inventory.map(async (item) => {
+            const creature = await getCreature(item.creatureId);
+            return { ...item, name: creature?.name || item.creatureId, icon: creature?.icon || '🧬', incomeBase: creature?.incomeBase || 1 };
+        }));
+        
+        const referrals = await User.find({ referredBy: user.telegramId }).select('username firstName balance createdAt');
+        
+        const adsWatched = user.transactions.filter(tx => tx.name === 'Watch Ad Reward').length;
+        const adsEarned = user.transactions
+            .filter(tx => tx.name === 'Watch Ad Reward')
+            .reduce((sum, tx) => sum + tx.amount, 0);
+        
+        res.json({ 
+            success: true, 
+            user: formatUser(user), 
+            inventory, 
+            referrals,
+            adsWatched,
+            adsEarned
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.put('/api/admin/users/:id/balance', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { amount, reason } = req.body;
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'Пользователь не найден' });
+        
+        if (typeof amount !== 'number' || isNaN(amount)) {
+            return res.status(400).json({ success: false, message: 'Неверная сумма' });
+        }
+        if (Math.abs(amount) > 1000000) {
+            return res.status(400).json({ success: false, message: 'Слишком большая сумма' });
+        }
+        if (user.balance + amount < 0) {
+            return res.status(400).json({ success: false, message: 'Баланс не может быть отрицательным' });
+        }
+        
+        user.balance += amount;
+        addTransaction(user, `Admin: ${reason || 'Изменение баланса'} (${amount > 0 ? '+' : ''}${amount})`, amount);
+        await user.save();
+        
+        leaderboardCache = { data: null, expiresAt: 0 };
+        
+        res.json({ success: true, newBalance: user.balance });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/admin/users/:id/give-item', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { creatureId, count = 1 } = req.body;
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'Пользователь не найден' });
+        
+        const creature = await getCreature(creatureId);
+        if (!creature) return res.status(400).json({ success: false, message: 'Существо не найдено' });
+        
+        const inventory = await Inventory.find({ telegramId: user.telegramId });
+        const usedSlots = inventory.reduce((sum, i) => sum + i.count, 0);
+        if (usedSlots + count > user.inventorySlots) {
+            return res.status(400).json({ success: false, message: 'У пользователя недостаточно места в инвентаре' });
+        }
+        
+        let invItem = await Inventory.findOne({ telegramId: user.telegramId, creatureId });
+        if (invItem) {
+            invItem.count += count;
+            await invItem.save();
+        } else {
+            await Inventory.create({ userId: user._id, telegramId: user.telegramId, creatureId, count });
+        }
+        
+        if (!user.discovered.includes(creatureId)) {
+            user.discovered.push(creatureId);
+            await user.save();
+        }
+        
+        invalidateInventoryCache(user.telegramId);
+        
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.delete('/api/admin/users/:id/item', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { creatureId, count = 1 } = req.body;
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'Пользователь не найден' });
+        
+        const invItem = await Inventory.findOne({ telegramId: user.telegramId, creatureId });
+        if (!invItem || invItem.count < count) {
+            return res.status(400).json({ success: false, message: 'У пользователя нет столько существ' });
+        }
+        
+        invItem.count -= count;
+        if (invItem.count <= 0) {
+            await invItem.deleteOne();
+        } else {
+            await invItem.save();
+        }
+        
+        invalidateInventoryCache(user.telegramId);
+        
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.put('/api/admin/users/:id/ban', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { isBanned, reason } = req.body;
+        const userToBan = await User.findById(req.params.id);
+        if (!userToBan) return res.status(404).json({ success: false, message: 'Пользователь не найден' });
+        
+        userToBan.isBanned = isBanned;
+        userToBan.banReason = reason || '';
+        await userToBan.save();
+        
+        leaderboardCache = { data: null, expiresAt: 0 };
+        
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/admin/users/:id/reset', adminAuthMiddleware, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'Пользователь не найден' });
+        
+        await Inventory.deleteMany({ telegramId: user.telegramId });
+        user.balance = 4000;
+        user.xp = 0;
+        user.level = 1;
+        user.mergeCount = 0;
+        user.capsulesOpened = 0;
+        user.discovered = [];
+        user.completedSpecialQuests = [];
+        await user.save();
+        
+        leaderboardCache = { data: null, expiresAt: 0 };
+        
+        invalidateInventoryCache(user.telegramId);
+        
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/admin/creatures', adminAuthMiddleware, async (req, res) => {
+    try {
+        const creatures = await Creature.find().sort({ rarity: 1, name: 1 });
+        res.json({ success: true, creatures });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/admin/creatures', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { id, name, rarity, icon, incomeBase, desc } = req.body;
+        if (!id || !name || !rarity || !incomeBase) {
+            return res.status(400).json({ success: false, message: 'Не все поля заполнены' });
+        }
+        const existing = await Creature.findOne({ $or: [{ id }, { name }] });
+        if (existing) {
+            return res.status(400).json({ success: false, message: 'Существо с таким id или именем уже существует' });
+        }
+        const creature = await Creature.create({ id, name, rarity, icon: icon || '🧬', incomeBase, desc: desc || '' });
+        await loadCreaturesToCache();
+        res.json({ success: true, creature });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.put('/api/admin/creatures/:id', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { name, rarity, icon, incomeBase, desc, isActive } = req.body;
+        const creature = await Creature.findOne({ id: req.params.id });
+        if (!creature) return res.status(404).json({ success: false, message: 'Существо не найдено' });
+        
+        if (name) creature.name = name;
+        if (rarity) creature.rarity = rarity;
+        if (icon) creature.icon = icon;
+        if (incomeBase) creature.incomeBase = incomeBase;
+        if (desc !== undefined) creature.desc = desc;
+        if (isActive !== undefined) creature.isActive = isActive;
+        await creature.save();
+        await loadCreaturesToCache();
+        
+        res.json({ success: true, creature });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.delete('/api/admin/creatures/:id', adminAuthMiddleware, async (req, res) => {
+    try {
+        const creature = await Creature.findOne({ id: req.params.id });
+        if (!creature) return res.status(404).json({ success: false, message: 'Существо не найдено' });
+        
+        const inInventory = await Inventory.findOne({ creatureId: creature.id });
+        if (inInventory) {
+            return res.status(400).json({ success: false, message: 'Нельзя удалить существо, оно есть у игроков' });
+        }
+        
+        await creature.deleteOne();
+        await loadCreaturesToCache();
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/admin/config', adminAuthMiddleware, async (req, res) => {
+    try {
+        const config = await getGameConfig();
+        res.json({ success: true, config });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.put('/api/admin/config', adminAuthMiddleware, async (req, res) => {
+    try {
+        let config = await GameConfig.findOne();
+        if (!config) config = new GameConfig();
+        
+        if (req.body.capsuleCosts) config.capsuleCosts = { ...config.capsuleCosts, ...req.body.capsuleCosts };
+        if (req.body.capsuleRarities) config.capsuleRarities = req.body.capsuleRarities;
+        if (req.body.adReward !== undefined) config.adReward = req.body.adReward;
+        if (req.body.adCooldown !== undefined) config.adCooldown = req.body.adCooldown;
+        if (req.body.upgradeBaseCost !== undefined) config.upgradeBaseCost = req.body.upgradeBaseCost;
+        if (req.body.upgradeMultiplier !== undefined) config.upgradeMultiplier = req.body.upgradeMultiplier;
+        if (req.body.limits) config.limits = { ...config.limits, ...req.body.limits };
+        if (req.body.specialQuests) config.specialQuests = req.body.specialQuests;
+        config.updatedAt = new Date();
+        await config.save();
+        
+        await invalidateConfigCache();
+        
+        res.json({ success: true, config });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/admin/stats', adminAuthMiddleware, async (req, res) => {
+    try {
+        if (cachedAdminStats.expiresAt > Date.now() && cachedAdminStats.data) {
+            return res.json({ success: true, stats: cachedAdminStats.data });
+        }
+        
+        const totalUsers = await User.countDocuments();
+        const bannedUsers = await User.countDocuments({ isBanned: true });
+        
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const newUsersLast7Days = await User.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
+        
+        const oneDayAgo = new Date();
+        oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+        const activeToday = await User.countDocuments({ lastLogin: { $gte: oneDayAgo } });
+        
+        const aggregated = await User.aggregate([{
+            $group: {
+                _id: null,
+                totalBalance: { $sum: "$balance" },
+                avgLevel: { $avg: "$level" },
+                totalMerges: { $sum: "$mergeCount" },
+                totalCapsules: { $sum: "$capsulesOpened" }
+            }
+        }]);
+        
+        const agg = aggregated[0] || { totalBalance: 0, avgLevel: 1, totalMerges: 0, totalCapsules: 0 };
+        
+        const stats = {
+            totalUsers,
+            bannedUsers,
+            activeToday,
+            newUsersLast7Days,
+            totalBalance: agg.totalBalance,
+            avgLevel: agg.avgLevel,
+            totalMerges: agg.totalMerges,
+            totalCapsules: agg.totalCapsules
+        };
+        
+        cachedAdminStats = {
+            data: stats,
+            expiresAt: Date.now() + ADMIN_STATS_CACHE_TTL
+        };
+        
+        res.json({ success: true, stats });
+    } catch (e) {
+        console.error('admin stats error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/admin/give-to-all', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { type, amount, creatureId } = req.body;
+        
+        if (type === 'coins' && amount) {
+            if (Math.abs(amount) > 1000000) {
+                return res.status(400).json({ success: false, message: 'Слишком большая сумма' });
+            }
+            const result = await User.updateMany({}, { $inc: { balance: amount } });
+            leaderboardCache = { data: null, expiresAt: 0 };
+            res.json({ success: true, message: `Выдано ${amount} MMO ${result.modifiedCount} игрокам` });
+        } 
+        else if (type === 'creature' && creatureId) {
+            const creature = await getCreature(creatureId);
+            if (!creature) return res.status(400).json({ success: false, message: 'Существо не найдено' });
+            
+            let count = 0;
+            const batchSize = 100;
+            let skip = 0;
+            let hasMore = true;
+            
+            while (hasMore) {
+                const users = await User.find({})
+                    .select('_id telegramId inventorySlots')
+                    .skip(skip)
+                    .limit(batchSize)
+                    .lean();
+                
+                if (users.length === 0) {
+                    hasMore = false;
+                    break;
+                }
+                
+                const bulkOps = [];
+                for (const user of users) {
+                    const inventory = await Inventory.find({ telegramId: user.telegramId });
+                    const usedSlots = inventory.reduce((sum, i) => sum + i.count, 0);
+                    if (usedSlots >= user.inventorySlots) continue;
+                    
+                    bulkOps.push({
+                        updateOne: {
+                            filter: { telegramId: user.telegramId, creatureId },
+                            update: { $inc: { count: 1 } },
+                            upsert: true
+                        }
+                    });
+                    
+                    if (!user.discovered?.includes(creatureId)) {
+                        await User.updateOne(
+                            { _id: user._id },
+                            { $addToSet: { discovered: creatureId } }
+                        );
+                    }
+                    count++;
+                }
+                
+                if (bulkOps.length > 0) {
+                    await Inventory.bulkWrite(bulkOps);
+                }
+                
+                skip += batchSize;
+            }
+            
+            inventoryCache.clear();
+            userIncomeCache.clear();
+            
+            res.json({ success: true, message: `Выдано существо ${creature.name} ${count} игрокам` });
+        }
+        else {
+            res.status(400).json({ success: false, message: 'Неверные параметры' });
+        }
+    } catch (e) {
+        console.error('give-to-all error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ============================================
+// РАССЫЛКА (API)
+// ============================================
+
+app.post('/api/admin/broadcast/create', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { message, imageUrl, buttons, parseMode = 'HTML', testMode = false } = req.body;
+        
+        if (!message) {
+            return res.status(400).json({ success: false, message: 'Введите текст сообщения' });
+        }
+        
+        let users;
+        if (testMode) {
+            const adminIds = ADMIN_IDS;
+            users = await User.find({ telegramId: { $in: adminIds } }).select('telegramId username firstName');
+        } else {
+            users = await User.find({ isBanned: false }).select('telegramId username firstName');
+        }
+        
+        if (users.length === 0) {
+            return res.status(400).json({ success: false, message: 'Нет получателей' });
+        }
+        
+        const broadcast = new Broadcast({
+            message,
+            imageUrl: imageUrl || null,
+            buttons: buttons || [],
+            parseMode,
+            totalUsers: users.length,
+            createdBy: req.adminLogin,
+            status: 'pending'
+        });
+        
+        await broadcast.save();
+        
+        sendBroadcastAsync(broadcast._id, users, testMode);
+        
+        res.json({ 
+            success: true, 
+            message: `Рассылка запущена! Будет отправлено ${users.length} сообщений${testMode ? ' (ТЕСТОВЫЙ РЕЖИМ)' : ''}`,
+            broadcastId: broadcast._id
+        });
+        
+    } catch (e) {
+        console.error('broadcast create error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/admin/broadcast/history', adminAuthMiddleware, async (req, res) => {
+    try {
+        const broadcasts = await Broadcast.find()
+            .sort({ createdAt: -1 })
+            .limit(50)
+            .lean();
+        
+        res.json({ success: true, broadcasts });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/admin/broadcast/cancel/:id', adminAuthMiddleware, async (req, res) => {
+    try {
+        const broadcast = await Broadcast.findById(req.params.id);
+        if (!broadcast) {
+            return res.status(404).json({ success: false, message: 'Рассылка не найдена' });
+        }
+        
+        if (broadcast.status !== 'pending') {
+            return res.status(400).json({ success: false, message: 'Рассылка уже завершена или отменена' });
+        }
+        
+        broadcast.status = 'cancelled';
+        await broadcast.save();
+        
+        res.json({ success: true, message: 'Рассылка отменена' });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/admin/broadcast/status/:id', adminAuthMiddleware, async (req, res) => {
+    try {
+        const broadcast = await Broadcast.findById(req.params.id);
+        if (!broadcast) {
+            return res.status(404).json({ success: false, message: 'Рассылка не найдена' });
+        }
+        
+        res.json({ success: true, broadcast });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/admin/refresh-cache', adminAuthMiddleware, async (req, res) => {
+    try {
+        await invalidateConfigCache();
+        await loadCreaturesToCache();
+        inventoryCache.clear();
+        userIncomeCache.clear();
+        cachedAdminStats = { data: null, expiresAt: 0 };
+        res.json({ success: true, message: 'Кэш обновлён' });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ============================================
+// ЗАПУСК
+// ============================================
 mongoose.connection.once('open', async () => {
     await initCreatures();
     await getGameConfig();
@@ -2956,13 +3503,26 @@ mongoose.connection.once('open', async () => {
     console.log('💰 Мин. сумма транзакции: ' + MIN_TRANSACTION_AMOUNT + ' MMO');
     console.log('📋 Макс. активных заявок: ' + MAX_ACTIVE_REQUESTS);
     console.log('📺 Новая система рекламы: макс. ' + MAX_ADS_AVAILABLE + ', восстановление +1/час');
-    console.log('🎁 Реферальный бонус: ' + REFERRAL_BONUS_PERCENT + '% от депозита друга');
+    console.log('🎁 Реферальный бонус: ' + REFERRAL_BONUS_PERCENT + '% от депозита друга (требование: друг 5+ уровня для наград)');
     console.log('🏪 Маркет: мин. цена ' + MIN_MARKETPLACE_PRICE + ' MMO, макс. лотов ' + MAX_ACTIVE_LISTINGS);
-    console.log('🏟️ Арена PvP: рейтинговая система, 3 монстра, пошаговые бои');
+    console.log('⚡ Оптимизации: кэш инвентаря, доходов, stats (1 агрегация), увеличен TTL leaderboard до 120с');
 });
 
+// ============================================================
+// WEBSOCKET ARENA
+// ============================================================
+
+const http = require('http');
+const server = http.createServer(app);
+const ArenaServer = require('./arena-server');
+
+// Запускаем WebSocket сервер
+const arenaServer = new ArenaServer(server);
+
+// Заменяем app.listen на server.listen
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`🚀 Сервер запущен на порту ${PORT}`);
+    console.log(`⚔️ Арена WebSocket готова к боям!`);
     console.log(`📌 Режим: ${process.env.NODE_ENV || 'production'}`);
 });

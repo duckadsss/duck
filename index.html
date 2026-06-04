@@ -8,19 +8,17 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="format-detection" content="telephone=no">
 <meta name="msapplication-tap-highlight" content="no">
-<title>DNA MMO — Merge & Evolve | Arena PvP</title>
+<title>DNA MMO — Merge & Evolve | PvP Arena</title>
 <meta property="og:title" content="DNA MMO — Merge & Evolve">
-<meta property="og:description" content="Open DNA capsules, collect creatures, merge to evolve, battle in PvP Arena and earn MMO tokens.">
+<meta property="og:description" content="Open DNA capsules, collect creatures, merge to evolve and earn MMO tokens. Fight in PvP Arena!">
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-<link rel="stylesheet" href="style.css">
-
 <!-- Telegram WebApp SDK -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<!-- Socket.IO for Arena PvP -->
-<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<!-- Socket.IO Client -->
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <!-- Giga Pub Enhanced Reliability Script -->
 <script data-project-id="6820">
   !function(){
@@ -44,7 +42,6 @@
   }();
 </script>
 </head>
-
 <body ondragstart="return false" oncontextmenu="return false" onselectstart="return false">
 <canvas id="particles-canvas"></canvas>
 
@@ -58,13 +55,12 @@
                 <div class="player-level" id="playerLevelLabel">LVL 1 · Researcher</div>
             </div>
         </div>
-        
         <div style="display:flex;align-items:center;gap:10px">
             <div class="balance-area">
                 <div class="balance-icon"><i class="fa-solid fa-dna"></i></div>
                 <div>
                     <div class="balance-amount" id="balanceDisplay">0</div>
-                    <div class="income-inline" id="incomeInline" style="font-size:8px; color:var(--uncommon); margin-top:2px;">+0/hr</div>
+                    <div class="income-inline" id="incomeInline">+0/hr</div>
                 </div>
             </div>
         </div>
@@ -122,7 +118,7 @@
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <div class="section-title" style="margin-bottom:0"><i class="fa-solid fa-layer-group" style="color:var(--accent3)"></i> <span data-i18n="inventory.myCreatures">My Creatures</span> <span id="inventorySlots" style="font-size:10px;color:var(--text2);font-weight:400;letter-spacing:0">0/10</span></div>
         <button style="padding:6px 12px;border:none;border-radius:8px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;font-size:10px;font-weight:700;font-family:'Orbitron',monospace;cursor:pointer;transition:all 0.2s;white-space:nowrap" onclick="event.stopPropagation(); upgradeInventory()" id="quickUpgradeBtn">
-            <i class="fa-solid fa-plus"></i> +1 slot (<span id="upgradeSlotCost">100</span>)
+            <i class="fa-solid fa-plus"></i> +1 слот (<span id="upgradeSlotCost">100</span>)
         </button>
     </div>
     <div class="cards-grid" id="cardsGrid">
@@ -131,6 +127,11 @@
             <span data-i18n="inventory.empty">Open a capsule to get your first creature!</span>
         </div>
     </div>
+</div>
+
+<!-- ARENA TAB -->
+<div class="tab-content" id="tab-arena">
+    <!-- Арена будет добавлена динамически через ArenaClient -->
 </div>
 
 <!-- MARKETPLACE TAB -->
@@ -162,7 +163,7 @@
 
 <!-- LEADERBOARD TAB -->
 <div class="tab-content" id="tab-leaderboard">
-    <div style="position:relative;border-radius:20px;overflow:hidden;margin-bottom:16px;cursor:pointer" onclick="showToast('🏆 Get #1 and win Black Pantera Mythic!', '🏆')">
+    <div style="position:relative;border-radius:20px;overflow:hidden;margin-bottom:16px;cursor:pointer" onclick="showToast('🏆 Займи #1 и получи Black Pantera Mythic!', '🏆')">
         <div style="position:absolute;inset:0;z-index:2;pointer-events:none;border-radius:20px;border:1px solid rgba(255,255,255,0.18);background:linear-gradient(135deg,rgba(255,255,255,0.10) 0%,rgba(168,85,247,0.08) 40%,rgba(0,0,0,0) 100%)"></div>
         <div style="position:absolute;top:0;left:-10%;width:40%;height:100%;z-index:3;pointer-events:none;background:linear-gradient(105deg,rgba(255,255,255,0) 40%,rgba(255,255,255,0.13) 50%,rgba(255,255,255,0) 60%);border-radius:20px"></div>
         <div style="position:absolute;top:0;left:12%;width:76%;height:1.5px;z-index:4;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.55),transparent);border-radius:2px"></div>
@@ -187,7 +188,6 @@
     </div>
     
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px">
-        <!-- 10 Friends - Rare Wolf -->
         <div class="friends-reward-card" id="reward-10" data-reward="10">
             <div class="reward-icon">
                 <img src="https://ndammo.github.io/Mmodna/wr.png" alt="Rare Wolf" style="width:48px;height:48px;object-fit:contain">
@@ -197,8 +197,6 @@
             <div class="reward-income"><i class="fa-solid fa-bolt"></i> 25/hr</div>
             <button class="reward-btn" id="reward-10-btn">🔒</button>
         </div>
-        
-        <!-- 50 Friends - Epic Wolf -->
         <div class="friends-reward-card" id="reward-50" data-reward="50">
             <div class="reward-icon">
                 <img src="https://ndammo.github.io/Mmodna/we.png" alt="Epic Wolf" style="width:48px;height:48px;object-fit:contain">
@@ -208,8 +206,6 @@
             <div class="reward-income"><i class="fa-solid fa-bolt"></i> 80/hr</div>
             <button class="reward-btn" id="reward-50-btn">🔒</button>
         </div>
-        
-        <!-- 150 Friends - Legendary Wolf -->
         <div class="friends-reward-card" id="reward-150" data-reward="150">
             <div class="reward-icon">
                 <img src="https://ndammo.github.io/Mmodna/wl.png" alt="Legendary Wolf" style="width:48px;height:48px;object-fit:contain">
@@ -274,55 +270,6 @@
     <div id="pendingRequests"></div>
 </div>
 
-<!-- ARENA TAB -->
-<div class="tab-content" id="tab-arena">
-    <div class="arena-rank-card">
-        <div class="arena-rank-icon">🏆</div>
-        <div class="arena-rank-info">
-            <div class="arena-league" id="arenaLeague">BRONZE</div>
-            <div class="arena-rating" id="arenaRating">500</div>
-            <div class="arena-stats">
-                <span>🏆 <span id="arenaWins">0</span></span>
-                <span>💀 <span id="arenaLosses">0</span></span>
-                <span>🤝 <span id="arenaDraws">0</span></span>
-            </div>
-        </div>
-        <div class="arena-tokens" onclick="buyArenaTokens()" style="cursor:pointer">
-            <i class="fa-solid fa-ticket"></i>
-            <span id="arenaTokens">3</span>
-            <span class="arena-tokens-label">/3</span>
-        </div>
-    </div>
-
-    <div class="arena-section-title">
-        <i class="fa-solid fa-dragon"></i>
-        <span>SELECT YOUR TEAM (3 MONSTERS)</span>
-    </div>
-
-    <div class="arena-team-slots" id="arenaTeamSlots">
-        <div class="arena-slot empty" data-slot="0" onclick="openMonsterSelector(0)">+</div>
-        <div class="arena-slot empty" data-slot="1" onclick="openMonsterSelector(1)">+</div>
-        <div class="arena-slot empty" data-slot="2" onclick="openMonsterSelector(2)">+</div>
-    </div>
-
-    <div class="arena-buttons">
-        <button class="arena-find-btn" id="arenaFindBtn" onclick="findArenaMatch()">
-            <i class="fa-solid fa-magnifying-glass"></i> FIND BATTLE
-        </button>
-        <button class="arena-cancel-btn" id="arenaCancelBtn" onclick="cancelArenaSearch()" style="display:none">
-            <i class="fa-solid fa-times"></i> CANCEL SEARCH
-        </button>
-    </div>
-
-    <div class="arena-history">
-        <div class="arena-section-title">
-            <i class="fa-solid fa-clock-rotate-left"></i>
-            <span>BATTLE HISTORY</span>
-        </div>
-        <div id="arenaHistoryList" class="arena-history-list"></div>
-    </div>
-</div>
-
 </div>
 
 <!-- BOTTOM NAV -->
@@ -330,6 +277,10 @@
     <div class="nav-item active" onclick="switchTab('game')" id="nav-game">
         <i class="fa-solid fa-dna"></i>
         <span data-i18n="nav.game">Game</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('arena')" id="nav-arena">
+        <i class="fa-solid fa-sword"></i>
+        <span>Арена</span>
     </div>
     <div class="nav-item" onclick="switchTab('shop')" id="nav-shop">
         <i class="fa-solid fa-store"></i>
@@ -351,10 +302,6 @@
         <i class="fa-solid fa-wallet"></i>
         <span data-i18n="nav.wallet">Wallet</span>
     </div>
-    <div class="nav-item" onclick="switchTab('arena')" id="nav-arena">
-        <i class="fa-solid fa-gamepad"></i>
-        <span data-i18n="nav.arena">Arena</span>
-    </div>
 </div>
 
 <!-- OVERLAYS -->
@@ -362,85 +309,11 @@
     <div class="popup" id="popup"></div>
 </div>
 
-<!-- MONSTER SELECTOR MODAL -->
-<div class="overlay" id="monsterSelectorOverlay" onclick="closeMonsterSelector()">
-    <div class="popup monster-selector-popup">
-        <div class="popup-close" onclick="closeMonsterSelector()"><i class="fa-solid fa-xmark"></i></div>
-        <div class="popup-title">SELECT MONSTER</div>
-        <div class="monster-selector-grid" id="monsterSelectorGrid"></div>
-    </div>
-</div>
-
-<!-- BATTLE MODAL -->
-<div class="overlay" id="battleOverlay">
-    <div class="battle-container" id="battleContainer">
-        <div class="battle-close" onclick="closeBattle()">✕</div>
-        
-        <!-- Opponent Section -->
-        <div class="battle-opponent">
-            <div class="battle-player-name" id="opponentName">OPPONENT</div>
-            <div class="battle-health-bar">
-                <div class="battle-health-fill" id="opponentHealthFill" style="width:100%"></div>
-                <span class="battle-health-text" id="opponentHealthText">100%</span>
-            </div>
-            <div class="battle-monsters" id="opponentMonsters"></div>
-        </div>
-
-        <!-- Battle Log -->
-        <div class="battle-log" id="battleLog">
-            <div class="battle-log-title">⚔️ BATTLE LOG</div>
-            <div class="battle-log-messages" id="battleLogMessages"></div>
-        </div>
-
-        <!-- Player Section -->
-        <div class="battle-player">
-            <div class="battle-player-name" id="playerName">YOU</div>
-            <div class="battle-health-bar">
-                <div class="battle-health-fill" id="playerHealthFill" style="width:100%"></div>
-                <span class="battle-health-text" id="playerHealthText">100%</span>
-            </div>
-            <div class="battle-monsters" id="playerMonsters"></div>
-        </div>
-
-        <div class="battle-turn-timer" id="turnTimer">30s</div>
-        <div class="battle-message" id="battleMessage"></div>
-    </div>
-</div>
-
-<!-- ACCEPT BATTLE MODAL -->
-<div class="overlay" id="acceptBattleOverlay">
-    <div class="battle-accept-popup">
-        <div class="battle-accept-title">⚔️ BATTLE FOUND! ⚔️</div>
-        <div class="battle-accept-opponent" id="acceptOpponentName">Player</div>
-        <div class="battle-accept-rating" id="acceptOpponentRating">Rating: 0</div>
-        <div class="battle-accept-buttons">
-            <button class="battle-accept-btn" onclick="acceptBattle()">✅ ACCEPT</button>
-            <button class="battle-decline-btn" onclick="declineBattle()">❌ DECLINE</button>
-        </div>
-    </div>
-</div>
-
 <div class="toast" id="toast"></div>
 
 <!-- SCRIPTS -->
 <script src="script.js"></script>
-<script src="arena-battle.js"></script>  
 <script src="localization.js"></script>
-
-<script>
-    let lastArenaInit = 0;
-    const originalInitArena = window.initArena;
-    window.initArena = function() {
-        const now = Date.now();
-        if (now - lastArenaInit < 1000) {
-            console.log('⏱️ Skipping arena init (too frequent)');
-            return;
-        }
-        lastArenaInit = now;
-        if (typeof originalInitArena === 'function') {
-            originalInitArena();
-        }
-    };
-</script>
+<script src="arena.js"></script>
 </body>
 </html>

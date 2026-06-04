@@ -33,6 +33,15 @@ const translations = {
         'encyclopedia.title': 'Коллекция Существ',
         'encyclopedia.subtitle': 'Откройте всех существ',
         
+        
+        // Добавь в объект ru
+'arena.title': 'PvP Арена',
+'arena.selectTeam': 'Выберите 3 существа для битвы',
+'arena.searchBattle': 'НАЙТИ ПРОТИВНИКА',
+'arena.cancelSearch': 'ОТМЕНА',
+'arena.victory': 'ПОБЕДА!',
+'arena.defeat': 'ПОРАЖЕНИЕ!',
+
         // Marketplace
         'marketplace.title': 'Торговая Площадка',
         'marketplace.buy': 'Купить',
@@ -255,6 +264,14 @@ const translations = {
         'leaderboard.lvl': 'LVL',
         'leaderboard.xp': 'XP',
         'leaderboard.you': '(You)',
+        
+        // Добавь в объект en
+'arena.title': 'PvP Arena',
+'arena.selectTeam': 'Select 3 creatures for battle',
+'arena.searchBattle': 'FIND OPPONENT',
+'arena.cancelSearch': 'CANCEL',
+'arena.victory': 'VICTORY!',
+'arena.defeat': 'DEFEAT!',
         
         // Friends
         'friends.inviteTitle': 'INVITE FRIENDS',
