@@ -379,5 +379,109 @@
 <script src="script.js"></script>
 <script src="arenaClient.js"></script>
 <script src="localization.js"></script>
+<!-- ВСТРОЕННАЯ КОНСОЛЬ ДЛЯ ОТЛАДКИ -->
+<div id="debugConsole" style="display: none; position: fixed; bottom: 60px; left: 0; right: 0; background: rgba(0,0,0,0.95); border-top: 2px solid #a855f7; z-index: 9999; max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 11px; color: #0f0; padding: 8px; backdrop-filter: blur(8px); border-radius: 8px 8px 0 0; margin: 0 8px;">
+    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #333;">
+        <span style="color: #a855f7;">🔍 DEBUG CONSOLE</span>
+        <div>
+            <button onclick="clearDebugConsole()" style="background: #333; border: none; color: #fff; padding: 2px 8px; border-radius: 4px; cursor: pointer; margin-right: 4px;">🗑️ Clear</button>
+            <button onclick="toggleDebugConsole()" style="background: #ef4444; border: none; color: #fff; padding: 2px 8px; border-radius: 4px; cursor: pointer;">❌ Close</button>
+        </div>
+    </div>
+    <div id="debugConsoleContent" style="white-space: pre-wrap; word-break: break-all;"></div>
+</div>
+
+<!-- КНОПКА ДЛЯ ОТКРЫТИЯ КОНСОЛИ -->
+<button id="debugToggleBtn" onclick="toggleDebugConsole()" style="position: fixed; bottom: 70px; right: 10px; width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #a855f7, #7c3aed); border: none; color: white; font-size: 20px; cursor: pointer; z-index: 10000; box-shadow: 0 0 12px rgba(168,85,247,0.5); display: flex; align-items: center; justify-content: center;">
+    🐞
+</button>
+
+<script>
+// ВСТРОЕННАЯ КОНСОЛЬ ДЛЯ ОТЛАДКИ
+let debugLogs = [];
+
+function addDebugLog(message, type = 'info') {
+    const timestamp = new Date().toLocaleTimeString();
+    const colors = {
+        error: '#ef4444',
+        warn: '#f59e0b',
+        info: '#22c55e',
+        log: '#06b6d4'
+    };
+    const color = colors[type] || colors.log;
+    const formattedMessage = `<div style="color: ${color}; margin-bottom: 4px; border-bottom: 1px solid #222; padding: 4px 0;">[${timestamp}] ${message}</div>`;
+    
+    debugLogs.unshift(formattedMessage);
+    if (debugLogs.length > 100) debugLogs.pop();
+    
+    const content = document.getElementById('debugConsoleContent');
+    if (content) content.innerHTML = debugLogs.join('');
+}
+
+function toggleDebugConsole() {
+    const console = document.getElementById('debugConsole');
+    if (console) {
+        const isVisible = console.style.display !== 'none';
+        console.style.display = isVisible ? 'none' : 'block';
+        document.getElementById('debugToggleBtn').style.opacity = isVisible ? '1' : '0.7';
+    }
+}
+
+function clearDebugConsole() {
+    debugLogs = [];
+    const content = document.getElementById('debugConsoleContent');
+    if (content) content.innerHTML = '<div style="color: #666;">Console cleared</div>';
+}
+
+// ПЕРЕХВАТ ВСЕХ КОНСОЛЬНЫХ СООБЩЕНИЙ
+(function() {
+    const originalConsole = {
+        log: console.log,
+        error: console.error,
+        warn: console.warn,
+        info: console.info
+    };
+    
+    console.log = function(...args) {
+        originalConsole.log.apply(console, args);
+        addDebugLog(args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '), 'log');
+    };
+    
+    console.error = function(...args) {
+        originalConsole.error.apply(console, args);
+        addDebugLog(args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '), 'error');
+    };
+    
+    console.warn = function(...args) {
+        originalConsole.warn.apply(console, args);
+        addDebugLog(args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '), 'warn');
+    };
+    
+    console.info = function(...args) {
+        originalConsole.info.apply(console, args);
+        addDebugLog(args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '), 'info');
+    };
+    
+    // Перехват ошибок
+    window.onerror = function(message, source, lineno, colno, error) {
+        addDebugLog(`ERROR: ${message} at ${source}:${lineno}:${colno} - ${error?.stack || ''}`, 'error');
+        return false;
+    };
+    
+    // Перехват Promise ошибок
+    window.onunhandledrejection = function(event) {
+        addDebugLog(`UNHANDLED REJECTION: ${event.reason}`, 'error');
+    };
+    
+    addDebugLog('🚀 Debug console initialized! Click the bug icon to see logs.', 'info');
+})();
+
+// Добавим кнопку для копирования логов
+function copyDebugLogs() {
+    const logs = debugLogs.map(l => l.replace(/<[^>]*>/g, '')).join('\n');
+    navigator.clipboard.writeText(logs);
+    addDebugLog('📋 Logs copied to clipboard!', 'info');
+}
+</script>
 </body>
 </html>
