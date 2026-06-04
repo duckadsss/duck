@@ -1,528 +1,532 @@
 // ============================================
-// ARENA BATTLE SYSTEM - ИСПРАВЛЕННАЯ ВЕРСИЯ
+// ARENA BATTLE SYSTEM v2.0
 // ============================================
 
 let currentBattle = null;
-let battleInterval = null;
+let battleTimerInterval = null;
 let selectedTarget = null;
-let arenaSocketInstance = null;
 
-// Регистрация сокета для боя
-function registerArenaSocket(socket) {
-    console.log('🎮 Registering arena socket for battle...');
-    
-    if (arenaSocketInstance && arenaSocketInstance.id === socket.id) {
-        console.log('⚠️ Socket already registered');
-        return;
-    }
-    
-    arenaSocketInstance = socket;
-    
-    if (arenaSocketInstance) {
-        arenaSocketInstance.off('battle-start');
-        arenaSocketInstance.off('opponent-move');
-        arenaSocketInstance.off('battle-end');
-        arenaSocketInstance.off('turn-update');
-        
-        arenaSocketInstance.on('battle-start', (data) => {
-            console.log('⚔️ Battle start received:', data);
-            initBattle(data);
-        });
-        
-        arenaSocketInstance.on('opponent-move', (data) => {
-            console.log('🎯 Opponent move received:', data);
-            handleOpponentMove(data);
-        });
-        
-        arenaSocketInstance.on('battle-end', (data) => {
-            console.log('🏁 Battle end received:', data);
-            endBattle(data);
-        });
-        
-        arenaSocketInstance.on('turn-update', (data) => {
-            updateTimerDisplay(data.timeLeft);
-        });
-    }
+// ============================================
+// НОРМАЛИЗАЦИЯ МОНСТРА ОТ СЕРВЕРА
+// Сервер может прислать hp/maxHp напрямую
+// или только incomeBase — считаем сами
+// ============================================
+function normalizeMonster(m) {
+    const base = m.incomeBase || m.atk || 10;
+    // Если сервер уже дал maxHp — берём его, иначе считаем
+    const maxHp = (m.maxHp && !isNaN(m.maxHp)) ? Number(m.maxHp) : Math.floor(base * 10);
+    // hp: берём от сервера если есть и валидно, иначе = maxHp (начало боя)
+    const hp = (m.hp !== undefined && m.hp !== null && !isNaN(m.hp)) ? Number(m.hp) : maxHp;
+    return {
+        ...m,
+        maxHp,
+        hp: Math.max(0, hp),
+        atk: (m.atk && !isNaN(m.atk)) ? Number(m.atk) : Math.floor(base * 2),
+        def: (m.def && !isNaN(m.def)) ? Number(m.def) : Math.floor(base * 1.5),
+    };
 }
 
+// ============================================
+// ИНИЦИАЛИЗАЦИЯ БОЯ
+// ============================================
 function initBattle(battleData) {
-    console.log('⚔️ initBattle called');
-    
-    // ПРОВЕРКА: убеждаемся, что монстры имеют корректные hp
-    const playerMonsters = (battleData.player.monsters || []).map(m => {
-        // Если пришёл объект с hp и maxHp - используем их
-        // Если пришёл объект с полями из createBattleMonster - у него уже есть hp и maxHp
-        const currentHp = (m.hp !== undefined && m.hp !== null) ? m.hp : (m.maxHp || 100);
-        const currentMaxHp = m.maxHp || 100;
-        
-        return {
-            id: m.id,
-            name: m.name || 'Unknown',
-            icon: m.icon || 'https://ndammo.github.io/Mmodna/default.png',
-            rarity: m.rarity || 'common',
-            hp: currentHp,
-            maxHp: currentMaxHp
-        };
-    });
-    
-    const opponentMonsters = (battleData.opponent.monsters || []).map(m => {
-        const currentHp = (m.hp !== undefined && m.hp !== null) ? m.hp : (m.maxHp || 100);
-        const currentMaxHp = m.maxHp || 100;
-        
-        return {
-            id: m.id,
-            name: m.name || 'Unknown',
-            icon: m.icon || 'https://ndammo.github.io/Mmodna/default.png',
-            rarity: m.rarity || 'common',
-            hp: currentHp,
-            maxHp: currentMaxHp
-        };
-    });
-    
     currentBattle = {
         battleId: battleData.battleId,
-        currentTurn: battleData.currentTurn || 'player',
+        currentTurn: battleData.currentTurn,
         player: {
             id: battleData.player.id,
-            name: battleData.player.name || 'You',
-            rating: battleData.player.rating || 500,
-            monsters: playerMonsters,
-            totalHealth: playerMonsters.reduce((sum, m) => sum + m.hp, 0),
-            maxHealth: playerMonsters.reduce((sum, m) => sum + m.maxHp, 0)
+            name: battleData.player.name,
+            rating: battleData.player.rating,
+            monsters: battleData.player.monsters.map(normalizeMonster)
         },
         opponent: {
             id: battleData.opponent.id,
-            name: battleData.opponent.name || 'Opponent',
-            rating: battleData.opponent.rating || 500,
-            monsters: opponentMonsters,
-            totalHealth: opponentMonsters.reduce((sum, m) => sum + m.hp, 0),
-            maxHealth: opponentMonsters.reduce((sum, m) => sum + m.maxHp, 0)
+            name: battleData.opponent.name,
+            rating: battleData.opponent.rating,
+            monsters: battleData.opponent.monsters.map(normalizeMonster)
         },
-        turnStartTime: Date.now(),
-        waitingForResponse: false
+        battleLog: [],
+        turnStartTime: Date.now()
     };
-    
-    showBattleScreen();
-    renderBattleTeams();
-    addBattleLogMessage('⚔️ БОЙ НАЧАЛСЯ! ⚔️', 'system');
-    startBattleTurnTimer();
-    
+
+    buildBattleScreen();
+    renderBothTeams();
+    addLog('⚔️ БОЙ НАЧАЛСЯ! ⚔️', 'system');
+    startTurnTimer();
+
     if (currentBattle.currentTurn === 'opponent') {
-        disablePlayerActions();
-        addBattleLogMessage(`🔴 Ход ${currentBattle.opponent.name}...`, 'info');
+        setBattleState('waiting');
+        addLog(`🔴 Ход ${escapeHtml(currentBattle.opponent.name)}...`, 'info');
     } else {
-        enablePlayerActions();
-        addBattleLogMessage('🔵 ВАШ ХОД! Выберите врага для атаки', 'info');
-        highlightTargetableMonsters();
+        setBattleState('action');
+        addLog('🔵 ВАШ ХОД! Выберите цель для атаки', 'info');
+        activateTargets();
     }
 }
 
-function showBattleScreen() {
-    const oldContainer = document.getElementById('battleArenaContainer');
-    if (oldContainer) oldContainer.remove();
-    
+// ============================================
+// ПОСТРОЕНИЕ ЭКРАНА БОЯ
+// ============================================
+function buildBattleScreen() {
+    // Скрыть основной UI
     const mainContent = document.getElementById('mainContent');
     const bottomNav = document.querySelector('.bottom-nav');
     const header = document.querySelector('.header');
-    
     if (mainContent) mainContent.style.display = 'none';
     if (bottomNav) bottomNav.style.display = 'none';
     if (header) header.style.display = 'none';
-    
-    const container = document.createElement('div');
-    container.id = 'battleArenaContainer';
+
+    let container = document.getElementById('battleArenaContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'battleArenaContainer';
+        document.body.appendChild(container);
+    }
+
     container.innerHTML = `
-        <div class="battle-arena">
-            <div class="battle-header">
-                <button class="battle-exit-btn" onclick="exitBattle()"><i class="fa-solid fa-times"></i> ВЫЙТИ</button>
-                <div class="battle-timer"><i class="fa-regular fa-clock"></i> <span id="battleTimer">30</span>с</div>
+        <div class="ba-screen">
+            <!-- Фон с частицами -->
+            <div class="ba-bg">
+                <div class="ba-bg-orb ba-bg-orb--1"></div>
+                <div class="ba-bg-orb ba-bg-orb--2"></div>
+                <div class="ba-bg-grid"></div>
             </div>
-            <div class="battle-team opponent-team">
-                <div class="team-header">
-                    <div class="team-name"><i class="fa-solid fa-skull"></i> ${escapeHtml(currentBattle.opponent.name)} <span class="team-rating">(${currentBattle.opponent.rating})</span></div>
-                    <div class="team-health" id="opponentTeamHealth">❤️ ${currentBattle.opponent.totalHealth}/${currentBattle.opponent.maxHealth}</div>
+
+            <!-- Хедер -->
+            <div class="ba-header">
+                <button class="ba-exit" onclick="exitBattle()">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                        <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    ВЫЙТИ
+                </button>
+                <div class="ba-vs-badge">
+                    <span class="ba-vs-player">${escapeHtml(currentBattle.player.name)}</span>
+                    <span class="ba-vs-text">VS</span>
+                    <span class="ba-vs-enemy">${escapeHtml(currentBattle.opponent.name)}</span>
                 </div>
-                <div class="monsters-grid" id="opponentMonstersGrid"></div>
-            </div>
-            <div class="battle-log-panel">
-                <div class="log-header"><i class="fa-solid fa-scroll"></i> БОЕВОЙ ЛОГ</div>
-                <div class="log-messages" id="battleLogMessages"></div>
-            </div>
-            <div class="battle-team player-team">
-                <div class="team-header">
-                    <div class="team-name"><i class="fa-solid fa-user-astronaut"></i> ${escapeHtml(currentBattle.player.name)} <span class="team-rating">(${currentBattle.player.rating})</span></div>
-                    <div class="team-health" id="playerTeamHealth">❤️ ${currentBattle.player.totalHealth}/${currentBattle.player.maxHealth}</div>
+                <div class="ba-timer-wrap">
+                    <div class="ba-timer" id="baTimer">
+                        <svg class="ba-timer-ring" viewBox="0 0 36 36">
+                            <circle class="ba-timer-track" cx="18" cy="18" r="15"/>
+                            <circle class="ba-timer-progress" id="baTimerRing" cx="18" cy="18" r="15"/>
+                        </svg>
+                        <span class="ba-timer-num" id="baTimerNum">30</span>
+                    </div>
                 </div>
-                <div class="monsters-grid" id="playerMonstersGrid"></div>
             </div>
-            <div class="battle-message-area" id="battleMessageArea"></div>
+
+            <!-- Команда противника -->
+            <div class="ba-side ba-side--enemy">
+                <div class="ba-side-label">
+                    <div class="ba-side-dot ba-side-dot--enemy"></div>
+                    <span>${escapeHtml(currentBattle.opponent.name)}</span>
+                    <span class="ba-side-rating">${currentBattle.opponent.rating} ★</span>
+                </div>
+                <div class="ba-monsters" id="baEnemyMonsters"></div>
+            </div>
+
+            <!-- Боевой лог -->
+            <div class="ba-log">
+                <div class="ba-log-header">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M1 3h10M1 6h7M1 9h4" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                    БОЕВОЙ ЛОГ
+                </div>
+                <div class="ba-log-body" id="baLogBody"></div>
+            </div>
+
+            <!-- Статус хода -->
+            <div class="ba-turn-status" id="baTurnStatus">
+                <div class="ba-turn-pulse"></div>
+                <span id="baTurnText">Ожидание...</span>
+            </div>
+
+            <!-- Команда игрока -->
+            <div class="ba-side ba-side--player">
+                <div class="ba-side-label">
+                    <div class="ba-side-dot ba-side-dot--player"></div>
+                    <span>ВЫ</span>
+                    <span class="ba-side-rating">${currentBattle.player.rating} ★</span>
+                </div>
+                <div class="ba-monsters" id="baPlayerMonsters"></div>
+            </div>
         </div>
     `;
-    document.body.appendChild(container);
+
+    container.style.display = 'block';
 }
 
-function renderBattleTeams() {
-    const opponentGrid = document.getElementById('opponentMonstersGrid');
-    if (opponentGrid && currentBattle.opponent.monsters) {
-        opponentGrid.innerHTML = currentBattle.opponent.monsters.map((monster, idx) => {
-            const hpPercent = (monster.hp / monster.maxHp) * 100;
-            const isDefeated = monster.hp <= 0;
-            return `
-                <div class="battle-monster-card enemy-card ${isDefeated ? 'defeated' : ''}" 
-                     data-monster-idx="${idx}" data-alive="${!isDefeated}" 
-                     onclick="${!isDefeated && currentBattle.currentTurn === 'player' && !currentBattle.waitingForResponse ? `selectAttackTarget(${idx})` : ''}">
-                    <div class="monster-portrait">
-                        <img src="${monster.icon}" onerror="this.src='https://ndammo.github.io/Mmodna/default.png'">
-                        ${isDefeated ? '<div class="defeated-overlay">💀</div>' : ''}
-                    </div>
-                    <div class="monster-name">${escapeHtml(monster.name)}</div>
-                    <div class="monster-rarity-badge ${monster.rarity}">${monster.rarity.toUpperCase()}</div>
-                    <div class="monster-hp-bar">
-                        <div class="hp-fill" style="width: ${hpPercent}%"></div>
-                        <div class="hp-text">${monster.hp}/${monster.maxHp}</div>
+// ============================================
+// РЕНДЕР МОНСТРОВ
+// ============================================
+function renderBothTeams() {
+    renderMonsters('enemy', currentBattle.opponent.monsters);
+    renderMonsters('player', currentBattle.player.monsters);
+}
+
+function renderMonsters(side, monsters) {
+    const container = document.getElementById(side === 'enemy' ? 'baEnemyMonsters' : 'baPlayerMonsters');
+    if (!container) return;
+
+    const isEnemy = side === 'enemy';
+    const isPlayerTurn = currentBattle.currentTurn === 'player';
+
+    container.innerHTML = monsters.map((monster, idx) => {
+        const hpPct = Math.max(0, Math.min(100, (monster.hp / monster.maxHp) * 100));
+        const isDead = monster.hp <= 0;
+        const isTargetable = isEnemy && isPlayerTurn && !isDead;
+
+        let hpColor = '#22c55e';
+        if (hpPct < 30) hpColor = '#ef4444';
+        else if (hpPct < 60) hpColor = '#f59e0b';
+
+        return `
+            <div class="ba-card ba-card--${side} ${isDead ? 'ba-card--dead' : ''} ${isTargetable ? 'ba-card--target' : ''}"
+                 data-idx="${idx}"
+                 ${isTargetable ? `onclick="attackTarget(${idx})"` : ''}>
+                
+                <!-- Рарность полоска сверху -->
+                <div class="ba-card-top-bar ba-rarity--${monster.rarity || 'common'}"></div>
+                
+                <!-- Портрет -->
+                <div class="ba-card-portrait">
+                    <img src="${monster.icon || ''}" 
+                         alt="${escapeHtml(monster.name)}"
+                         onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                    <div class="ba-card-fallback" style="display:none">🧬</div>
+                    ${isDead ? '<div class="ba-card-dead-veil">💀</div>' : ''}
+                    ${isTargetable ? '<div class="ba-card-target-ring"></div>' : ''}
+                </div>
+
+                <!-- Имя и рарность -->
+                <div class="ba-card-name">${escapeHtml(monster.name)}</div>
+                <div class="ba-card-badge ba-rarity-text--${monster.rarity || 'common'}">${(monster.rarity || 'common').toUpperCase()}</div>
+
+                <!-- HP бар -->
+                <div class="ba-hp-track">
+                    <div class="ba-hp-fill" style="width:${hpPct}%;background:${hpColor}">
+                        <div class="ba-hp-glow" style="background:${hpColor}"></div>
                     </div>
                 </div>
-            `;
-        }).join('');
-    }
-    
-    const playerGrid = document.getElementById('playerMonstersGrid');
-    if (playerGrid && currentBattle.player.monsters) {
-        playerGrid.innerHTML = currentBattle.player.monsters.map((monster, idx) => {
-            const hpPercent = (monster.hp / monster.maxHp) * 100;
-            const isDefeated = monster.hp <= 0;
-            return `
-                <div class="battle-monster-card player-card ${isDefeated ? 'defeated' : ''}" data-monster-idx="${idx}" data-alive="${!isDefeated}">
-                    <div class="monster-portrait">
-                        <img src="${monster.icon}" onerror="this.src='https://ndammo.github.io/Mmodna/default.png'">
-                        ${isDefeated ? '<div class="defeated-overlay">💀</div>' : ''}
-                    </div>
-                    <div class="monster-name">${escapeHtml(monster.name)}</div>
-                    <div class="monster-rarity-badge ${monster.rarity}">${monster.rarity.toUpperCase()}</div>
-                    <div class="monster-hp-bar">
-                        <div class="hp-fill" style="width: ${hpPercent}%"></div>
-                        <div class="hp-text">${monster.hp}/${monster.maxHp}</div>
-                    </div>
-                </div>
-            `;
-        }).join('');
-    }
+                <div class="ba-hp-text">${Math.max(0, monster.hp)}/${monster.maxHp}</div>
+
+                ${isTargetable ? '<div class="ba-card-attack-hint">АТАКОВАТЬ ⚔️</div>' : ''}
+                ${isDead ? '<div class="ba-card-dead-label">☠ ПОВЕРЖЕН</div>' : ''}
+            </div>
+        `;
+    }).join('');
 }
 
-function highlightTargetableMonsters() {
-    document.querySelectorAll('.enemy-card:not(.defeated)').forEach(card => {
-        card.classList.add('targetable');
-        card.style.cursor = 'pointer';
-    });
-}
+// ============================================
+// АТАКА
+// ============================================
+function attackTarget(targetIdx) {
+    if (!currentBattle || currentBattle.currentTurn !== 'player') {
+        addLog('❌ Сейчас не ваш ход!', 'error');
+        return;
+    }
 
-function selectAttackTarget(targetIndex) {
-    if (!currentBattle) {
-        addBattleLogMessage('❌ Нет активного боя!', 'error');
+    const target = currentBattle.opponent.monsters[targetIdx];
+    if (!target || target.hp <= 0) {
+        addLog('❌ Цель уже уничтожена!', 'error');
         return;
     }
-    
-    if (currentBattle.currentTurn !== 'player') {
-        addBattleLogMessage('❌ Сейчас не ваш ход!', 'error');
+
+    const attackerIdx = currentBattle.player.monsters.findIndex(m => m.hp > 0);
+    if (attackerIdx === -1) {
+        addLog('❌ Нет живых монстров!', 'error');
         return;
     }
-    
-    if (currentBattle.waitingForResponse) {
-        addBattleLogMessage('⏳ Ожидание ответа от сервера...', 'error');
-        return;
-    }
-    
-    const targetMonster = currentBattle.opponent.monsters[targetIndex];
-    if (!targetMonster || targetMonster.hp <= 0) {
-        addBattleLogMessage('❌ Этот монстр уже повержен!', 'error');
-        return;
-    }
-    
-    const attackerIndex = currentBattle.player.monsters.findIndex(m => m.hp > 0);
-    if (attackerIndex === -1) {
-        addBattleLogMessage('❌ У вас нет живых монстров!', 'error');
-        return;
-    }
-    
-    const attacker = currentBattle.player.monsters[attackerIndex];
-    
-    animateAttack(attackerIndex, targetIndex);
-    addBattleLogMessage(`⚔️ ${attacker.name} атакует ${targetMonster.name}!`, 'combat');
-    
-    currentBattle.waitingForResponse = true;
-    
-    if (arenaSocketInstance && arenaSocketInstance.connected) {
-        arenaSocketInstance.emit('make-move', {
+
+    // Анимация
+    playAttackAnim('player', attackerIdx, 'enemy', targetIdx);
+
+    // Отправить на сервер
+    const socket = window.arenaSocket || window.socket;
+    if (socket) {
+        socket.emit('make-move', {
             battleId: currentBattle.battleId,
-            attackerIndex: attackerIndex,
-            targetIndex: targetIndex
+            attackerIndex: attackerIdx,
+            targetIndex: targetIdx
         });
-    } else if (window.arenaSocket && window.arenaSocket.connected) {
-        window.arenaSocket.emit('make-move', {
-            battleId: currentBattle.battleId,
-            attackerIndex: attackerIndex,
-            targetIndex: targetIndex
-        });
-    } else {
-        addBattleLogMessage('❌ Нет соединения с сервером!', 'error');
-        currentBattle.waitingForResponse = false;
-        return;
     }
-    
-    disablePlayerActions();
-    const msgArea = document.getElementById('battleMessageArea');
-    if (msgArea) {
-        msgArea.innerHTML = '<div class="waiting-message"><i class="fa-solid fa-hourglass-half"></i> Ожидание ответа...</div>';
+
+    setBattleState('waiting');
+}
+
+// ============================================
+// АНИМАЦИЯ АТАКИ
+// ============================================
+function playAttackAnim(attackerSide, attackerIdx, defenderSide, defenderIdx) {
+    const attackerSel = attackerSide === 'player' ? '#baPlayerMonsters' : '#baEnemyMonsters';
+    const defenderSel = defenderSide === 'player' ? '#baPlayerMonsters' : '#baEnemyMonsters';
+
+    const atCards = document.querySelectorAll(`${attackerSel} .ba-card`);
+    const defCards = document.querySelectorAll(`${defenderSel} .ba-card`);
+
+    const atCard = atCards[attackerIdx];
+    const defCard = defCards[defenderIdx];
+
+    if (atCard) {
+        atCard.classList.add('ba-card--attacking');
+        setTimeout(() => atCard.classList.remove('ba-card--attacking'), 400);
+    }
+    if (defCard) {
+        defCard.classList.add('ba-card--hit');
+        setTimeout(() => defCard.classList.remove('ba-card--hit'), 400);
+        // Спавн урона
+        spawnDamageNum(defCard);
     }
 }
 
-function animateAttack(attackerIdx, targetIdx) {
-    const attackerCard = document.querySelector(`.player-card[data-monster-idx="${attackerIdx}"]`);
-    const targetCard = document.querySelector(`.enemy-card[data-monster-idx="${targetIdx}"]`);
-    if (attackerCard) {
-        attackerCard.classList.add('attacking');
-        setTimeout(() => attackerCard.classList.remove('attacking'), 300);
-    }
-    if (targetCard) {
-        targetCard.classList.add('defending');
-        setTimeout(() => targetCard.classList.remove('defending'), 300);
-    }
+function spawnDamageNum(card) {
+    const el = document.createElement('div');
+    el.className = 'ba-damage-num';
+    el.textContent = '⚔️';
+    card.appendChild(el);
+    setTimeout(() => el.remove(), 600);
 }
 
-function handleOpponentMove(moveData) {
-    console.log('🎯 Opponent move received:', moveData);
-    
-    currentBattle.waitingForResponse = false;
-    
-    // Обновляем монстров, если пришли новые данные
-    if (moveData.playerHealth && moveData.playerHealth.monsters) {
-        currentBattle.player.monsters = moveData.playerHealth.monsters.map(m => ({
-            ...m,
-            maxHp: m.maxHp || m.hp
-        }));
-        currentBattle.player.totalHealth = moveData.playerHealth.current;
-        currentBattle.player.maxHealth = moveData.playerHealth.max;
+// ============================================
+// ОБРАБОТКА ХОДА ПРОТИВНИКА
+// ============================================
+function handleOpponentMove(data) {
+    if (data.playerHealth?.monsters) {
+        // Сохраняем maxHp из текущего стейта, обновляем только hp
+        currentBattle.player.monsters = data.playerHealth.monsters.map((m, i) => {
+            const existing = currentBattle.player.monsters[i] || {};
+            return normalizeMonster({ ...existing, ...m });
+        });
     }
-    if (moveData.opponentHealth && moveData.opponentHealth.monsters) {
-        currentBattle.opponent.monsters = moveData.opponentHealth.monsters.map(m => ({
-            ...m,
-            maxHp: m.maxHp || m.hp
-        }));
-        currentBattle.opponent.totalHealth = moveData.opponentHealth.current;
-        currentBattle.opponent.maxHealth = moveData.opponentHealth.max;
+    if (data.opponentHealth?.monsters) {
+        currentBattle.opponent.monsters = data.opponentHealth.monsters.map((m, i) => {
+            const existing = currentBattle.opponent.monsters[i] || {};
+            return normalizeMonster({ ...existing, ...m });
+        });
     }
-    
-    renderBattleTeams();
-    
-    const playerHealthEl = document.getElementById('playerTeamHealth');
-    const opponentHealthEl = document.getElementById('opponentTeamHealth');
-    if (playerHealthEl) playerHealthEl.innerHTML = `❤️ ${currentBattle.player.totalHealth}/${currentBattle.player.maxHealth}`;
-    if (opponentHealthEl) opponentHealthEl.innerHTML = `❤️ ${currentBattle.opponent.totalHealth}/${currentBattle.opponent.maxHealth}`;
-    
-    addBattleLogMessage(moveData.logMessage, 'combat');
-    
-    // Проверка на окончание боя
-    const playerAlive = currentBattle.player.monsters.some(m => m.hp > 0);
-    const opponentAlive = currentBattle.opponent.monsters.some(m => m.hp > 0);
-    
-    if (!playerAlive || !opponentAlive) {
-        let winner = !playerAlive ? 'opponent' : 'player';
-        if (!playerAlive && !opponentAlive) winner = 'draw';
-        endBattle({ winner: winner, resultMessage: winner === 'player' ? 'You won!' : winner === 'opponent' ? 'You lost!' : 'Draw!' });
-        return;
+
+    // Анимация атаки врага
+    if (data.attackerIndex !== undefined && data.targetIndex !== undefined) {
+        playAttackAnim('enemy', data.attackerIndex, 'player', data.targetIndex);
     }
-    
-    if (moveData.nextTurn) {
-        currentBattle.currentTurn = moveData.nextTurn;
-        currentBattle.turnStartTime = Date.now();
-        resetTurnTimer();
-        
-        const msgArea = document.getElementById('battleMessageArea');
-        
-        if (currentBattle.currentTurn === 'player') {
-            enablePlayerActions();
-            addBattleLogMessage('🔵 ВАШ ХОД! Выберите врага для атаки', 'info');
-            highlightTargetableMonsters();
-            if (msgArea) msgArea.innerHTML = '';
-        } else {
-            disablePlayerActions();
-            addBattleLogMessage(`🔴 Ход ${currentBattle.opponent.name}...`, 'info');
-            if (msgArea) {
-                msgArea.innerHTML = '<div class="waiting-message"><i class="fa-solid fa-hourglass-half"></i> Ход противника...</div>';
+
+    setTimeout(() => {
+        renderBothTeams();
+
+        if (data.logMessage) addLog(data.logMessage, 'combat');
+
+        if (data.nextTurn) {
+            currentBattle.currentTurn = data.nextTurn;
+            currentBattle.turnStartTime = Date.now();
+            resetTimer();
+
+            if (data.nextTurn === 'player') {
+                setBattleState('action');
+                addLog('🔵 ВАШ ХОД! Выберите цель!', 'info');
+                activateTargets();
+            } else {
+                setBattleState('waiting');
+                addLog(`🔴 Ход ${escapeHtml(currentBattle.opponent.name)}...`, 'info');
             }
         }
-    }
+    }, 350);
 }
 
+// ============================================
+// ЗАВЕРШЕНИЕ БОЯ
+// ============================================
 function endBattle(result) {
-    console.log('🏁 Battle ended:', result);
-    
-    addBattleLogMessage(result.resultMessage, result.winner === 'player' ? 'victory' : 'defeat');
-    
-    if (result.winner === 'player') {
-        addBattleLogMessage(`🏆 ПОБЕДА! +${result.reward || 0} MMO +${result.ratingGain || 0} рейтинга`, 'victory');
+    stopTimer();
+
+    const isWin = result.winner === 'player';
+    const isDraw = result.winner === 'draw';
+
+    if (isWin) {
+        addLog(`🏆 ПОБЕДА! +${result.reward || 0} MMO / +${result.ratingGain || 0} рейтинга`, 'victory');
+        showBattleResult('victory');
         spawnConfetti();
-    } else if (result.winner === 'opponent') {
-        addBattleLogMessage(`💀 ПОРАЖЕНИЕ! -${result.ratingLoss || 0} рейтинга`, 'defeat');
+    } else if (isDraw) {
+        addLog('🤝 НИЧЬЯ!', 'info');
+        showBattleResult('draw');
     } else {
-        addBattleLogMessage(`🤝 НИЧЬЯ!`, 'info');
+        addLog(`💀 ПОРАЖЕНИЕ! -${result.ratingLoss || 0} рейтинга`, 'defeat');
+        showBattleResult('defeat');
     }
-    
-    if (result.newStats && typeof window.updateArenaStats === 'function') {
-        window.updateArenaStats(result.newStats);
-    }
-    
+
+    if (result.newStats) updateArenaStats(result.newStats);
+
     setTimeout(() => {
         exitBattle();
-        if (typeof window.showToast === 'function') {
-            window.showToast(result.resultMessage, result.winner === 'player' ? '🏆' : '💀');
+        if (typeof showToast === 'function') {
+            const msg = isWin ? `🏆 ПОБЕДА! +${result.reward || 0} MMO` : isDraw ? '🤝 Ничья' : '💀 Поражение';
+            showToast(msg, isWin ? '🏆' : isDraw ? '🤝' : '💀');
         }
     }, 4000);
 }
 
+function showBattleResult(type) {
+    const screen = document.querySelector('.ba-screen');
+    if (!screen) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = `ba-result ba-result--${type}`;
+
+    const configs = {
+        victory: { icon: '🏆', text: 'ПОБЕДА!', sub: 'Отличный бой!', color: '#f59e0b' },
+        defeat:  { icon: '💀', text: 'ПОРАЖЕНИЕ', sub: 'В следующий раз повезёт', color: '#ef4444' },
+        draw:    { icon: '🤝', text: 'НИЧЬЯ', sub: 'Равный противник!', color: '#06b6d4' }
+    };
+
+    const cfg = configs[type];
+    overlay.innerHTML = `
+        <div class="ba-result-inner">
+            <div class="ba-result-icon">${cfg.icon}</div>
+            <div class="ba-result-text" style="color:${cfg.color}">${cfg.text}</div>
+            <div class="ba-result-sub">${cfg.sub}</div>
+        </div>
+    `;
+
+    screen.appendChild(overlay);
+}
+
+// ============================================
+// ВЫХОД ИЗ БОЯ
+// ============================================
 function exitBattle() {
-    console.log('🚪 Exiting battle');
-    
-    if (battleInterval) {
-        clearInterval(battleInterval);
-        battleInterval = null;
-    }
-    
-    const battleContainer = document.getElementById('battleArenaContainer');
-    if (battleContainer) battleContainer.remove();
-    
+    stopTimer();
+
+    const container = document.getElementById('battleArenaContainer');
+    if (container) container.style.display = 'none';
+
     const mainContent = document.getElementById('mainContent');
     const bottomNav = document.querySelector('.bottom-nav');
     const header = document.querySelector('.header');
-    
     if (mainContent) mainContent.style.display = 'block';
     if (bottomNav) bottomNav.style.display = 'flex';
     if (header) header.style.display = 'block';
-    
+
     currentBattle = null;
     selectedTarget = null;
 }
 
-function addBattleLogMessage(message, type = 'normal') {
-    const logContainer = document.getElementById('battleLogMessages');
-    if (!logContainer) return;
-    
-    const msgDiv = document.createElement('div');
-    msgDiv.className = `log-message ${type}`;
-    
-    const now = new Date();
-    const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
-    
-    const icons = { victory: '🏆', defeat: '💀', error: '❌', info: 'ℹ️', combat: '⚔️', system: '⚙️', normal: '📜' };
-    const icon = icons[type] || '📜';
-    msgDiv.innerHTML = `${icon} <span class="log-time">[${time}]</span> ${escapeHtml(message)}`;
-    
-    logContainer.appendChild(msgDiv);
-    logContainer.scrollTop = logContainer.scrollHeight;
-    
-    while (logContainer.children.length > 50) {
-        logContainer.removeChild(logContainer.firstChild);
+// ============================================
+// СОСТОЯНИЕ ХОДА
+// ============================================
+function setBattleState(state) {
+    const statusEl = document.getElementById('baTurnStatus');
+    const textEl = document.getElementById('baTurnText');
+    if (!statusEl || !textEl) return;
+
+    statusEl.className = 'ba-turn-status ba-turn-status--' + state;
+
+    if (state === 'action') {
+        textEl.textContent = '⚔️ ВАШ ХОД — нажмите на врага!';
+    } else if (state === 'waiting') {
+        textEl.textContent = '⏳ Ожидание хода противника...';
     }
 }
 
-function startBattleTurnTimer() {
-    if (battleInterval) clearInterval(battleInterval);
-    
-    battleInterval = setInterval(() => {
-        if (!currentBattle) {
-            clearInterval(battleInterval);
-            return;
-        }
-        
+function activateTargets() {
+    renderMonsters('enemy', currentBattle.opponent.monsters);
+    renderMonsters('player', currentBattle.player.monsters);
+}
+
+// ============================================
+// ТАЙМЕР ХОДА
+// ============================================
+function startTurnTimer() {
+    stopTimer();
+    const TURN_SEC = 30;
+
+    battleTimerInterval = setInterval(() => {
+        if (!currentBattle) { stopTimer(); return; }
         const elapsed = Math.floor((Date.now() - currentBattle.turnStartTime) / 1000);
-        const timeLeft = Math.max(0, 30 - elapsed);
-        
-        const timerEl = document.getElementById('battleTimer');
-        if (timerEl) {
-            timerEl.textContent = timeLeft;
-            timerEl.style.color = timeLeft <= 5 ? '#ef4444' : '#f59e0b';
+        const left = Math.max(0, TURN_SEC - elapsed);
+
+        const numEl = document.getElementById('baTimerNum');
+        const ringEl = document.getElementById('baTimerRing');
+
+        if (numEl) {
+            numEl.textContent = left;
+            numEl.style.color = left <= 5 ? '#ef4444' : left <= 10 ? '#f59e0b' : '#e2e8f0';
         }
-        
-        if (timeLeft <= 0 && currentBattle.currentTurn === 'player' && !currentBattle.waitingForResponse) {
-            clearInterval(battleInterval);
-            addBattleLogMessage('⏰ Время вышло! Ход переходит противнику', 'error');
-            
-            if (arenaSocketInstance && arenaSocketInstance.connected) {
-                arenaSocketInstance.emit('skip-turn', { battleId: currentBattle.battleId });
-            }
+
+        // Анимация кольца SVG
+        if (ringEl) {
+            const circ = 2 * Math.PI * 15; // r=15
+            const pct = left / TURN_SEC;
+            ringEl.style.strokeDasharray = circ;
+            ringEl.style.strokeDashoffset = circ * (1 - pct);
+            ringEl.style.stroke = left <= 5 ? '#ef4444' : left <= 10 ? '#f59e0b' : '#a855f7';
+        }
+
+        if (left <= 0 && currentBattle.currentTurn === 'player') {
+            stopTimer();
+            addLog('⏰ Время вышло! Ход переходит противнику', 'error');
+            const socket = window.arenaSocket || window.socket;
+            if (socket) socket.emit('skip-turn', { battleId: currentBattle.battleId });
+            setBattleState('waiting');
         }
     }, 1000);
 }
 
-function resetTurnTimer() {
-    if (battleInterval) clearInterval(battleInterval);
-    startBattleTurnTimer();
+function resetTimer() {
+    currentBattle.turnStartTime = Date.now();
+    startTurnTimer();
 }
 
-function updateTimerDisplay(seconds) {
-    const timerEl = document.getElementById('battleTimer');
-    if (timerEl) {
-        timerEl.textContent = seconds;
-        timerEl.style.color = seconds <= 5 ? '#ef4444' : '#f59e0b';
+function stopTimer() {
+    if (battleTimerInterval) {
+        clearInterval(battleTimerInterval);
+        battleTimerInterval = null;
     }
 }
 
-function enablePlayerActions() {
-    const targetableCards = document.querySelectorAll('.enemy-card:not(.defeated)');
-    targetableCards.forEach(card => {
-        card.style.cursor = 'pointer';
-        card.classList.add('can-target', 'targetable');
-    });
+// ============================================
+// БОЙ — ЛОГ
+// ============================================
+function addLog(message, type = 'normal') {
+    const body = document.getElementById('baLogBody');
+    if (!body) return;
+
+    const div = document.createElement('div');
+    div.className = `ba-log-entry ba-log-entry--${type}`;
+
+    const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    div.innerHTML = `<span class="ba-log-time">${time}</span> ${message}`;
+
+    body.appendChild(div);
+    body.scrollTop = body.scrollHeight;
+
+    // Лимит записей
+    while (body.children.length > 60) body.removeChild(body.firstChild);
 }
 
-function disablePlayerActions() {
-    const targetableCards = document.querySelectorAll('.enemy-card');
-    targetableCards.forEach(card => {
-        card.style.cursor = 'default';
-        card.classList.remove('can-target', 'targetable');
-    });
-}
-
+// ============================================
+// КОНФЕТТИ
+// ============================================
 function spawnConfetti() {
-    const colors = ['#22c55e', '#a855f7', '#f59e0b', '#06b6d4', '#ef4444'];
-    for (let i = 0; i < 50; i++) {
+    const colors = ['#22c55e', '#a855f7', '#f59e0b', '#06b6d4', '#ef4444', '#fff'];
+    for (let i = 0; i < 60; i++) {
         setTimeout(() => {
-            const confetti = document.createElement('div');
-            confetti.style.cssText = `
-                position: fixed;
+            const el = document.createElement('div');
+            el.className = 'ba-confetti';
+            const size = 5 + Math.random() * 8;
+            el.style.cssText = `
                 left: ${Math.random() * 100}%;
-                top: -10px;
-                width: ${Math.random() * 8 + 4}px;
-                height: ${Math.random() * 8 + 4}px;
-                background-color: ${colors[Math.floor(Math.random() * colors.length)]};
-                border-radius: 2px;
-                pointer-events: none;
-                z-index: 9999;
-                animation: confettiFall ${Math.random() * 2 + 1}s linear forwards;
+                width: ${size}px;
+                height: ${size}px;
+                background: ${colors[Math.floor(Math.random() * colors.length)]};
+                animation-duration: ${1 + Math.random() * 1.5}s;
+                animation-delay: ${Math.random() * 0.5}s;
+                border-radius: ${Math.random() > 0.5 ? '50%' : '2px'};
             `;
-            document.body.appendChild(confetti);
-            setTimeout(() => confetti.remove(), 2000);
-        }, i * 50);
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 2500);
+        }, i * 30);
     }
 }
 
-if (!document.querySelector('#confetti-style')) {
-    const style = document.createElement('style');
-    style.id = 'confetti-style';
-    style.textContent = `@keyframes confettiFall { 0% { transform: translateY(0) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } }`;
-    document.head.appendChild(style);
-}
-
-function escapeHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-window.initBattle = initBattle;
-window.registerArenaSocket = registerArenaSocket;
-window.handleOpponentMove = handleOpponentMove;
-window.endBattle = endBattle;
-window.exitBattle = exitBattle;
-window.selectAttackTarget = selectAttackTarget;
-
-console.log('🎮 Arena battle system loaded');
+console.log('✅ Arena Battle System v2.0 loaded');
