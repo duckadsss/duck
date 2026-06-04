@@ -180,6 +180,7 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
     endBattle(winnerId, prizePool) {
         this.state.battleActive = false;
         this.state.currentBattleId = null;
+        this.state.battleEndedAt = Date.now();
         
         if (this.timers.battleTimer) {
             clearInterval(this.timers.battleTimer);
@@ -290,6 +291,7 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
                     }
                 } else if (data.hasBattle && data.status === 'pending_confirmation' && !this.state.confirmationShown) {
                     this.state.confirmationShown = true;
+                    this.state.currentBattleId = data.battleId;
                     if (this.callbacks.onMatchFound) {
                         this.callbacks.onMatchFound(data);
                     }
@@ -299,6 +301,7 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
             socket.on('match_found', (data) => {
                 console.log('⚔️ Match found!', data);
                 this.state.confirmationShown = true;
+                this.state.currentBattleId = data.battleId;
                 if (this.callbacks.onMatchFound) {
                     this.callbacks.onMatchFound(data);
                 }
@@ -412,11 +415,10 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
     // ============================================================
     
     getCurrentUserId() {
-        if (window.state && window.state.user && window.state.user._id) {
-            return window.state.user._id.toString();
-        }
-        if (window.state && window.state.user && window.state.user.telegramId) {
-            return window.state.user.telegramId.toString();
+        if (window.state && window.state.user) {
+            if (window.state.user._id) return window.state.user._id.toString();
+            if (window.state.user.id) return window.state.user.id.toString();
+            if (window.state.user.telegramId) return window.state.user.telegramId.toString();
         }
         if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
             return window.Telegram.WebApp.initDataUnsafe.user.id.toString();

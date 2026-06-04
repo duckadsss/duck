@@ -1,12 +1,10 @@
 {
   "name": "dna-mmo",
-  "version": "2.0.0",
-  "description": "DNA MMO Game with PvP Arena",
+  "version": "1.0.0",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "bot": "node bot.js",
-    "dev": "nodemon server.js"
+    "bot": "node bot.js"
   },
   "dependencies": {
     "compression": "^1.7.4",
@@ -18,19 +16,5 @@
     "mongoose": "^7.6.3",
     "node-telegram-bot-api": "^0.64.0",
     "socket.io": "^4.7.2"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
-  },
-  "keywords": [
-    "telegram",
-    "game",
-    "mmo",
-    "pvp",
-    "arena",
-    "web3",
-    "nft"
-  ],
-  "author": "",
-  "license": "MIT"
+  }
 }
