@@ -52,6 +52,10 @@ let intervals = {
 let activeQuestTimers = new Map();
 let currentLeaderboardController = null;
 let isMarketplaceTabActive = false;
+let arenaClient = null;  // 👈 ДОБАВЬ ЭТУ СТРОКУ
+
+// КЭШИ
+let leaderboardCache = { data: null, expiresAt: 0 };
 
 // КЭШИ
 let leaderboardCache = { data: null, expiresAt: 0 };
@@ -80,8 +84,7 @@ let UPGRADE_BASE_COST = 300;
 let UPGRADE_MULTIPLIER = 1.4;
 let MAX_INVENTORY_SLOTS = 50;
 let SPECIAL_QUESTS = [];
-// В начале файла, после других глобальных переменных, добавь:
-let arenaClient = null;
+
 
 const RARITY_COLORS = {
     common: '#94a3b8', uncommon: '#22c55e', rare: '#3b82f6',
