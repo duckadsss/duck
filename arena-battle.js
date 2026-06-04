@@ -48,23 +48,36 @@ function registerArenaSocket(socket) {
 function initBattle(battleData) {
     console.log('⚔️ initBattle called');
     
-    const playerMonsters = (battleData.player.monsters || []).map(m => ({
-        id: m.id,
-        name: m.name || 'Unknown',
-        icon: m.icon || 'https://ndammo.github.io/Mmodna/default.png',
-        rarity: m.rarity || 'common',
-        hp: m.hp !== undefined ? m.hp : (m.maxHp || 100),
-        maxHp: m.maxHp || 100
-    }));
+    // ПРОВЕРКА: убеждаемся, что монстры имеют корректные hp
+    const playerMonsters = (battleData.player.monsters || []).map(m => {
+        // Если пришёл объект с hp и maxHp - используем их
+        // Если пришёл объект с полями из createBattleMonster - у него уже есть hp и maxHp
+        const currentHp = (m.hp !== undefined && m.hp !== null) ? m.hp : (m.maxHp || 100);
+        const currentMaxHp = m.maxHp || 100;
+        
+        return {
+            id: m.id,
+            name: m.name || 'Unknown',
+            icon: m.icon || 'https://ndammo.github.io/Mmodna/default.png',
+            rarity: m.rarity || 'common',
+            hp: currentHp,
+            maxHp: currentMaxHp
+        };
+    });
     
-    const opponentMonsters = (battleData.opponent.monsters || []).map(m => ({
-        id: m.id,
-        name: m.name || 'Unknown',
-        icon: m.icon || 'https://ndammo.github.io/Mmodna/default.png',
-        rarity: m.rarity || 'common',
-        hp: m.hp !== undefined ? m.hp : (m.maxHp || 100),
-        maxHp: m.maxHp || 100
-    }));
+    const opponentMonsters = (battleData.opponent.monsters || []).map(m => {
+        const currentHp = (m.hp !== undefined && m.hp !== null) ? m.hp : (m.maxHp || 100);
+        const currentMaxHp = m.maxHp || 100;
+        
+        return {
+            id: m.id,
+            name: m.name || 'Unknown',
+            icon: m.icon || 'https://ndammo.github.io/Mmodna/default.png',
+            rarity: m.rarity || 'common',
+            hp: currentHp,
+            maxHp: currentMaxHp
+        };
+    });
     
     currentBattle = {
         battleId: battleData.battleId,
@@ -281,13 +294,22 @@ function handleOpponentMove(moveData) {
     
     currentBattle.waitingForResponse = false;
     
-    if (moveData.playerHealth) {
-        currentBattle.player.monsters = moveData.playerHealth.monsters;
+    // Обновляем монстров, если пришли новые данные
+    if (moveData.playerHealth && moveData.playerHealth.monsters) {
+        currentBattle.player.monsters = moveData.playerHealth.monsters.map(m => ({
+            ...m,
+            maxHp: m.maxHp || m.hp
+        }));
         currentBattle.player.totalHealth = moveData.playerHealth.current;
+        currentBattle.player.maxHealth = moveData.playerHealth.max;
     }
-    if (moveData.opponentHealth) {
-        currentBattle.opponent.monsters = moveData.opponentHealth.monsters;
+    if (moveData.opponentHealth && moveData.opponentHealth.monsters) {
+        currentBattle.opponent.monsters = moveData.opponentHealth.monsters.map(m => ({
+            ...m,
+            maxHp: m.maxHp || m.hp
+        }));
         currentBattle.opponent.totalHealth = moveData.opponentHealth.current;
+        currentBattle.opponent.maxHealth = moveData.opponentHealth.max;
     }
     
     renderBattleTeams();
