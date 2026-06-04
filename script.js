@@ -3211,6 +3211,71 @@ function spawnFloatingMMO(amount) {
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 1600);
 }
+// ============================================
+// ПЕРЕОПРЕДЕЛЕНИЕ ОБРАБОТЧИКОВ АРЕНЫ
+// ============================================
+
+// Функция для обновления обработчиков после загрузки battle системы
+function setupArenaBattleHandlers() {
+    if (!arenaSocket) {
+        setTimeout(setupArenaBattleHandlers, 500);
+        return;
+    }
+    
+    if (typeof initBattle !== 'function') {
+        setTimeout(setupArenaBattleHandlers, 500);
+        return;
+    }
+    
+    console.log('🎮 Настройка боевых обработчиков...');
+    
+    // Удалить старые обработчики
+    arenaSocket.removeAllListeners('battle-start');
+    arenaSocket.removeAllListeners('opponent-move');
+    arenaSocket.removeAllListeners('battle-end');
+    
+    // Добавить новые
+    arenaSocket.on('battle-start', (data) => {
+        console.log('⚔️ Бой начался!', data);
+        if (typeof initBattle === 'function') {
+            initBattle(data);
+        }
+    });
+    
+    arenaSocket.on('opponent-move', (data) => {
+        console.log('🎯 Ход противника:', data);
+        if (typeof handleOpponentMove === 'function') {
+            handleOpponentMove(data);
+        }
+    });
+    
+    arenaSocket.on('battle-end', (data) => {
+        console.log('🏁 Бой окончен:', data);
+        if (typeof endBattle === 'function') {
+            endBattle(data);
+        }
+    });
+    
+    console.log('✅ Боевые обработчики настроены');
+}
+
+// Перехватить оригинальную инициализацию сокета
+const originalInitArena = window.initArenaWebSocket || function() {};
+
+window.initArenaWebSocket = function() {
+    console.log('🔌 Инициализация арены...');
+    originalInitArena();
+    
+    // Ждем подключения и настраиваем обработчики
+    setTimeout(setupArenaBattleHandlers, 1000);
+};
+
+// Если arenaSocket уже существует
+if (typeof arenaSocket !== 'undefined' && arenaSocket) {
+    setTimeout(setupArenaBattleHandlers, 500);
+}
+
+console.log('🎮 Battle system ready');
 
 // ============================================================
 // INIT
