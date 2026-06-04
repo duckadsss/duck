@@ -349,7 +349,10 @@ function handleVisibilityChange() {
         
         // Переподключение WebSocket при возвращении на вкладку
         if (arenaClient && state.token && !arenaClient.isConnected()) {
-            arenaClient.connectSocket(state.token, API_URL);
+            
+
+// Стало:
+arenaClient.connectSocket(state.token, WEBSOCKET_URL);
         }
         
         if (isMarketplaceTabActive) {
