@@ -313,6 +313,44 @@
         </button>
     </div>
 
+    <!-- BATTLE ARENA (прямо на вкладке, не в модалке) -->
+    <div id="arenaBattleContainer" style="display:none;">
+        <div class="arena-section-title">
+            <i class="fa-solid fa-crosshairs"></i>
+            <span>⚔️ ACTIVE BATTLE ⚔️</span>
+        </div>
+        
+        <!-- Opponent Section -->
+        <div class="battle-opponent">
+            <div class="battle-player-name" id="opponentName">OPPONENT</div>
+            <div class="battle-health-bar">
+                <div class="battle-health-fill" id="opponentHealthFill" style="width:100%"></div>
+                <span class="battle-health-text" id="opponentHealthText">100%</span>
+            </div>
+            <div class="battle-monsters" id="opponentMonsters"></div>
+        </div>
+
+        <!-- Battle Log -->
+        <div class="battle-log" id="battleLog">
+            <div class="battle-log-title">⚔️ BATTLE LOG</div>
+            <div class="battle-log-messages" id="battleLogMessages"></div>
+        </div>
+
+        <!-- Player Section -->
+        <div class="battle-player">
+            <div class="battle-player-name" id="playerName">YOU</div>
+            <div class="battle-health-bar">
+                <div class="battle-health-fill" id="playerHealthFill" style="width:100%"></div>
+                <span class="battle-health-text" id="playerHealthText">100%</span>
+            </div>
+            <div class="battle-monsters" id="playerMonsters"></div>
+        </div>
+
+        <div class="battle-turn-timer" id="turnTimer">--s</div>
+        <div class="battle-message" id="battleMessage"></div>
+        <button class="battle-quit-btn" onclick="closeBattle()" style="margin-top:12px;padding:10px;background:#1e2d4a;border:none;border-radius:12px;color:#94a3b8;font-family:'Orbitron',monospace;cursor:pointer">✕ QUIT BATTLE</button>
+    </div>
+
     <div class="arena-history">
         <div class="arena-section-title">
             <i class="fa-solid fa-clock-rotate-left"></i>
@@ -367,42 +405,6 @@
         <div class="popup-close" onclick="closeMonsterSelector()"><i class="fa-solid fa-xmark"></i></div>
         <div class="popup-title">SELECT MONSTER</div>
         <div class="monster-selector-grid" id="monsterSelectorGrid"></div>
-    </div>
-</div>
-
-<!-- BATTLE MODAL -->
-<div class="overlay" id="battleOverlay">
-    <div class="battle-container" id="battleContainer">
-        <div class="battle-close" onclick="closeBattle()">✕</div>
-        
-        <!-- Opponent Section -->
-        <div class="battle-opponent">
-            <div class="battle-player-name" id="opponentName">OPPONENT</div>
-            <div class="battle-health-bar">
-                <div class="battle-health-fill" id="opponentHealthFill" style="width:100%"></div>
-                <span class="battle-health-text" id="opponentHealthText">100%</span>
-            </div>
-            <div class="battle-monsters" id="opponentMonsters"></div>
-        </div>
-
-        <!-- Battle Log -->
-        <div class="battle-log" id="battleLog">
-            <div class="battle-log-title">⚔️ BATTLE LOG</div>
-            <div class="battle-log-messages" id="battleLogMessages"></div>
-        </div>
-
-        <!-- Player Section -->
-        <div class="battle-player">
-            <div class="battle-player-name" id="playerName">YOU</div>
-            <div class="battle-health-bar">
-                <div class="battle-health-fill" id="playerHealthFill" style="width:100%"></div>
-                <span class="battle-health-text" id="playerHealthText">100%</span>
-            </div>
-            <div class="battle-monsters" id="playerMonsters"></div>
-        </div>
-
-        <div class="battle-turn-timer" id="turnTimer">30s</div>
-        <div class="battle-message" id="battleMessage"></div>
     </div>
 </div>
 

@@ -2215,3 +2215,81 @@ img {
     background: #1e2d4a;
     color: #94a3b8;
 }
+/* BATTLE ARENA INLINE STYLES */
+#arenaBattleContainer {
+    margin-top: 20px;
+    padding: 16px;
+    background: linear-gradient(135deg, #0a0e1a, #0d1120);
+    border-radius: 20px;
+    border: 2px solid #a855f7;
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.2);
+    animation: battleFadeIn 0.5s ease;
+}
+
+@keyframes battleFadeIn {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.battle-quit-btn {
+    display: block;
+    width: 100%;
+    margin-top: 16px;
+    padding: 12px;
+    background: #1e2d4a;
+    border: none;
+    border-radius: 12px;
+    color: #94a3b8;
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.battle-quit-btn:active {
+    transform: scale(0.97);
+}
+
+.battle-monster-card {
+    position: relative;
+}
+
+.battle-monster-card .attack-btn {
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    border: none;
+    border-radius: 20px;
+    padding: 4px 10px;
+    font-size: 9px;
+    font-weight: 700;
+    color: white;
+    font-family: 'Orbitron', monospace;
+    cursor: pointer;
+    white-space: nowrap;
+    z-index: 5;
+    transition: all 0.2s;
+}
+
+.battle-monster-card .attack-btn:active {
+    transform: translateX(-50%) scale(0.95);
+}
+
+.battle-monster-card.can-attack {
+    border-color: #22c55e;
+    animation: canAttackPulse 1s infinite;
+}
+
+.battle-monster-card.attacking {
+    animation: attackShake 0.3s ease-in-out;
+    border-color: #ef4444;
+    background: rgba(239, 68, 68, 0.2);
+}
+
+.battle-monster-card.defending {
+    animation: defendShake 0.3s ease-in-out;
+    border-color: #f59e0b;
+}
