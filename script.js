@@ -2031,8 +2031,10 @@ async function findMatch() {
 
 function cancelBattleSearch() {
     arenaClient?.stopSearch();
-    arenaClient?.disconnectSSE();
-    arenaClient?.connectSSE(state.token, API_URL);
+    // FIXED: изменено с disconnectSSE на disconnectSocket
+    arenaClient?.disconnectSocket();
+    // FIXED: изменено с connectSSE на connectSocket
+    arenaClient?.connectSocket(state.token, API_URL);
     const findBtn = document.getElementById('findMatchBtn');
     const searchStatus = document.getElementById('arenaSearchStatus');
     if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; }
@@ -2193,7 +2195,8 @@ function switchTab(tab) {
         renderArenaTeamInventory();
         renderArenaFightTab();
         renderArenaRanking();
-        if (!arenaClient?.state.sseConnection && state.token) arenaClient?.connectSSE(state.token, API_URL);
+        // FIXED: изменено с connectSSE на connectSocket
+        if (!arenaClient?.state.socket?.connected && state.token) arenaClient?.connectSocket(state.token, API_URL);
     }
 }
 
@@ -2313,7 +2316,8 @@ async function initTelegramApp() {
     arenaClient = window.arenaClient;
     if (arenaClient) {
         arenaClient.loadTeamFromStorage();
-        arenaClient.connectSSE(state.token, API_URL);
+        // FIXED: изменено с connectSSE на connectSocket
+        arenaClient.connectSocket(state.token, API_URL);
         arenaClient.on('onMatchFound', (data) => showNativeBattleConfirmation(data));
         arenaClient.on('onBattleStartUI', (data) => { if (document.getElementById('overlay')?.classList.contains('show')) closeOverlay(); renderBattleInterface(data); });
         arenaClient.on('onBattleUpdate', (data, isPlayer1) => updateBattleUIFromClient(data, isPlayer1));
@@ -2329,8 +2333,8 @@ async function initTelegramApp() {
         img.addEventListener('contextmenu', (e) => { e.preventDefault(); return false; });
         img.addEventListener('touchstart', (e) => { if (e.touches.length > 1) e.preventDefault(); });
     });
-    window.addEventListener('beforeunload', () => { if (arenaClient) arenaClient.disconnectSSE(); });
-    window.addEventListener('online', () => { if ((arenaClient?.isSearching() || arenaClient?.isBattleActive()) && !arenaClient?.state.sseConnection) arenaClient?.connectSSE(state.token, API_URL); });
+    window.addEventListener('beforeunload', () => { if (arenaClient) arenaClient.disconnectSocket(); });
+    window.addEventListener('online', () => { if ((arenaClient?.isSearching() || arenaClient?.isBattleActive()) && !arenaClient?.state.socket?.connected) arenaClient?.connectSocket(state.token, API_URL); });
 }
 
 function updateBattleUIFromClient(data, isPlayer1) {
