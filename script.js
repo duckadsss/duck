@@ -66,41 +66,15 @@ let questStatuses = new Map();
 const QUESTS_STORAGE_KEY = 'dna_mmo_quests_status';
 
 // ============================================================
-// ARENA VARIABLES
+// ARENA FUNCTIONS (ОБНОВЛЕННЫЕ - БЕЗ МОДАЛЬНЫХ ОКОН)
 // ============================================================
+
 let arenaSocket = null;
 let arenaCurrentTeam = [null, null, null];
 let arenaIsSearching = false;
 let arenaCurrentMatchRequest = null;
 let arenaCurrentBattle = null;
 let arenaSelectedSlotIndex = null;
-let arenaBattleInterval = null;
-
-// ============================================================
-// GAME DATA
-// ============================================================
-let CREATURES = [];
-let CAPSULE_COSTS = { basic: 1000, premium: 6000 };
-let RARITY_WEIGHTS = {
-    basic: { common: 100, uncommon: 0, rare: 0, epic: 0, legendary: 0 },
-    premium: { common: 70, uncommon: 20, rare: 10, epic: 0, legendary: 0 }
-};
-let AD_REWARD = 50;
-let AD_COOLDOWN = 60;
-let UPGRADE_BASE_COST = 300;
-let UPGRADE_MULTIPLIER = 1.4;
-let MAX_INVENTORY_SLOTS = 50;
-let SPECIAL_QUESTS = [];
-
-const RARITY_COLORS = {
-    common: '#94a3b8', uncommon: '#22c55e', rare: '#3b82f6',
-    epic: '#a855f7', legendary: '#f59e0b', mythic: '#ef4444'
-};
-const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
-
-// ============================================================
-// ARENA FUNCTIONS
-// ============================================================
 
 function initArenaWebSocket() {
     if (arenaSocket && arenaSocket.connected) return;
@@ -167,60 +141,21 @@ function initArenaWebSocket() {
     });
 }
 
-function findArenaMatch() {
-    if (arenaCurrentTeam.filter(m => m !== null).length !== 3) {
-        showToast('You need to select 3 monsters!', '⚠️');
-        return;
-    }
-    
-    const tokensEl = document.getElementById('arenaTokens');
-    if (!tokensEl) return;
-    
-    const tokens = parseInt(tokensEl.innerText);
-    if (tokens <= 0) {
-        showToast('No arena tokens left! Buy more in shop.', '❌');
-        return;
-    }
-    
-    if (arenaIsSearching) return;
-    
-    initArenaWebSocket();
-    
-    arenaIsSearching = true;
-    const findBtn = document.getElementById('arenaFindBtn');
-    const cancelBtn = document.getElementById('arenaCancelBtn');
-    if (findBtn) findBtn.style.display = 'none';
-    if (cancelBtn) cancelBtn.style.display = 'block';
-    
-    arenaSocket.emit('find-match', { team: arenaCurrentTeam });
-    showToast('Searching for opponent...', '🔍');
-}
-
-function cancelArenaSearch() {
-    if (!arenaIsSearching) return;
-    if (arenaSocket) arenaSocket.emit('cancel-search');
-    stopArenaSearch();
-}
-
-function stopArenaSearch() {
-    arenaIsSearching = false;
-    const findBtn = document.getElementById('arenaFindBtn');
-    const cancelBtn = document.getElementById('arenaCancelBtn');
-    if (findBtn) findBtn.style.display = 'flex';
-    if (cancelBtn) cancelBtn.style.display = 'none';
-}
-
 function showAcceptBattleModal(opponent) {
     const overlay = document.getElementById('acceptBattleOverlay');
-    if (!overlay) return;
-    
-    const opponentNameEl = document.getElementById('acceptOpponentName');
-    const opponentRatingEl = document.getElementById('acceptOpponentRating');
-    
-    if (opponentNameEl) opponentNameEl.innerText = opponent.name;
-    if (opponentRatingEl) opponentRatingEl.innerHTML = `Rating: ${opponent.rating} · League: ${opponent.league}`;
-    
-    overlay.classList.add('show');
+    if (overlay) {
+        const opponentNameEl = document.getElementById('acceptOpponentName');
+        const opponentRatingEl = document.getElementById('acceptOpponentRating');
+        
+        if (opponentNameEl) opponentNameEl.innerText = opponent.name;
+        if (opponentRatingEl) opponentRatingEl.innerHTML = `Rating: ${opponent.rating} · League: ${opponent.league}`;
+        
+        overlay.classList.add('show');
+    } else {
+        // Если модалки нет, показываем тост
+        showToast(`Battle found! ${opponent.name} (${opponent.rating} rating)`, '⚔️');
+        setTimeout(() => acceptBattle(), 3000);
+    }
 }
 
 function acceptBattle() {
@@ -247,8 +182,15 @@ function declineBattle() {
 function startBattle(battleData) {
     arenaCurrentBattle = battleData;
     
-    const battleOverlay = document.getElementById('battleOverlay');
-    if (battleOverlay) battleOverlay.classList.add('show');
+    // Показываем контейнер битвы
+    const battleContainer = document.getElementById('arenaBattleContainer');
+    if (battleContainer) battleContainer.style.display = 'block';
+    
+    // Скрываем командные слоты и кнопку поиска во время боя
+    const teamSlots = document.querySelector('.arena-team-slots');
+    const arenaButtons = document.querySelector('.arena-buttons');
+    if (teamSlots) teamSlots.style.display = 'none';
+    if (arenaButtons) arenaButtons.style.display = 'none';
     
     const playerNameEl = document.getElementById('playerName');
     const opponentNameEl = document.getElementById('opponentName');
@@ -268,11 +210,11 @@ function startBattle(battleData) {
     
     const messageEl = document.getElementById('battleMessage');
     if (battleData.currentTurn === 'player') {
-        if (messageEl) messageEl.innerHTML = '🔵 YOUR TURN - Click a monster to attack!';
-        enableAttackSelection();
+        if (messageEl) messageEl.innerHTML = '🔵 YOUR TURN - Click ATTACK on a monster!';
+        enableAttackButtons();
     } else {
         if (messageEl) messageEl.innerHTML = '🔴 OPPONENT\'S TURN - Waiting...';
-        disableAttackSelection();
+        disableAttackButtons();
     }
 }
 
@@ -282,12 +224,12 @@ function renderBattleMonsters(side, monsters, isPlayer) {
     
     container.innerHTML = monsters.map((monster, idx) => `
         <div class="battle-monster-card ${isPlayer && monster.hp > 0 ? 'can-attack' : ''}" 
-             data-side="${side}" data-index="${idx}" data-alive="${monster.hp > 0}"
-             onclick="${isPlayer && monster.hp > 0 ? `selectAttackTarget(${idx})` : ''}">
+             data-side="${side}" data-index="${idx}" data-alive="${monster.hp > 0}">
             <img src="${monster.icon}" alt="${monster.name}" 
                  onerror="this.src='https://ndammo.github.io/Mmodna/default.png'">
             <div class="battle-monster-name">${escapeHtml(monster.name)}</div>
             <div class="battle-monster-hp">❤️ ${monster.hp}/${monster.maxHp}</div>
+            ${isPlayer && monster.hp > 0 ? `<button class="attack-btn" onclick="selectAttackTarget(${idx})">⚔️ ATTACK</button>` : ''}
         </div>
     `).join('');
 }
@@ -310,7 +252,19 @@ function selectAttackTarget(targetIndex) {
         return;
     }
     
-    animateAttack(targetIndex);
+    // Находим атакующую карту и подсвечиваем
+    const attackerCard = document.querySelector(`#playerMonsters .battle-monster-card`);
+    if (attackerCard) {
+        attackerCard.classList.add('attacking');
+        setTimeout(() => attackerCard.classList.remove('attacking'), 300);
+    }
+    
+    // Подсвечиваем защищающуюся карту
+    const targetCard = document.querySelector(`#opponentMonsters .battle-monster-card[data-index="${targetIndex}"]`);
+    if (targetCard) {
+        targetCard.classList.add('defending');
+        setTimeout(() => targetCard.classList.remove('defending'), 300);
+    }
     
     if (arenaSocket) {
         arenaSocket.emit('make-move', {
@@ -320,23 +274,9 @@ function selectAttackTarget(targetIndex) {
         });
     }
     
-    disableAttackSelection();
+    disableAttackButtons();
     const messageEl = document.getElementById('battleMessage');
     if (messageEl) messageEl.innerHTML = '⏳ Waiting for server...';
-}
-
-function animateAttack(targetIndex) {
-    const targetCard = document.querySelector(`#opponentMonsters .battle-monster-card[data-index="${targetIndex}"]`);
-    if (targetCard) {
-        targetCard.classList.add('defending');
-        setTimeout(() => targetCard.classList.remove('defending'), 300);
-    }
-    
-    const attackerCard = document.querySelector(`#playerMonsters .battle-monster-card.can-attack`);
-    if (attackerCard) {
-        attackerCard.classList.add('attacking');
-        setTimeout(() => attackerCard.classList.remove('attacking'), 300);
-    }
 }
 
 function handleOpponentMove(data) {
@@ -351,6 +291,7 @@ function handleOpponentMove(data) {
         updateMonsterHealth('opponent', data.opponentHealth.monsters);
     }
     
+    // Анимация атаки соперника
     if (data.attackerIndex !== undefined && data.targetIndex !== undefined) {
         const attackerCard = document.querySelector(`#opponentMonsters .battle-monster-card[data-index="${data.attackerIndex}"]`);
         const targetCard = document.querySelector(`#playerMonsters .battle-monster-card[data-index="${data.targetIndex}"]`);
@@ -364,11 +305,11 @@ function handleOpponentMove(data) {
     
     const messageEl = document.getElementById('battleMessage');
     if (data.nextTurn === 'player') {
-        if (messageEl) messageEl.innerHTML = '🔵 YOUR TURN - Click a monster to attack!';
-        enableAttackSelection();
+        if (messageEl) messageEl.innerHTML = '🔵 YOUR TURN - Click ATTACK on a monster!';
+        enableAttackButtons();
     } else {
         if (messageEl) messageEl.innerHTML = '🔴 OPPONENT\'S TURN - Waiting...';
-        disableAttackSelection();
+        disableAttackButtons();
     }
 }
 
@@ -390,6 +331,8 @@ function updateMonsterHealth(side, monsters) {
                 card.classList.add('disabled');
                 card.classList.remove('can-attack');
                 card.setAttribute('data-alive', 'false');
+                const attackBtn = card.querySelector('.attack-btn');
+                if (attackBtn) attackBtn.remove();
             }
         }
     });
@@ -403,18 +346,20 @@ function updateTurnTimer(seconds) {
     }
 }
 
-function enableAttackSelection() {
-    const monsters = document.querySelectorAll('#playerMonsters .battle-monster-card');
-    monsters.forEach(card => {
-        if (card.getAttribute('data-alive') !== 'false') {
-            card.classList.add('can-attack');
-        }
+function enableAttackButtons() {
+    const buttons = document.querySelectorAll('#playerMonsters .attack-btn');
+    buttons.forEach(btn => {
+        btn.disabled = false;
+        btn.style.opacity = '1';
     });
 }
 
-function disableAttackSelection() {
-    const monsters = document.querySelectorAll('#playerMonsters .battle-monster-card');
-    monsters.forEach(card => card.classList.remove('can-attack'));
+function disableAttackButtons() {
+    const buttons = document.querySelectorAll('#playerMonsters .attack-btn');
+    buttons.forEach(btn => {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+    });
 }
 
 function addBattleLogMessage(message, isError = false) {
@@ -448,14 +393,25 @@ function endBattle(data) {
     
     setTimeout(() => {
         closeBattle();
-    }, 3000);
+    }, 4000);
 }
 
 function closeBattle() {
-    const battleOverlay = document.getElementById('battleOverlay');
-    if (battleOverlay) battleOverlay.classList.remove('show');
+    // Скрываем контейнер битвы
+    const battleContainer = document.getElementById('arenaBattleContainer');
+    if (battleContainer) battleContainer.style.display = 'none';
+    
+    // Показываем командные слоты и кнопку поиска
+    const teamSlots = document.querySelector('.arena-team-slots');
+    const arenaButtons = document.querySelector('.arena-buttons');
+    if (teamSlots) teamSlots.style.display = 'grid';
+    if (arenaButtons) arenaButtons.style.display = 'flex';
+    
     arenaCurrentBattle = null;
-    disableAttackSelection();
+    disableAttackButtons();
+    
+    // Обновляем историю
+    loadBattleHistory();
 }
 
 function updateArenaStats(stats) {
@@ -611,6 +567,35 @@ async function buyArenaTokens() {
         showToast(res?.message || 'Error buying tokens', '❌');
     }
 }
+function findArenaMatch() {
+    if (arenaCurrentTeam.filter(m => m !== null).length !== 3) {
+        showToast('You need to select 3 monsters!', '⚠️');
+        return;
+    }
+    
+    const tokensEl = document.getElementById('arenaTokens');
+    if (!tokensEl) return;
+    
+    const tokens = parseInt(tokensEl.innerText);
+    if (tokens <= 0) {
+        showToast('No arena tokens left! Buy more.', '❌');
+        return;
+    }
+    
+    if (arenaIsSearching) return;
+    
+    initArenaWebSocket();
+    
+    arenaIsSearching = true;
+    const findBtn = document.getElementById('arenaFindBtn');
+    const cancelBtn = document.getElementById('arenaCancelBtn');
+    if (findBtn) findBtn.style.display = 'none';
+    if (cancelBtn) cancelBtn.style.display = 'block';
+    
+    arenaSocket.emit('find-match', { team: arenaCurrentTeam });
+    showToast('Searching for opponent...', '🔍');
+}
+
 
 function initArena() {
     loadArenaStats();
