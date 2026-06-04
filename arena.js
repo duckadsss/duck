@@ -832,8 +832,6 @@ class ArenaClient {
     }
 }
 
-let arenaClient = null;
-
 const originalInit = window.initTelegramApp;
 if (originalInit) {
     window.initTelegramApp = async function() {

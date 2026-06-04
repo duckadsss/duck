@@ -52,7 +52,7 @@ let intervals = {
 let activeQuestTimers = new Map();
 let currentLeaderboardController = null;
 let isMarketplaceTabActive = false;
-let arenaClient = null; 
+let arenaClient = null;  // 👈
 
 // КЭШИ
 let leaderboardCache = { data: null, expiresAt: 0 };
