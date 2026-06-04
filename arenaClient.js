@@ -12,8 +12,8 @@ class ArenaClient {
         this.eventListeners = new Map();
         
         this.SERVER_URL = window.location.hostname === 'localhost' 
-            ? 'ws://localhost:3000/ws/arena' 
-            : 'wss://serv-production-dbf3.up.railway.app/ws/arena';
+    ? 'ws://localhost:3000/ws/arena' 
+    : 'wss://serv-production-765e.up.railway.app/ws/arena';  // ← wss://
     }
     
     connect(token) {
