@@ -13,7 +13,7 @@ class ArenaClient {
         
         this.SERVER_URL = window.location.hostname === 'localhost' 
     ? 'ws://localhost:3000/ws/arena' 
-    : 'wss://serv-production-765e.up.railway.app/ws/arena';  // ← wss://
+    : 'wss://serv-production-765e.up.railway.app/ws/arena';
     }
     
     connect(token) {
@@ -138,8 +138,14 @@ class ArenaClient {
     }
     
     makeMove(battleId, targetCreatureId) {
+    console.log(`🎯 makeMove called: battleId=${battleId}, target=${targetCreatureId}, ws state=${this.ws?.readyState}`);
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.send('make_move', { battleId, targetCreatureId });
+    } else {
+        console.error('❌ Cannot make move - WebSocket not connected');
+        this.emit('error', { message: 'Connection lost!' });
     }
+}
     
     forfeit(battleId) {
         this.send('forfeit', { battleId });
@@ -154,10 +160,15 @@ class ArenaClient {
     }
     
     send(type, data = {}) {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify({ type, ...data }));
-        }
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        const message = JSON.stringify({ type, ...data });
+        console.log(`📤 WebSocket send: ${type}`, data);
+        this.ws.send(message);
+    } else {
+        console.error(`❌ WebSocket not open, state: ${this.ws?.readyState}, type: ${type}`);
+        this.emit('error', { message: 'Connection lost, please reconnect' });
     }
+}
     
     disconnect() {
         if (this.ws) {

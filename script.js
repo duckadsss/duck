@@ -1,4 +1,5 @@
-
+// Блокируем Eruda и другие отладочные скрипты
+if (window.eruda) { window.eruda.destroy(); delete window.eruda; }
 
 // ============================================================
 // DNA MMO - ПОЛНАЯ КЛИЕНТСКАЯ ЧАСТЬ (С ПОЧАСОВОЙ РЕКЛАМОЙ)
@@ -458,7 +459,7 @@ async function initTelegramApp() {
     
     if (!referralCode && urlParams.get('ref')) {
         referralCode = urlParams.get('ref');
-        console.log('📎 Реферальный код из ref URL:', referralCode);
+        console.log('?? Реферальный код из ref URL:', referralCode);
     }
 
     if (!initData && window.location.hostname === 'localhost') {
@@ -3148,21 +3149,29 @@ function selectBattleTarget(creatureId) {
 }
 
 function executeBattleAttack() {
+    console.log('⚔️ executeBattleAttack called');
+    console.log('window.isMyTurn:', window.isMyTurn);
+    console.log('selectedAttackTarget:', selectedAttackTarget);
+    console.log('arenaClient exists:', !!arenaClient);
+    console.log('currentBattleId:', window.currentBattleId);
+    
     if (!window.isMyTurn) {
         showToast('Not your turn!', '⏳');
+        console.log('❌ Not your turn');
         return;
     }
     
     if (!selectedAttackTarget) {
         showToast('Select a target first!', '🎯');
+        console.log('❌ No target selected');
         return;
     }
     
+    console.log('✅ Sending move to server...');
     arenaClient.makeMove(window.currentBattleId, selectedAttackTarget);
     window.isMyTurn = false;
     updateTurnIndicator(null);
     
-    // Отключаем кнопку атаки
     const attackBtn = document.getElementById('battleAttackBtn');
     if (attackBtn) attackBtn.disabled = true;
 }

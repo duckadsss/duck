@@ -138,26 +138,22 @@ class ArenaServer {
     }
 
     async handleMessage(ws, msg, telegramId) {
-        switch (msg.type) {
-            case 'set_team':
-                await this.handleSetTeam(ws, msg.team, telegramId);
-                break;
-            case 'start_search':
-                await this.handleStartSearch(ws, telegramId);
-                break;
-            case 'cancel_search':
-                this.handleCancelSearch(telegramId);
-                break;
-            case 'accept_battle':
-                await this.handleAcceptBattle(ws, msg.battleId, telegramId);
-                break;
-            case 'decline_battle':
-                await this.handleDeclineBattle(msg.battleId, telegramId);
-                break;
-            case 'make_move':
-                await this.handleMakeMove(ws, msg.battleId, msg.targetCreatureId, telegramId);
-                break;
-            case 'forfeit':
+    console.log(`📨 Received message: ${msg.type} from ${telegramId}`);
+    
+    switch (msg.type) {
+        case 'set_team':
+            console.log('📋 Setting team:', msg.team);
+            await this.handleSetTeam(ws, msg.team, telegramId);
+            break;
+        case 'start_search':
+            console.log('🔍 Starting search for:', telegramId);
+            await this.handleStartSearch(ws, telegramId);
+            break;
+        case 'make_move':
+            console.log(`⚔️ Make move: battleId=${msg.battleId}, target=${msg.targetCreatureId}, player=${telegramId}`);
+            await this.handleMakeMove(ws, msg.battleId, msg.targetCreatureId, telegramId);
+            break;
+         case 'forfeit':
                 await this.handleForfeit(ws, msg.battleId, telegramId);
                 break;
             case 'get_stats':
@@ -166,8 +162,11 @@ class ArenaServer {
             case 'get_leaderboard':
                 await this.sendLeaderboard(ws, telegramId);
                 break;
-        }
+        
+        default:
+            console.log(`❓ Unknown message type: ${msg.type}`);
     }
+}
 
     async handleSetTeam(ws, team, telegramId) {
         if (!Array.isArray(team) || team.length !== 3) {
@@ -489,6 +488,19 @@ class ArenaServer {
             currentTurn: battle.currentTurn,
             died
         });
+        // После отправки move_result, перед сменой хода
+console.log(`✅ Move processed. Current turn before change: ${battle.currentTurn}`);
+console.log(`Defender has alive: ${defenderHasAlive}`);
+
+if (!defenderHasAlive) {
+    console.log(`🏆 Battle ended! Winner: ${telegramId}`);
+    await this.endBattle(battle, telegramId);
+    return;
+}
+
+// Меняем ход
+battle.currentTurn = battle.player1.telegramId === telegramId ? battle.player2.telegramId : battle.player1.telegramId;
+console.log(`🔄 Turn changed to: ${battle.currentTurn}`);
         
         this.sendToClient(battle.player2.ws, 'move_result', {
             move,
