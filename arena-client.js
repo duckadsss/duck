@@ -111,7 +111,7 @@ class ArenaClient {
         }, 60000);
     }
     
-    // В arena-client.js, в методе startBattle, убедитесь что есть этот код:
+// arena-client.js - метод startBattle
 startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
     this.state.battleActive = true;
     this.state.currentBattleId = battleId;
@@ -128,11 +128,13 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
         this.callbacks.onBattleStart(battleId, isPlayer1, myTeam, enemyTeam);
     }
     
-    // ЭТО ВАЖНО - вызываем для отображения UI
+    // ВАЖНО: передаём правильные поля для battleData
     if (this.callbacks.onBattleStartUI) {
         this.callbacks.onBattleStartUI({
             battleId: battleId,
             isPlayer1: isPlayer1,
+            player1Team: isPlayer1 ? myTeam : enemyTeam,  // Если игрок player1, его команда в player1Team
+            player2Team: isPlayer1 ? enemyTeam : myTeam,  // Если игрок player1, враг в player2Team
             myTeam: myTeam,
             opponentTeam: enemyTeam,
             currentTurn: isPlayer1 ? 'player1' : 'player2',

@@ -2359,7 +2359,7 @@ async function renderArenaFightTab() {
 }
 
 // ============================================================
-// RENDER BATTLE INTERFACE (С ЛИГАМИ)
+// RENDER BATTLE INTERFACE (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 // ============================================================
 function renderBattleInterface(battleData) {
     addDebugLog('🎨 renderBattleInterface вызван', 'info');
@@ -2374,12 +2374,30 @@ function renderBattleInterface(battleData) {
     if (statusContainer) statusContainer.style.display = 'none';
     container.style.display = 'block';
     
+    // ВАЖНО: правильно определяем команды
+    // isPlayer1 = true - игрок играет за player1, false - игрок играет за player2
     const isPlayer1 = battleData.isPlayer1;
-    const myTeam = isPlayer1 ? battleData.myTeam : battleData.opponentTeam;
-    const enemyTeam = isPlayer1 ? battleData.opponentTeam : battleData.myTeam;
+    
+    // СВОЯ команда: если игрок player1, то его команда player1Team, иначе player2Team
+    const myTeam = isPlayer1 ? battleData.player1Team : battleData.player2Team;
+    
+    // КОМАНДА СОПЕРНИКА: если игрок player1, то соперник player2Team, иначе player1Team
+    const enemyTeam = isPlayer1 ? battleData.player2Team : battleData.player1Team;
+    
+    // Если в battleData используются другие названия полей
+    const actualMyTeam = myTeam || battleData.myTeam;
+    const actualEnemyTeam = enemyTeam || battleData.opponentTeam;
+    
+    if (!actualMyTeam || !actualEnemyTeam) {
+        addDebugLog('❌ Нет данных команд!', 'error');
+        container.innerHTML = '<div class="arena-battle-container" style="text-align:center;padding:40px;color:red;">Ошибка загрузки боя</div>';
+        return;
+    }
+    
     const isMyTurn = (battleData.currentTurn === 'player1' && isPlayer1) || 
                      (battleData.currentTurn === 'player2' && !isPlayer1);
     
+    // Лиги
     const opponentLeague = battleData.opponentLeague || battleData.league || 'bronze';
     const myLeague = battleData.myLeague || 'bronze';
     const leagueNames = {
@@ -2390,6 +2408,10 @@ function renderBattleInterface(battleData) {
         diamond: '🏆 Алмазная'
     };
     
+    addDebugLog(`👤 Своя команда: ${actualMyTeam.length} питомцев`, 'info');
+    addDebugLog(`👥 Команда соперника: ${actualEnemyTeam.length} питомцев`, 'info');
+    addDebugLog(`🎮 Игрок за player1: ${isPlayer1}, мой ход: ${isMyTurn}`, 'info');
+    
     container.innerHTML = `
         <div class="arena-battle-container">
             <div class="arena-team-side">
@@ -2398,7 +2420,7 @@ function renderBattleInterface(battleData) {
                     <span class="arena-league-badge-small league-${myLeague}" style="margin-left: 8px;">${leagueNames[myLeague] || 'Бронзовая'}</span>
                 </div>
                 <div class="arena-creatures-row" id="arenaMyCreatures">
-                    ${myTeam.map((creature, idx) => `
+                    ${actualMyTeam.map((creature, idx) => `
                         <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-creature-index="${idx}">
                             <div class="creature-icon">${getIconHtml(creature)}</div>
                             <div class="creature-name">${escapeHtml(creature.name)}</div>
@@ -2420,7 +2442,7 @@ function renderBattleInterface(battleData) {
                     <span class="arena-league-badge-small league-${opponentLeague}" style="margin-left: 8px;">${leagueNames[opponentLeague] || 'Бронзовая'}</span>
                 </div>
                 <div class="arena-creatures-row" id="arenaEnemyCreatures">
-                    ${enemyTeam.map((creature, idx) => `
+                    ${actualEnemyTeam.map((creature, idx) => `
                         <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-enemy-index="${idx}">
                             <div class="creature-icon">${getIconHtml(creature)}</div>
                             <div class="creature-name">${escapeHtml(creature.name)}</div>
@@ -2441,7 +2463,7 @@ function renderBattleInterface(battleData) {
         </div>
     `;
     
-    addDebugLog('✅ Battle interface rendered with league info', 'success');
+    addDebugLog('✅ Battle interface rendered', 'success');
 }
 
 function updateBattleUIFromClient(data, isPlayer1) {
