@@ -86,15 +86,6 @@ const RARITY_MULTIPLIERS = {
     mythic: 1.40
 };
 
-// Исправленная функция getLeagueByLevel (по уровням)
-function getLeagueByLevel(level) {
-    if (level >= 20) return 'diamond';
-    if (level >= 15) return 'platinum';
-    if (level >= 10) return 'gold';
-    if (level >= 5) return 'silver';
-    return 'bronze';
-}
-
 function calculateCreatureStats(creature, userLevel) {
     const multiplier = RARITY_MULTIPLIERS[creature.rarity] || 1;
     const baseHP = Math.ceil((50 + (creature.incomeBase * 2) + (userLevel * 5)) * multiplier);
@@ -497,8 +488,10 @@ class ArenaBattleManager {
                 winnerStats.promotions += 1;
                 winnerStats.promotionProtection = true;
                 
-                const user = await this.User.findById(winnerId);
-                await this.sendNotification(user.telegramId, promotionMessage);
+                if (this.sendNotification) {
+                    const user = await this.User.findById(winnerId);
+                    if (user) await this.sendNotification(user.telegramId, promotionMessage);
+                }
             }
             
             if (newLoserLeague !== oldLoserLeague && !loserStats.promotionProtection) {
@@ -507,16 +500,19 @@ class ArenaBattleManager {
                     demotionMessage = `⚠️ ПОНИЖЕНИЕ! Вы вылетели в ${LEAGUE_CONFIG[newLoserLeague].name} лигу. Вернитесь, побеждая сильных!`;
                     loserStats.demotions += 1;
                     
-                    const user = await this.User.findById(loserId);
-                    await this.sendNotification(user.telegramId, demotionMessage);
+                    if (this.sendNotification) {
+                        const user = await this.User.findById(loserId);
+                        if (user) await this.sendNotification(user.telegramId, demotionMessage);
+                    }
                 } else {
                     newLoserLeague = oldLoserLeague;
                     newLoserRating = LEAGUE_CONFIG[oldLoserLeague].minRating - 50;
                 }
             }
             
-            if (winnerStats.promotionProtection) {
-                winnerStats.promotionProtection = false;
+            // Сбрасываем promotionProtection проигравшего (защита использована)
+            if (loserStats.promotionProtection) {
+                loserStats.promotionProtection = false;
             }
             
             winnerStats.rating = newWinnerRating;

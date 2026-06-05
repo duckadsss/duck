@@ -20,6 +20,7 @@ class ArenaClient {
         this.timers = {
             battleTimer: null,
             searchTimer: null,
+            searchTickTimer: null,
             reconnectTimer: null
         };
         
@@ -34,6 +35,7 @@ class ArenaClient {
             onBattleStartUI: null,
             onTimerTick: null,
             onSearchTimeout: null,
+            onSearchTick: null,
             onConfirmationUpdate: null,
             onConnected: null,
             onDisconnected: null
@@ -97,10 +99,30 @@ class ArenaClient {
             clearTimeout(this.timers.searchTimer);
             this.timers.searchTimer = null;
         }
+        if (this.timers.searchTickTimer) {
+            clearInterval(this.timers.searchTickTimer);
+            this.timers.searchTickTimer = null;
+        }
     }
     
     startSearchTimer() {
         if (this.timers.searchTimer) clearTimeout(this.timers.searchTimer);
+        if (this.timers.searchTickTimer) clearInterval(this.timers.searchTickTimer);
+
+        let elapsed = 0;
+        const TIMEOUT = 60;
+
+        this.timers.searchTickTimer = setInterval(() => {
+            elapsed++;
+            if (this.callbacks.onSearchTick) {
+                this.callbacks.onSearchTick(TIMEOUT - elapsed);
+            }
+            if (elapsed >= TIMEOUT) {
+                clearInterval(this.timers.searchTickTimer);
+                this.timers.searchTickTimer = null;
+            }
+        }, 1000);
+
         this.timers.searchTimer = setTimeout(() => {
             if (this.state.isSearching) {
                 this.stopSearch();
@@ -108,7 +130,7 @@ class ArenaClient {
                     this.callbacks.onSearchTimeout();
                 }
             }
-        }, 60000);
+        }, TIMEOUT * 1000);
     }
     
 // arena-client.js - метод startBattle
@@ -144,10 +166,7 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
     
     updateBattle(data) {
         if (!this.state.battleActive) return;
-
-        // Сбрасываем таймер хода при каждом обновлении состояния боя
-        this.startBattleTimer();
-
+        
         if (data.player1Team && data.player2Team) {
             if (this.state.currentBattleIsPlayer1) {
                 this.state.myTeam = data.player1Team;
@@ -181,22 +200,22 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
         }
     }
     
-    endBattle(winnerId, prizePool, entryFee) {
+    endBattle(winnerId, prizePool) {
         this.state.battleActive = false;
         this.state.currentBattleId = null;
         this.state.battleEndedAt = Date.now();
-
+        
         if (this.timers.battleTimer) {
             clearInterval(this.timers.battleTimer);
             this.timers.battleTimer = null;
         }
-
+        
         const isWin = winnerId === this.getCurrentUserId();
-
+        
         if (this.callbacks.onBattleEnd) {
-            this.callbacks.onBattleEnd(isWin, prizePool, entryFee);
+            this.callbacks.onBattleEnd(isWin, prizePool);
         }
-
+        
         setTimeout(() => {
             this.state.currentBattleIsPlayer1 = false;
             this.state.confirmationShown = false;
@@ -289,6 +308,7 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
                     );
                     // onBattleStartUI уже вызывается внутри startBattle()
                 } else if (data.hasBattle && data.status === 'pending_confirmation' && !this.state.confirmationShown) {
+                    this.stopSearch();
                     this.state.confirmationShown = true;
                     this.state.currentBattleId = data.battleId;
                     if (this.callbacks.onMatchFound) {
@@ -315,9 +335,7 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
                     data.myTeam,
                     data.opponentTeam
                 );
-                if (this.callbacks.onBattleStartUI) {
-                    this.callbacks.onBattleStartUI(data);
-                }
+                // onBattleStartUI уже вызывается внутри startBattle()
             });
             
             socket.on('move_update', (data) => {
@@ -325,8 +343,8 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
             });
             
             socket.on('battle_end', (data) => {
-                console.log('\u{1F3C6} Battle end!', data);
-                this.endBattle(data.winnerId, data.prizePool, data.entryFee);
+                console.log('🏆 Battle end!', data);
+                this.endBattle(data.winnerId, data.prizePool);
             });
             
             socket.on('confirmation_update', (data) => {
@@ -425,6 +443,7 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
         this.disconnectSocket();
         this.stopSearch();
         if (this.timers.battleTimer) clearInterval(this.timers.battleTimer);
+        if (this.timers.searchTickTimer) clearInterval(this.timers.searchTickTimer);
         this.state = {
             selectedTeam: this.state.selectedTeam,
             currentBattleId: null,
