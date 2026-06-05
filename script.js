@@ -2558,11 +2558,10 @@ function renderBattleInterface(battleData) {
                         <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-creature-index="${idx}">
                             <div class="creature-icon">${getIconHtml(creature)}</div>
                             <div class="creature-name">${escapeHtml(creature.name)}</div>
-                       <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
-                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
+                       <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>                  
+                              <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
                             ${creature.skill ? `<div class="creature-skill-badge" title="${creature.skill.description}">${creature.skill.name}</div>` : ''}
                         </div>
-                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
                         </div>
                     `).join('')}
                 </div>
@@ -2580,10 +2579,9 @@ function renderBattleInterface(battleData) {
                             <div class="creature-icon">${getIconHtml(creature)}</div>
                             <div class="creature-name">${escapeHtml(creature.name)}</div>
                   <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
-                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
+                                 <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
                             ${creature.skill ? `<div class="creature-skill-badge" title="${creature.skill.description}">${creature.skill.name}</div>` : ''}
                         </div>
-                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
                             ${isMyTurn && creature.isAlive ? `<button class="arena-attack-btn" data-enemy-idx="${idx}" onclick="makeAttack(${idx})">⚔️ Атаковать</button>` : ''}
                         </div>
                     `).join('')}
