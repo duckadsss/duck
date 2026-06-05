@@ -2269,3 +2269,18 @@ img {
     75% { opacity: 1; }
     100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
 }
+
+.creature-skill-badge {
+    font-size: 10px;
+    color: #a855f7;
+    background: rgba(168, 85, 247, 0.15);
+    border: 1px solid rgba(168, 85, 247, 0.3);
+    border-radius: 8px;
+    padding: 2px 6px;
+    margin-top: 4px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
