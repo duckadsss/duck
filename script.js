@@ -2295,8 +2295,8 @@ async function makeAttack(targetIndex) {
     } else {
         const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
        updateBattleUIFromClient({
-          myTeam: isPlayer1 ? res.myTeam : res.enemyTeam,
-            opponentTeam: isPlayer1 ? res.enemyTeam : res.myTeam,
+          myTeam: res.myTeam,
+            opponentTeam: res.enemyTeam,
             lastMove: res.lastMove,
            currentTurn: res.currentTurn,
          turnCount: res.turnCount

@@ -228,6 +228,10 @@ class ArenaClient {
         if (this.timers.battleTimer) clearInterval(this.timers.battleTimer);
         
         let timeLeft = 30;
+        // Сразу показываем начальное значение без задержки
+        if (this.callbacks.onTimerTick) {
+            this.callbacks.onTimerTick(timeLeft);
+        }
         this.timers.battleTimer = setInterval(() => {
             timeLeft--;
             if (this.callbacks.onTimerTick) {
@@ -310,6 +314,7 @@ class ArenaClient {
                     this.stopSearch();
                     this.state.confirmationShown = true;
                     this.state.currentBattleId = data.battleId;
+                    this.state.currentBattleIsPlayer1 = data.isPlayer1; // FIX: аналогично match_found
                     if (this.callbacks.onMatchFound) {
                         this.callbacks.onMatchFound(data);
                     }
@@ -320,6 +325,7 @@ class ArenaClient {
                 console.log('⚔️ Match found!', data);
                 this.state.confirmationShown = true;
                 this.state.currentBattleId = data.battleId;
+                this.state.currentBattleIsPlayer1 = data.isPlayer1; // FIX: без этого updateConfirmationModal путал статусы
                 if (this.callbacks.onMatchFound) {
                     this.callbacks.onMatchFound(data);
                 }
