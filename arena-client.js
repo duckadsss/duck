@@ -370,14 +370,13 @@ startBattleTimer(initialTimeLeft = 30) {
                 this.endBattle(data.winnerId, data.prizePool);
             });
             
-            // В функции connectSocket, найдите блок socket.on('confirmation_update')
-// и ЗАМЕНИТЕ на этот:
+      // В файле arena-client.js, найдите блок socket.on('confirmation_update') и ЗАМЕНИТЕ на:
 
 socket.on('confirmation_update', (data) => {
     console.log('📡 Получено confirmation_update:', data);
-    // ИСПРАВЛЕНО: всегда обновляем состояние в клиенте
+    
+    // Обновляем состояние в клиенте
     if (this.state.currentBattleId) {
-        // Обновляем статус подтверждения в состоянии
         if (data.player1Confirmed !== undefined) {
             this.state.player1Confirmed = data.player1Confirmed;
         }
@@ -385,8 +384,23 @@ socket.on('confirmation_update', (data) => {
             this.state.player2Confirmed = data.player2Confirmed;
         }
     }
+    
+    // Передаём обновление в UI
     if (this.callbacks.onConfirmationUpdate) {
         this.callbacks.onConfirmationUpdate(data);
+    }
+    
+    // ИСПРАВЛЕНО: Если оба игрока подтвердили, принудительно закрываем модалку
+    const myConfirmed = this.state.currentBattleIsPlayer1 
+        ? data.player1Confirmed 
+        : data.player2Confirmed;
+    const opponentConfirmed = this.state.currentBattleIsPlayer1 
+        ? data.player2Confirmed 
+        : data.player1Confirmed;
+    
+    if (myConfirmed && opponentConfirmed) {
+        console.log('✅ Оба игрока подтвердили, закрываем confirmation state');
+        this.state.confirmationShown = false;
     }
 });
             
