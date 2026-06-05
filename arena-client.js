@@ -116,12 +116,11 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
     this.state.battleActive = true;
     this.state.currentBattleId = battleId;
     this.state.currentBattleIsPlayer1 = isPlayer1;
-    this.state.isSearching = false;
     this.state.myTeam = myTeam;
     this.state.enemyTeam = enemyTeam;
     this.state.battleLog = [];
     
-    this.stopSearch();
+    this.stopSearch(); // stopSearch сам ставит isSearching = false
     this.startBattleTimer();
     
     if (this.callbacks.onBattleStart) {
@@ -264,15 +263,12 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
                 if (this.callbacks.onDisconnected) {
                     this.callbacks.onDisconnected(reason);
                 }
-                
-                if (reason !== 'io client disconnect') {
-                    this.scheduleReconnect(token, apiUrl);
-                }
+                // встроенный reconnection: true в io() сам обработает переподключение
             });
             
             socket.on('connect_error', (err) => {
                 console.error('WebSocket connect error:', err.message);
-                this.scheduleReconnect(token, apiUrl);
+                // Socket.IO сам повторит попытку через reconnectionDelay
             });
             
             socket.on('connected', (data) => {
@@ -288,9 +284,7 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
                         data.myTeam,
                         data.opponentTeam
                     );
-                    if (this.callbacks.onBattleStartUI) {
-                        this.callbacks.onBattleStartUI(data);
-                    }
+                    // onBattleStartUI уже вызывается внутри startBattle()
                 } else if (data.hasBattle && data.status === 'pending_confirmation' && !this.state.confirmationShown) {
                     this.state.confirmationShown = true;
                     this.state.currentBattleId = data.battleId;
@@ -405,11 +399,7 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
     // ============================================================
     
     on(event, callback) {
-        if (this.callbacks.hasOwnProperty(event)) {
-            this.callbacks[event] = callback;
-        } else {
-            this.callbacks[event] = callback;
-        }
+        this.callbacks[event] = callback;
     }
     
     // ============================================================
