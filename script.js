@@ -2127,26 +2127,60 @@ function switchArenaTab(tab) {
 async function renderArenaTeamInventory() {
     const container = document.getElementById('arenaTeamInventory');
     if (!container) return;
-    
+
     const selectedTeam = arenaClient?.getSelectedTeam() || [];
     if (selectedTeam.length === 0 && !arenaClient?.state._teamResetPending) {
         const teamRes = await apiRequest('GET', '/api/arena/team');
-        if (teamRes?.success && teamRes.teamIds) { arenaClient.setSelectedTeam(teamRes.teamIds); renderSelectedTeam(); }
+        if (teamRes?.success && teamRes.teamIds) {
+            arenaClient.setSelectedTeam(teamRes.teamIds);
+        }
     }
     if (arenaClient?.state._teamResetPending) {
         arenaClient.state._teamResetPending = false;
     }
-    
+
+    const currentSelected = arenaClient?.getSelectedTeam() || [];
+    const level = state.user?.level || 1;
+
     container.innerHTML = state.inventory.map(item => {
         const c = getCreature(item.creatureId);
         if (!c) return '';
-        const isSelected = selectedTeam.includes(c.id);
-        const isDisabled = !isSelected && selectedTeam.length >= 3;
-        return `<div class="arena-team-card ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}" onclick="toggleArenaCreature('${c.id}')">
-            <div class="arena-team-icon">${getIconHtml(c)}</div>
-            <div class="arena-team-name">${escapeHtml(c.name)}</div>
-            <div class="arena-team-stats"><span>💰 ${c.incomeBase}/hr</span></div>
-            ${isSelected ? '<div class="arena-team-check"><i class="fa-solid fa-check"></i></div>' : ''}
+
+        const isSelected = currentSelected.includes(c.id);
+        const isDisabled = !isSelected && currentSelected.length >= 3;
+        const skill = window.ARENA_SKILLS_MAP?.[c.id] || null;
+        const multiplier = RARITY_MULTIPLIERS[c.rarity] || 1;
+        const hp  = Math.ceil((50 + (c.incomeBase * 2) + (level * 5)) * multiplier);
+        const atk = Math.ceil((10 + (c.incomeBase / 2) + (level * 2)) * multiplier);
+        const def = Math.ceil((5  + (c.incomeBase / 3) + (level * 1)) * multiplier);
+        const selectedNum = isSelected ? currentSelected.indexOf(c.id) + 1 : 0;
+
+        return `
+        <div class="arena-list-card ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}"
+             onclick="toggleArenaCreature('${c.id}')">
+            <div class="arena-list-left">
+                <div class="arena-list-icon">${getIconHtml(c)}</div>
+                ${isSelected ? `<div class="arena-list-num">${selectedNum}</div>` : ''}
+            </div>
+            <div class="arena-list-info">
+                <div class="arena-list-name">${escapeHtml(c.name)}
+                    <span class="arena-list-rarity rarity-${c.rarity}">${c.rarity}</span>
+                </div>
+                <div class="arena-list-stats">
+                    <span>❤️ ${hp}</span>
+                    <span>⚔️ ${atk}</span>
+                    <span>🛡️ ${def}</span>
+                </div>
+                ${skill ? `
+                <div class="arena-list-skill">
+                    <span class="arena-list-skill-name">${skill.name}</span>
+                    <span class="arena-list-skill-chance">${Math.round(skill.chance * 100)}%</span>
+                    <div class="arena-list-skill-desc">${skill.description}</div>
+                </div>` : ''}
+            </div>
+            <div class="arena-list-check">
+                ${isSelected ? '<i class="fa-solid fa-circle-check"></i>' : '<i class="fa-regular fa-circle"></i>'}
+            </div>
         </div>`;
     }).join('');
 }
@@ -2159,36 +2193,10 @@ function toggleArenaCreature(creatureId) {
     else { showToast('Нельзя выбрать больше 3 питомцев', '⚠️'); return; }
     arenaClient.setSelectedTeam(team);
     renderArenaTeamInventory();
-    renderSelectedTeam();
 }
 
 async function renderSelectedTeam() {
-    const container = document.getElementById('arenaSelectedTeam');
-    if (!container) return;
-    const selectedTeam = arenaClient?.getSelectedTeam() || [];
-    if (selectedTeam.length === 0) { container.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;">Выберите 3 питомца для команды</div>'; return; }
-    
-    const teamData = [];
-    for (const creatureId of selectedTeam) {
-        const creature = getCreature(creatureId);
-        if (creature) {
-            const multiplier = RARITY_MULTIPLIERS[creature.rarity] || 1;
-            const level = state.user?.level || 1;
-            const hp = Math.ceil((50 + (creature.incomeBase * 2) + (level * 5)) * multiplier);
-            const atk = Math.ceil((10 + (creature.incomeBase / 2) + (level * 2)) * multiplier);
-            const def = Math.ceil((5 + (creature.incomeBase / 3) + (level * 1)) * multiplier);
-            const crit = Math.round(0.10 * 100);
-        const skill = window.ARENA_SKILLS_MAP ? window.ARENA_SKILLS_MAP[creature.id] || null : null;
-        teamData.push({ creature, hp, atk, def, crit, skill });
-        }
-    }
-    container.innerHTML = `<div class="arena-team-cards">${teamData.map(data => `<div class="arena-selected-card">
-        <div class="arena-selected-icon">${getIconHtml(data.creature)}</div>
-        <div class="arena-selected-name">${escapeHtml(data.creature.name)}</div>
-        <div class="arena-selected-stats"><span>❤️ ${data.hp}</span><span>⚔️ ${data.atk}</span><span>🛡️ ${data.def}</span><span>✨ ${data.crit}%</span></div>
-        ${data.skill ? `<div class="arena-selected-skill" title="${data.skill.description}"><span class="skill-name">${data.skill.name}</span><span class="skill-chance">${Math.round(data.skill.chance * 100)}%</span><div class="skill-desc">${data.skill.description}</div></div>` : ''}
-    </div>
-    </div>`).join('')}</div>`;
+    // убрана — логика перенесена в renderArenaTeamInventory
 }
 
 async function saveArenaTeam() {
@@ -2346,7 +2354,18 @@ async function makeAttack(targetIndex) {
         }
         return;
     }
-    
+
+    if (res.stunSkipped) {
+        showToast('😵 Питомец оглушён и пропускает ход!', '⚡');
+        const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
+        updateBattleUIFromClient({
+            myTeam: res.myTeam,
+            opponentTeam: res.enemyTeam,
+            currentTurn: res.currentTurn
+        }, isPlayer1);
+        return;
+    }
+
     if (res.finished) {
         if (res.winnerId) {
             const isWin = res.winnerId === arenaClient?.getCurrentUserId();
@@ -3135,7 +3154,10 @@ async function initTelegramApp() {
             }
         });
         arenaClient.on('onBattleUpdate', (data, isPlayer1) => {
-            updateBattleUIFromClient(data, isPlayer1);
+    if (data.skillResult) {
+        showSkillBanner(data.skillResult.skillName, data.skillResult.description);
+    }
+    updateBattleUIFromClient(data, isPlayer1);
             if (data.lastMove && data.lastMove.targetIndex !== undefined) {
                 showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit, true);
             }
