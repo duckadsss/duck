@@ -487,7 +487,7 @@ class ArenaBattleManager {
         battleLog: battle.battleLog.slice(-1),
         timeLeft: timeLeft
     };
-
+}
     async finishBattle(battle) {
         const winnerId = battle.winnerId;
         
