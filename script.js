@@ -2000,11 +2000,8 @@ function updateConfirmationModal(data) {
         oppEl.className = opponentConfirmed ? 'confirm-yes' : 'confirm-wait';
     }
     
-    // Если я уже принял — скрываем кнопки, показываем "ждём соперника"
-    if (myConfirmed) {
-        const btns = document.getElementById('matchBtns');
-        if (btns) btns.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:8px;">⏳ Ожидаем соперника...</div>';
-    }
+    // Если я ещё НЕ принял — кнопки оставляем. Если уже принял (через acceptBattleFromModal) — не трогаем,
+    // там уже стоит "Ожидаем соперника". Просто обновляем статусы строк выше.
 }
 
 // Вспомогательная функция для получения названия лиги
@@ -2022,16 +2019,38 @@ function getLeagueName(league) {
 // Функция принятия боя из модального окна
 async function acceptBattleFromModal(battleId) {
     const modal = document.getElementById('matchFoundModal');
-    if (modal) {
-        if (modal.timeoutId) clearTimeout(modal.timeoutId);
-        modal.remove();
-    }
-    
+    if (!modal) return;
+
+    // Останавливаем таймер автоотклонения
+    if (modal.timeoutId) clearTimeout(modal.timeoutId);
+
+    // Блокируем кнопки сразу
+    const btns = document.getElementById('matchBtns');
+    if (btns) btns.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:8px;"><i class="fa-solid fa-spinner fa-spin"></i> Отправка...</div>';
+
     const res = await apiRequest('POST', '/api/arena/accept-match', { battleId });
+
     if (res?.success) {
-        arenaClient?.setConfirmationShown(false);
-        showToast('Бой принят! Идёт загрузка...', '⚔️');
+        // Показываем свой статус как принято — модалка остаётся открытой, ждём battle_start
+        const myEl = document.getElementById('myConfirmStatus');
+        if (myEl) { myEl.textContent = '\u2705 Принял'; myEl.className = 'confirm-yes'; }
+        if (btns) btns.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:12px;">\u23f3 Ожидаем соперника...<br><small style="font-size:11px;opacity:0.7;">Модалка закроется автоматически</small></div>';
+
+        // Таймер 30 сек: если battle_start не пришёл — закрываем
+        modal.timeoutId = setTimeout(() => {
+            const m = document.getElementById('matchFoundModal');
+            if (m) m.remove();
+            arenaClient?.setConfirmationShown(false);
+        }, 30000);
     } else {
+        // Ошибка — восстанавливаем кнопки
+        if (btns) btns.innerHTML = `
+            <button class="match-btn-accept" onclick="acceptBattleFromModal('${battleId}')">
+                <i class="fa-solid fa-check"></i> ПРИНЯТЬ
+            </button>
+            <button class="match-btn-reject" onclick="rejectBattleFromModal('${battleId}')">
+                <i class="fa-solid fa-times"></i> ОТКЛОНИТЬ
+            </button>`;
         showToast(res?.message || 'Ошибка при принятии боя', '❌');
     }
 }
@@ -2295,16 +2314,18 @@ async function makeAttack(targetIndex) {
             renderArenaFightTab();
         }
     } else {
+        // Обновляем UI после атаки
+        // Сервер возвращает myTeam/enemyTeam относительно атакующего игрока
         const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
-       updateBattleUIFromClient({
-          myTeam: isPlayer1 ? res.myTeam : res.enemyTeam,
-            opponentTeam: isPlayer1 ? res.enemyTeam : res.myTeam,
+        updateBattleUIFromClient({
+            myTeam: res.myTeam,
+            opponentTeam: res.enemyTeam,
             lastMove: res.lastMove,
-           currentTurn: res.currentTurn,
-         turnCount: res.turnCount
+            currentTurn: res.currentTurn,
+            turnCount: res.turnCount
         }, isPlayer1);
-        
-        // Показываем урон по врагу (я атаковал)
+
+        // Показываем урон по врагу (я атаковал, hitMy=false)
         if (res.lastMove && res.lastMove.targetIndex !== undefined) {
             showDamageAnimation(res.lastMove.targetIndex, res.lastMove.damage, res.lastMove.isCrit, false);
         }
@@ -3074,7 +3095,17 @@ async function initTelegramApp() {
         arenaClient.loadTeamFromStorage();
         arenaClient.connectSocket(state.token, API_URL);
         arenaClient.on('onMatchFound', (data) => showNativeBattleConfirmation(data));
-        arenaClient.on('onBattleStartUI', (data) => { if (document.getElementById('overlay')?.classList.contains('show')) closeOverlay(); renderBattleInterface(data); });
+        arenaClient.on('onBattleStartUI', (data) => {
+            // Закрываем модалку подтверждения (включая случай когда ждём соперника)
+            const matchModal = document.getElementById('matchFoundModal');
+            if (matchModal) {
+                if (matchModal.timeoutId) clearTimeout(matchModal.timeoutId);
+                matchModal.remove();
+            }
+            arenaClient?.setConfirmationShown(false);
+            if (document.getElementById('overlay')?.classList.contains('show')) closeOverlay();
+            renderBattleInterface(data);
+        });
         arenaClient.on('onBattleUpdate', (data, isPlayer1) => {
             updateBattleUIFromClient(data, isPlayer1);
             // move_update получает тот, кого атаковали → урон по МОИМ питомцам
