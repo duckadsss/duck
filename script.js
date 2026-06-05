@@ -2129,9 +2129,12 @@ async function renderArenaTeamInventory() {
     if (!container) return;
     
     const selectedTeam = arenaClient?.getSelectedTeam() || [];
-    if (selectedTeam.length === 0) {
+    if (selectedTeam.length === 0 && !arenaClient?.state._teamResetPending) {
         const teamRes = await apiRequest('GET', '/api/arena/team');
         if (teamRes?.success && teamRes.teamIds) { arenaClient.setSelectedTeam(teamRes.teamIds); renderSelectedTeam(); }
+    }
+    if (arenaClient?.state._teamResetPending) {
+        arenaClient.state._teamResetPending = false;
     }
     
     container.innerHTML = state.inventory.map(item => {
@@ -2196,10 +2199,10 @@ async function saveArenaTeam() {
 function resetArenaTeam() {
     if (arenaClient) {
         arenaClient.setSelectedTeam([]);
-        renderArenaTeamInventory();
+        arenaClient.state._teamResetPending = true;
         renderSelectedTeam();
+        renderArenaTeamInventory();
         showToast('Команда сброшена', '🗑️');
-        // Сервер не принимает пустой массив, просто очищаем локально
     }
 }
 
@@ -2422,9 +2425,10 @@ async function renderArenaFightTab() {
                     arenaClient?.startBattle(battleRes.battleId, battleRes.isPlayer1, battleRes.myTeam, battleRes.opponentTeam);
                     renderBattleInterface(battleRes);
                 }
-            } else if (battleRes.status === 'pending_confirmation') {
+   } else if (battleRes.status === 'pending_confirmation') {
                 const myConfirmed = battleRes.isPlayer1 ? battleRes.player1Confirmed : battleRes.player2Confirmed;
-                if (!myConfirmed && !arenaClient?.getConfirmationShown()) {
+                const modalAlreadyOpen = !!document.getElementById('matchFoundModal');
+                if (!myConfirmed && !modalAlreadyOpen) {
                     arenaClient?.setConfirmationShown(true);
                     showNativeBattleConfirmation(battleRes);
                 }
