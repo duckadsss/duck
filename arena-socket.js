@@ -651,7 +651,6 @@ class ArenaBattleManager {
                 battleId: battle._id,
                 winnerId: battle.winnerId?.toString(),
                 prizePool: battle.prizePool,
-                entryFee: battle.entryFee,
                 reason: 'timeout'
             });
             expiredCount++;
