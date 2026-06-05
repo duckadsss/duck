@@ -2299,6 +2299,17 @@ async function rejectBattleWebhook() {
     }
 }
 
+function showSkillBanner(name, description) {
+    const existing = document.getElementById('skillBanner');
+    if (existing) existing.remove();
+    const banner = document.createElement('div');
+    banner.id = 'skillBanner';
+    banner.style.cssText = 'position:fixed;top:30%;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;padding:12px 24px;border-radius:16px;font-weight:700;font-size:15px;z-index:9999;text-align:center;box-shadow:0 4px 20px rgba(124,58,237,0.5);animation:fadeInOut 2.5s ease forwards;pointer-events:none;';
+    banner.innerHTML = `<div>${name}</div><div style="font-size:11px;opacity:0.85;margin-top:4px;">${description}</div>`;
+    document.body.appendChild(banner);
+    setTimeout(() => banner.remove(), 2500);
+}
+
 // ============================================================
 // MAKE ATTACK
 // ============================================================
@@ -2339,8 +2350,11 @@ async function makeAttack(targetIndex) {
             showNativeBattleResult(isWin, res.prizePool || 0);
             renderArenaFightTab();
         }
-    } else {
+} else {
         const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
+        if (res.skillResult) {
+            showSkillBanner(res.skillResult.skillName, res.skillResult.description);
+        }
         updateBattleUIFromClient({
             myTeam: res.myTeam,
             opponentTeam: res.enemyTeam,
@@ -2544,7 +2558,10 @@ function renderBattleInterface(battleData) {
                         <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-creature-index="${idx}">
                             <div class="creature-icon">${getIconHtml(creature)}</div>
                             <div class="creature-name">${escapeHtml(creature.name)}</div>
-                            <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
+                       <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
+                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
+                            ${creature.skill ? `<div class="creature-skill-badge" title="${creature.skill.description}">${creature.skill.name}</div>` : ''}
+                        </div>
                             <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
                         </div>
                     `).join('')}
@@ -2562,7 +2579,10 @@ function renderBattleInterface(battleData) {
                         <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-enemy-index="${idx}">
                             <div class="creature-icon">${getIconHtml(creature)}</div>
                             <div class="creature-name">${escapeHtml(creature.name)}</div>
-                            <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
+                  <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
+                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
+                            ${creature.skill ? `<div class="creature-skill-badge" title="${creature.skill.description}">${creature.skill.name}</div>` : ''}
+                        </div>
                             <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
                             ${isMyTurn && creature.isAlive ? `<button class="arena-attack-btn" data-enemy-idx="${idx}" onclick="makeAttack(${idx})">⚔️ Атаковать</button>` : ''}
                         </div>

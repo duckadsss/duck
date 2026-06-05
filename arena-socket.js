@@ -1,7 +1,7 @@
 // ============================================================
 // arena-socket.js - Серверная логика PvP арены с WebSocket
 // ============================================================
-
+const ArenaSkills = require('./arena-skills');
 const LEAGUE_CONFIG = {
     bronze: {
         minRating: 0,
@@ -100,7 +100,10 @@ async function buildTeamFromIds(teamIds, userLevel, userId, getCreatureFn) {
                 attack: stats.attack,
                 defense: stats.defense,
                 critChance: stats.critChance,
-                isAlive: true
+                isAlive: true,
+                stunned: false,
+                shielded: false,
+                skill: ArenaSkills.getSkillForCreature(creature.id) || null
             });
         }
     }
@@ -366,11 +369,37 @@ class ArenaBattleManager {
     }
     
     const target = enemyTeam[targetIndex];
+    // Проверяем оглушение атакующего
+    if (ArenaSkills.checkAndClearStun(attacker)) {
+        battle.currentTurn = battle.currentTurn === 'player1' ? 'player2' : 'player1';
+        battle.turnCount++;
+        battle.lastMoveAt = new Date();
+        if (isPlayer1) { battle.markModified('player1Team'); } else { battle.markModified('player2Team'); }
+        await battle.save();
+        return { success: true, finished: false, stunSkipped: true, currentTurn: battle.currentTurn, turnCount: battle.turnCount, myTeam, enemyTeam, timeLeft: 30 };
+    }
+
     const isCrit = Math.random() < attacker.critChance;
     let damage = Math.max(1, attacker.attack - target.defense);
     if (isCrit) damage = Math.floor(damage * 1.5);
-    
+
+    // Применяем скилл атакующего
+    let skillResult = { triggered: false };
+    if (attacker.skill) {
+        skillResult = ArenaSkills.applySkill(attacker.skill.id, attacker, target, myTeam, enemyTeam, damage);
+        if (skillResult.triggered) damage = skillResult.damage;
+    }
+
+    // Проверяем щит цели (puddle_dodge)
+    if (!skillResult.missTarget && ArenaSkills.checkAndClearShield(target)) {
+        damage = 0;
+    }
+
+    // Применяем урон к цели
     target.currentHp = Math.max(0, target.currentHp - damage);
+
+    // Применяем все эффекты скилла (хил, сплеш, стан, щит)
+    const skillSummary = ArenaSkills.applySkillResult(skillResult, attackerIndex, targetIndex, myTeam, enemyTeam);
     
     if (target.currentHp <= 0) {
         target.isAlive = false;
@@ -437,8 +466,20 @@ class ArenaBattleManager {
             isCrit, 
             targetIndex: targetIndex,
             targetHp: target.currentHp, 
-            targetDead: false 
+            targetDead: false,
+            attackerIndex: attackerIndex
         },
+        skillResult: skillResult.triggered ? {
+            skillId: skillResult.skillId,
+            skillName: skillResult.skillName,
+            description: skillResult.description,
+            splashHits: skillSummary.splashHits,
+            healedSelf: skillSummary.healedSelf,
+            healedAllies: skillSummary.healedAllies,
+            stunned: skillSummary.stunned,
+            shielded: skillSummary.shielded,
+            missed: skillSummary.missed
+        } : null,
         currentTurn: battle.currentTurn,
         turnCount: battle.turnCount,
         myTeam: myTeam,
@@ -446,7 +487,6 @@ class ArenaBattleManager {
         battleLog: battle.battleLog.slice(-1),
         timeLeft: timeLeft
     };
-}
 
     async finishBattle(battle) {
         const winnerId = battle.winnerId;

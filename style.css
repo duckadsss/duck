@@ -2262,3 +2262,10 @@ img {
 .history-prize { font-size: 13px; font-weight: 700; }
 .prize-win { color: #22c55e; }
 .prize-loss { color: #ef4444; }
+
+@keyframes fadeInOut {
+    0% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+    15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+    75% { opacity: 1; }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+}
