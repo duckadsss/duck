@@ -264,8 +264,8 @@ class ArenaBattleManager {
             return { success: false, message: 'Бой не найден' };
         }
         
-        if (!['active', 'pending_confirmation'].includes(battle.status)) {
-            return { success: false, message: 'Бой уже не активен' };
+        if (battle.status !== 'pending_confirmation') {
+            return { success: false, message: 'Бой уже не в статусе ожидания подтверждения' };
         }
         
         const isPlayer1 = battle.player1Id.toString() === userId.toString();
@@ -651,6 +651,7 @@ class ArenaBattleManager {
                 battleId: battle._id,
                 winnerId: battle.winnerId?.toString(),
                 prizePool: battle.prizePool,
+                entryFee: battle.entryFee,
                 reason: 'timeout'
             });
             expiredCount++;
@@ -740,7 +741,6 @@ module.exports = {
     LEAGUE_CONFIG,
     RARITY_MULTIPLIERS,
     getLeagueByRating,
-    getLeagueByLevel,
     calculateCreatureStats,
     calculateEloChange,
     buildTeamFromIds,

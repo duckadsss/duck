@@ -144,7 +144,10 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
     
     updateBattle(data) {
         if (!this.state.battleActive) return;
-        
+
+        // Сбрасываем таймер хода при каждом обновлении состояния боя
+        this.startBattleTimer();
+
         if (data.player1Team && data.player2Team) {
             if (this.state.currentBattleIsPlayer1) {
                 this.state.myTeam = data.player1Team;
@@ -178,22 +181,22 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
         }
     }
     
-    endBattle(winnerId, prizePool) {
+    endBattle(winnerId, prizePool, entryFee) {
         this.state.battleActive = false;
         this.state.currentBattleId = null;
         this.state.battleEndedAt = Date.now();
-        
+
         if (this.timers.battleTimer) {
             clearInterval(this.timers.battleTimer);
             this.timers.battleTimer = null;
         }
-        
+
         const isWin = winnerId === this.getCurrentUserId();
-        
+
         if (this.callbacks.onBattleEnd) {
-            this.callbacks.onBattleEnd(isWin, prizePool);
+            this.callbacks.onBattleEnd(isWin, prizePool, entryFee);
         }
-        
+
         setTimeout(() => {
             this.state.currentBattleIsPlayer1 = false;
             this.state.confirmationShown = false;
@@ -322,8 +325,8 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
             });
             
             socket.on('battle_end', (data) => {
-                console.log('🏆 Battle end!', data);
-                this.endBattle(data.winnerId, data.prizePool);
+                console.log('\u{1F3C6} Battle end!', data);
+                this.endBattle(data.winnerId, data.prizePool, data.entryFee);
             });
             
             socket.on('confirmation_update', (data) => {

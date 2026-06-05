@@ -1897,111 +1897,132 @@ function showNativeBattleConfirmation(battleData) {
 // Новая функция для красивого модального окна
 function showBattleConfirmationModal(battleData) {
     const existingModal = document.getElementById('matchFoundModal');
-    if (existingModal) existingModal.remove();
-    
+    if (existingModal) {
+        if (existingModal.timeoutId) clearTimeout(existingModal.timeoutId);
+        existingModal.remove();
+    }
+
     const modal = document.createElement('div');
     modal.id = 'matchFoundModal';
     modal.className = 'match-found-modal';
-    
-    const opponentName = battleData.opponent?.name || 'Игрок';
-    const opponentLevel = battleData.opponent?.level || '?';
-    const firstLetter = opponentName.charAt(0).toUpperCase();
-    const leagueIcons = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '💎', diamond: '🏆' };
-    const opponentLeagueIcon = leagueIcons[battleData.opponentLeague] || '⚔️';
 
-    // Определяем кто мы (player1 или player2) чтобы показать статус подтверждения
+    // Имя соперника скрываем при поиске — показываем только лигу
+    const leagueIcons = { bronze: '\u{1F94B}', silver: '\u{1F948}', gold: '\u{1F947}', platinum: '\u{1F48E}', diamond: '\u{1F3C6}' };
+    const opponentLeagueIcon = leagueIcons[battleData.opponentLeague] || '\u2694\uFE0F';
+
+    // Статусы подтверждения: при match_found оба ещё не подтвердили
     const isPlayer1 = battleData.isPlayer1;
-    const myConfirmed = isPlayer1 ? battleData.player1Confirmed : battleData.player2Confirmed;
-    const opponentConfirmed = isPlayer1 ? battleData.player2Confirmed : battleData.player1Confirmed;
-    
+    const myConfirmed = isPlayer1 ? !!battleData.player1Confirmed : !!battleData.player2Confirmed;
+    const opponentConfirmed = isPlayer1 ? !!battleData.player2Confirmed : !!battleData.player1Confirmed;
+
+    const TIMER_SECONDS = 30;
+
     modal.innerHTML = `
         <div class="match-found-card">
             <div class="match-found-header">
-                <div class="match-found-icon">⚔️</div>
-                <div class="match-found-title">БОЙ НАЙДЕН!</div>
+                <div class="match-found-icon">\u2694\uFE0F</div>
+                <div class="match-found-title">\u0411\u041e\u0419 \u041d\u0410\u0419\u0414\u0415\u041d!</div>
             </div>
             <div class="match-found-content">
                 <div class="opponent-info">
-                    <div class="opponent-avatar">${firstLetter}</div>
+                    <div class="opponent-avatar">\u2694\uFE0F</div>
                     <div class="opponent-details">
-                        <div class="opponent-name">${escapeHtml(opponentName)}</div>
+                        <div class="opponent-name">\u0421\u043e\u043f\u0435\u0440\u043d\u0438\u043a \u043d\u0430\u0439\u0434\u0435\u043d</div>
                         <div class="opponent-level">
-                            <span>Уровень ${opponentLevel}</span>
-                            <span>${opponentLeagueIcon} ${getLeagueName(battleData.opponentLeague)} лига</span>
+                            <span>${opponentLeagueIcon} ${getLeagueName(battleData.opponentLeague)} \u043b\u0438\u0433\u0430</span>
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="confirmation-status" id="confirmationStatus">
                     <div class="confirm-row">
-                        <span>Вы:</span>
-                        <span id="myConfirmStatus" class="${myConfirmed ? 'confirm-yes' : 'confirm-wait'}">${myConfirmed ? '✅ Принял' : '⏳ Ожидание'}</span>
+                        <span>\u0412\u044b:</span>
+                        <span id="myConfirmStatus" class="${myConfirmed ? 'confirm-yes' : 'confirm-wait'}">${myConfirmed ? '\u2705 \u041f\u0440\u0438\u043d\u044f\u043b' : '\u23f3 \u041e\u0436\u0438\u0434\u0430\u043d\u0438\u0435'}</span>
                     </div>
                     <div class="confirm-row">
-                        <span>${escapeHtml(opponentName)}:</span>
-                        <span id="opponentConfirmStatus" class="${opponentConfirmed ? 'confirm-yes' : 'confirm-wait'}">${opponentConfirmed ? '✅ Принял' : '⏳ Ожидание'}</span>
+                        <span>\u0421\u043e\u043f\u0435\u0440\u043d\u0438\u043a:</span>
+                        <span id="opponentConfirmStatus" class="${opponentConfirmed ? 'confirm-yes' : 'confirm-wait'}">${opponentConfirmed ? '\u2705 \u041f\u0440\u0438\u043d\u044f\u043b' : '\u23f3 \u041e\u0436\u0438\u0434\u0430\u043d\u0438\u0435'}</span>
                     </div>
                 </div>
-                
+
                 <div class="prize-info">
-                    <div class="prize-label"><i class="fa-solid fa-gift"></i> Призовой фонд</div>
+                    <div class="prize-label"><i class="fa-solid fa-gift"></i> \u041f\u0440\u0438\u0437\u043e\u0432\u043e\u0439 \u0444\u043e\u043d\u0434</div>
                     <div class="prize-value">${battleData.prizePool.toLocaleString()} <small>MMO</small></div>
                 </div>
-                
+
                 <div class="prize-info" style="border-color: rgba(124,58,237,0.3);">
-                    <div class="prize-label"><i class="fa-solid fa-coins"></i> Ваша ставка</div>
+                    <div class="prize-label"><i class="fa-solid fa-coins"></i> \u0412\u0430\u0448\u0430 \u0441\u0442\u0430\u0432\u043a\u0430</div>
                     <div class="prize-value" style="color: var(--accent3);">${battleData.entryFee.toLocaleString()} <small>MMO</small></div>
                 </div>
-                
+
                 <div class="timer-badge">
-                    <span><i class="fa-regular fa-clock"></i> Принять за 15 секунд</span>
-                    <div class="timer-progress"><div class="timer-progress-fill"></div></div>
+                    <span><i class="fa-regular fa-clock"></i> <span id="modalTimerText">\u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: ${TIMER_SECONDS}\u0441</span></span>
+                    <div class="timer-progress"><div class="timer-progress-fill" id="modalTimerFill" style="width:100%;transition:width 1s linear;"></div></div>
                 </div>
-                
+
                 <div class="match-buttons" id="matchBtns">
                     <button class="match-btn-accept" onclick="acceptBattleFromModal('${battleData.battleId}')">
-                        <i class="fa-solid fa-check"></i> ПРИНЯТЬ
+                        <i class="fa-solid fa-check"></i> \u041f\u0420\u0418\u041d\u042f\u0422\u042c
                     </button>
                     <button class="match-btn-reject" onclick="rejectBattleFromModal('${battleData.battleId}')">
-                        <i class="fa-solid fa-times"></i> ОТКЛОНИТЬ
+                        <i class="fa-solid fa-times"></i> \u041e\u0422\u041a\u041b\u041e\u041d\u0418\u0422\u042c
                     </button>
                 </div>
             </div>
         </div>
     `;
-    
+
     document.body.appendChild(modal);
-    
-    modal.timeoutId = setTimeout(() => {
-        if (document.getElementById('matchFoundModal')) {
-            rejectBattleFromModal(battleData.battleId);
+
+    // Тикающий таймер
+    let secondsLeft = TIMER_SECONDS;
+    modal.tickInterval = setInterval(() => {
+        secondsLeft--;
+        const timerText = document.getElementById('modalTimerText');
+        const timerFill = document.getElementById('modalTimerFill');
+        if (timerText) timerText.textContent = `\u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: ${secondsLeft}\u0441`;
+        if (timerFill) timerFill.style.width = `${(secondsLeft / TIMER_SECONDS) * 100}%`;
+        if (secondsLeft <= 0) {
+            clearInterval(modal.tickInterval);
+            const m = document.getElementById('matchFoundModal');
+            if (m) {
+                if (m.timeoutId) clearTimeout(m.timeoutId);
+                m.remove();
+            }
+            arenaClient?.stopSearch();
+            arenaClient?.setConfirmationShown(false);
+            showToast('\u0422\u0430\u0439\u043c\u0435\u0440 \u0438\u0441\u0442\u0451\u043a — \u0431\u043e\u0439 \u043e\u0442\u043c\u0435\u043d\u0451\u043d', '\u23f1');
+            renderArenaFightTab();
         }
-    }, 15000);
+    }, 1000);
 }
 
 // Обновляет статус подтверждения внутри открытой модалки
 function updateConfirmationModal(data) {
     const modal = document.getElementById('matchFoundModal');
     if (!modal) return;
-    
+
     const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
-    const myConfirmed = isPlayer1 ? data.player1Confirmed : data.player2Confirmed;
-    const opponentConfirmed = isPlayer1 ? data.player2Confirmed : data.player1Confirmed;
-    
-    const myEl = document.getElementById('myConfirmStatus');
+    const myConfirmed = isPlayer1 ? !!data.player1Confirmed : !!data.player2Confirmed;
+    const opponentConfirmed = isPlayer1 ? !!data.player2Confirmed : !!data.player1Confirmed;
+
+    // Обновляем только статус соперника — свой мы уже обновили в acceptBattleFromModal
     const oppEl = document.getElementById('opponentConfirmStatus');
-    
-    if (myEl) {
-        myEl.textContent = myConfirmed ? '✅ Принял' : '⏳ Ожидание';
-        myEl.className = myConfirmed ? 'confirm-yes' : 'confirm-wait';
-    }
     if (oppEl) {
-        oppEl.textContent = opponentConfirmed ? '✅ Принял' : '⏳ Ожидание';
+        oppEl.textContent = opponentConfirmed ? '\u2705 \u041f\u0440\u0438\u043d\u044f\u043b' : '\u23f3 \u041e\u0436\u0438\u0434\u0430\u043d\u0438\u0435';
         oppEl.className = opponentConfirmed ? 'confirm-yes' : 'confirm-wait';
     }
-    
-    // Если я ещё НЕ принял — кнопки оставляем. Если уже принял (через acceptBattleFromModal) — не трогаем,
-    // там уже стоит "Ожидаем соперника". Просто обновляем статусы строк выше.
+
+    // Свой статус обновляем только если ещё не нажали кнопку (кнопки ещё видны)
+    const btns = document.getElementById('matchBtns');
+    const btnsHaveButtons = btns && btns.querySelector('.match-btn-accept');
+    if (btnsHaveButtons) {
+        const myEl = document.getElementById('myConfirmStatus');
+        if (myEl) {
+            myEl.textContent = myConfirmed ? '\u2705 \u041f\u0440\u0438\u043d\u044f\u043b' : '\u23f3 \u041e\u0436\u0438\u0434\u0430\u043d\u0438\u0435';
+            myEl.className = myConfirmed ? 'confirm-yes' : 'confirm-wait';
+        }
+    }
 }
 
 // Вспомогательная функция для получения названия лиги
@@ -2072,18 +2093,30 @@ async function rejectBattleFromModal(battleId) {
         showToast(res?.message || 'Ошибка', '❌');
     }
 }
-function showNativeBattleResult(isWin, prizePool) {
+function showNativeBattleResult(isWin, prizePool, entryFee) {
+    // Скрываем боёвый интерфейс сразу
+    const battleContainer = document.getElementById('arenaBattleContainer');
+    const statusContainer = document.getElementById('arenaFightStatus');
+    if (battleContainer) battleContainer.style.display = 'none';
+    if (statusContainer) statusContainer.style.display = 'block';
+
+    const winText = isWin
+        ? `Вы выиграли ${(prizePool || 0).toLocaleString()} MMO! 🎉`
+        : `Вы проиграли. Снято ${(entryFee || 0).toLocaleString()} MMO.`;
+
     if (!window.Telegram?.WebApp) {
         const overlay = document.getElementById('overlay');
         const popup = document.getElementById('popup');
-        popup.innerHTML = `<div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div><div class="popup-icon">${isWin ? '🏆' : '💀'}</div><div class="popup-title" style="color:${isWin ? 'var(--legendary)' : 'var(--mythic)'}">${isWin ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}</div><div class="popup-subtitle">${isWin ? `Вы выиграли ${prizePool} MMO!` : 'В следующий раз повезёт!'}</div><button class="popup-btn" onclick="closeOverlay(); renderArenaFightTab();">Закрыть</button></div>`;
+        popup.innerHTML = `<div class="popup-close" onclick="closeOverlay(); renderArenaFightTab();"><i class="fa-solid fa-xmark"></i></div><div class="popup-icon">${isWin ? '🏆' : '💀'}</div><div class="popup-title" style="color:${isWin ? 'var(--legendary)' : 'var(--mythic)'}">${isWin ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}</div><div class="popup-subtitle">${winText}</div><button class="popup-btn" onclick="closeOverlay(); renderArenaFightTab();">На поиск боя</button>`;
         overlay.classList.add('show');
+        // Автовозврат на поиск через 5 секунд
+        setTimeout(() => { closeOverlay(); renderArenaFightTab(); }, 5000);
         return;
     }
     const tg = window.Telegram.WebApp;
     const title = isWin ? '🏆 ПОБЕДА!' : '💀 ПОРАЖЕНИЕ';
-    const message = isWin ? `Вы выиграли ${prizePool} MMO! 🎉\nВаш рейтинг повышается!` : `Вы проиграли бой.\nВ следующий раз повезёт!`;
-    tg.showPopup({ title, message, buttons: [{ id: 'ok', type: 'default', text: 'ОК' }] });
+    tg.showPopup({ title, message: winText, buttons: [{ id: 'ok', type: 'default', text: 'На поиск боя' }] });
+    tg.onEvent('popupClosed', () => renderArenaFightTab());
 }
 
 // ============================================================
@@ -2528,7 +2561,10 @@ function renderBattleInterface(battleData) {
             </div>
             <div class="arena-battle-vs">
                 VS
-                <span style="font-size: 10px; display: block; color: var(--text2); margin-top: 4px;">
+                <span style="font-size: 11px; display: block; color: var(--text2); margin-top: 4px; font-weight: 600;">
+                    ${escapeHtml(battleData.opponent?.name || battleData.opponentName || 'Соперник')}
+                </span>
+                <span style="font-size: 10px; display: block; color: var(--text3); margin-top: 2px;">
                     ${leagueNames[opponentLeague] || 'Бронзовая'} лига
                 </span>
             </div>
@@ -2942,7 +2978,7 @@ async function renderArenaHistory() {
                     <div class="history-meta">${icon} ${date}</div>
                 </div>
                 <div class="history-prize ${b.isWin ? 'prize-win' : 'prize-loss'}">
-                    ${b.isWin ? '+' : '-'}${b.isWin ? b.prizePool : b.entryFee || '?'} MMO
+                    ${b.isWin ? `+${b.prizePool.toLocaleString()}` : `-${(b.entryFee || 0).toLocaleString()}`} MMO
                 </div>
             </div>`;
         }).join('');
@@ -3113,7 +3149,10 @@ async function initTelegramApp() {
                 showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit, true);
             }
         });
-        arenaClient.on('onBattleEnd', (isWin, prizePool) => { showNativeBattleResult(isWin, prizePool); refreshUserProfile(); });
+        arenaClient.on('onBattleEnd', (isWin, prizePool, entryFee) => {
+            showNativeBattleResult(isWin, prizePool, entryFee);
+            refreshUserProfile();
+        });
         arenaClient.on('onTimerTick', (timeLeft) => { const timerEl = document.getElementById('arenaBattleTimer'); if (timerEl) { timerEl.textContent = `⏱ ${timeLeft}`; if (timeLeft <= 5) timerEl.classList.add('warning'); else timerEl.classList.remove('warning'); } });
         arenaClient.on('onSearchTimeout', () => { const findBtn = document.getElementById('findMatchBtn'); const searchStatus = document.getElementById('arenaSearchStatus'); if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; } if (searchStatus) searchStatus.innerHTML = '⏱ Поиск отменён (таймаут)'; showToast('Поиск занял слишком много времени, попробуйте снова', '⚠️'); });
         arenaClient.on('onConfirmationUpdate', (data) => { updateConfirmationModal(data); });
