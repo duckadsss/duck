@@ -2199,7 +2199,7 @@ function resetArenaTeam() {
         renderArenaTeamInventory();
         renderSelectedTeam();
         showToast('Команда сброшена', '🗑️');
-        apiRequest('POST', '/api/arena/team', { team: [] }).catch(() => {});
+        // Сервер не принимает пустой массив, просто очищаем локально
     }
 }
 
@@ -2263,7 +2263,15 @@ async function acceptBattleWebhook() {
     const battleId = arenaClient?.getBattleId();
     if (!battleId) return;
     const res = await apiRequest('POST', '/api/arena/accept-match', { battleId });
-    if (res?.success) { closeOverlay(); arenaClient?.setConfirmationShown(false); }
+    if (res?.success) {
+        closeOverlay();
+        arenaClient?.setConfirmationShown(false);
+        const modal = document.getElementById('matchFoundModal');
+        if (modal) {
+            if (modal.timeoutId) clearTimeout(modal.timeoutId);
+            modal.remove();
+        }
+    }
 }
 
 async function rejectBattleWebhook() {
@@ -2345,11 +2353,27 @@ async function makeAttack(targetIndex) {
 }
 
 async function surrenderBattle() {
-    if (!confirm('Вы уверены, что хотите сдаться? Вы потеряете MMO за вход.')) return;
     const battleId = arenaClient?.getBattleId();
     if (!battleId) return;
-    const res = await apiRequest('POST', '/api/arena/surrender', { battleId });
-    if (res?.success) { showToast('Вы сдались', '⚠️'); renderArenaFightTab(); }
+    
+    if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.showPopup({
+            title: '⚠️ Сдаться?',
+            message: 'Вы потеряете MMO за вход в бой.',
+            buttons: [
+                { id: 'confirm', type: 'destructive', text: 'Сдаться' },
+                { id: 'cancel', type: 'cancel', text: 'Отмена' }
+            ]
+        }, async (buttonId) => {
+            if (buttonId !== 'confirm') return;
+            const res = await apiRequest('POST', '/api/arena/surrender', { battleId });
+            if (res?.success) { showToast('Вы сдались', '⚠️'); renderArenaFightTab(); }
+        });
+    } else {
+        if (!confirm('Вы уверены, что хотите сдаться? Вы потеряете MMO за вход.')) return;
+        const res = await apiRequest('POST', '/api/arena/surrender', { battleId });
+        if (res?.success) { showToast('Вы сдались', '⚠️'); renderArenaFightTab(); }
+    }
 }
 
 // ============================================================
@@ -2499,14 +2523,6 @@ function renderBattleInterface(battleData) {
     const isMyTurn = (battleData.currentTurn === 'player1' && isPlayer1) || 
                      (battleData.currentTurn === 'player2' && !isPlayer1);
     
-    // ИСПРАВЛЕНО: используем заглушки для лиг (сервер не присылает их в battle_start)
-    const leagueNames = {
-        bronze: '🥉 Бронзовая',
-        silver: '🥈 Серебряная',
-        gold: '🥇 Золотая',
-        platinum: '💎 Платиновая',
-        diamond: '🏆 Алмазная'
-    };
     
     addDebugLog(`👤 Своя команда: ${actualMyTeam.length} питомцев`, 'info');
     addDebugLog(`👥 Команда соперника: ${actualEnemyTeam.length} питомцев`, 'info');
@@ -3260,3 +3276,7 @@ window.toggleRankDetailsCompact = toggleRankDetailsCompact;
 window.loadCompactRankPlayers = loadCompactRankPlayers;
 window.updateArenaRanksInfo = updateArenaRanksInfo;
 window.renderArenaHistory = renderArenaHistory;
+window.acceptBattleFromModal = acceptBattleFromModal;
+window.rejectBattleFromModal = rejectBattleFromModal;
+window.resetArenaTeam = resetArenaTeam;
+window.renderArenaFightTab = renderArenaFightTab;
