@@ -2295,14 +2295,13 @@ async function makeAttack(targetIndex) {
             renderArenaFightTab();
         }
     } else {
-        // Обновляем UI после атаки
         const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
-        updateBattleUIFromClient({
-            player1Team: res.player1Team,
-            player2Team: res.player2Team,
+       updateBattleUIFromClient({
+          myTeam: isPlayer1 ? res.myTeam : res.enemyTeam,
+            opponentTeam: isPlayer1 ? res.enemyTeam : res.myTeam,
             lastMove: res.lastMove,
-            currentTurn: res.currentTurn,
-            turnCount: res.turnCount
+           currentTurn: res.currentTurn,
+         turnCount: res.turnCount
         }, isPlayer1);
         
         // Показываем урон по врагу (я атаковал)
