@@ -489,7 +489,7 @@ return {
     enemyTeam: enemyTeam,
     battleLog: battle.battleLog.slice(-1)
 };
-
+}
     // arena-socket.js - НОВАЯ ВЕРСИЯ finishBattle
 
 async finishBattle(battle) {
