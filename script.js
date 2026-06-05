@@ -1887,7 +1887,22 @@ function initArenaWebhooks() {
     });
 }
 
+// ЗАМЕНИТЕ существующую функцию showNativeBattleConfirmation на эту:
+
 function showNativeBattleConfirmation(battleData) {
+    // ИСПРАВЛЕНО: проверяем, не открыта ли уже модалка
+    const existingModal = document.getElementById('matchFoundModal');
+    if (existingModal) {
+        console.log('⚠️ Модалка уже открыта, не создаём новую');
+        // Обновляем существующую модалку новыми данными
+        updateConfirmationModal({
+            player1Confirmed: battleData.player1Confirmed,
+            player2Confirmed: battleData.player2Confirmed
+        });
+        return;
+    }
+    
+    console.log('🎯 Создаём новую модалку подтверждения', battleData);
     showBattleConfirmationModal(battleData);
 }
 
@@ -1974,10 +1989,18 @@ function showBattleConfirmationModal(battleData) {
     }, 15000);
 }
 
+// ЗАМЕНИТЕ существующую функцию updateConfirmationModal на эту:
+
 function updateConfirmationModal(data) {
-    const modal = document.getElementById('matchFoundModal');
-    if (!modal) return;
+    console.log('🔄 updateConfirmationModal вызван с данными:', data);
     
+    const modal = document.getElementById('matchFoundModal');
+    if (!modal) {
+        console.log('❌ Модалка не найдена, возможно уже закрыта');
+        return;
+    }
+    
+    // ИСПРАВЛЕНО: получаем актуальные данные из состояния арены
     const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
     const myConfirmed = isPlayer1 ? data.player1Confirmed : data.player2Confirmed;
     const opponentConfirmed = isPlayer1 ? data.player2Confirmed : data.player1Confirmed;
@@ -1988,15 +2011,29 @@ function updateConfirmationModal(data) {
     if (myEl) {
         myEl.textContent = myConfirmed ? '✅ Принял' : '⏳ Ожидание';
         myEl.className = myConfirmed ? 'confirm-yes' : 'confirm-wait';
+        console.log(`Мой статус: ${myConfirmed ? 'Принял' : 'Ожидание'}`);
     }
     if (oppEl) {
         oppEl.textContent = opponentConfirmed ? '✅ Принял' : '⏳ Ожидание';
         oppEl.className = opponentConfirmed ? 'confirm-yes' : 'confirm-wait';
+        console.log(`Статус соперника: ${opponentConfirmed ? 'Принял' : 'Ожидание'}`);
     }
     
+    // ИСПРАВЛЕНО: если оба подтвердили, удаляем модалку
+    if (myConfirmed && opponentConfirmed) {
+        console.log('✅ Оба игрока подтвердили бой, закрываем модалку');
+        if (modal.timeoutId) clearTimeout(modal.timeoutId);
+        setTimeout(() => {
+            if (modal && modal.remove) modal.remove();
+        }, 500);
+    }
+    
+    // ИСПРАВЛЕНО: если игрок уже подтвердил, скрываем кнопки
     if (myConfirmed) {
         const btns = document.getElementById('matchBtns');
-        if (btns) btns.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:8px;">⏳ Ожидаем соперника...</div>';
+        if (btns) {
+            btns.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:8px;">⏳ Ожидаем соперника...</div>';
+        }
     }
 }
 
@@ -2426,6 +2463,9 @@ async function renderArenaFightTab() {
 // ============================================================
 // RENDER BATTLE INTERFACE (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 // ============================================================
+// В файле arena-client.js, найдите функцию renderBattleInterface (около строки 1050)
+// и ЗАМЕНИТЕ её на эту исправленную версию:
+
 function renderBattleInterface(battleData) {
     addDebugLog('🎨 renderBattleInterface вызван', 'info');
     
@@ -2441,7 +2481,7 @@ function renderBattleInterface(battleData) {
     
     const isPlayer1 = battleData.isPlayer1;
     
-    // ИСПРАВЛЕНО: сервер шлет myTeam и opponentTeam, а НЕ player1Team/player2Team
+    // ИСПРАВЛЕНО: правильно определяем команды
     const actualMyTeam = battleData.myTeam || (isPlayer1 ? battleData.player1Team : battleData.player2Team);
     const actualEnemyTeam = battleData.opponentTeam || (isPlayer1 ? battleData.player2Team : battleData.player1Team);
     
@@ -2454,8 +2494,7 @@ function renderBattleInterface(battleData) {
     const isMyTurn = (battleData.currentTurn === 'player1' && isPlayer1) || 
                      (battleData.currentTurn === 'player2' && !isPlayer1);
     
-    const opponentLeague = battleData.opponentLeague || battleData.league || 'bronze';
-    const myLeague = battleData.myLeague || 'bronze';
+    // ИСПРАВЛЕНО: используем заглушки для лиг (сервер не присылает их в battle_start)
     const leagueNames = {
         bronze: '🥉 Бронзовая',
         silver: '🥈 Серебряная',
@@ -2468,12 +2507,12 @@ function renderBattleInterface(battleData) {
     addDebugLog(`👥 Команда соперника: ${actualEnemyTeam.length} питомцев`, 'info');
     addDebugLog(`🎮 Игрок за player1: ${isPlayer1}, мой ход: ${isMyTurn}`, 'info');
     
+    // ИСПРАВЛЕНО: используем actualMyTeam и actualEnemyTeam для отрисовки
     container.innerHTML = `
         <div class="arena-battle-container">
             <div class="arena-team-side">
                 <div class="arena-side-title">
                     ⚔️ ВАША КОМАНДА
-                    <span class="arena-league-badge-small league-${myLeague}" style="margin-left: 8px;">${leagueNames[myLeague] || 'Бронзовая'}</span>
                 </div>
                 <div class="arena-creatures-row" id="arenaMyCreatures">
                     ${actualMyTeam.map((creature, idx) => `
@@ -2488,14 +2527,10 @@ function renderBattleInterface(battleData) {
             </div>
             <div class="arena-battle-vs">
                 VS
-                <span style="font-size: 10px; display: block; color: var(--text2); margin-top: 4px;">
-                    ${leagueNames[opponentLeague] || 'Бронзовая'} лига
-                </span>
             </div>
             <div class="arena-team-side">
                 <div class="arena-side-title">
                     🛡️ КОМАНДА СОПЕРНИКА
-                    <span class="arena-league-badge-small league-${opponentLeague}" style="margin-left: 8px;">${leagueNames[opponentLeague] || 'Бронзовая'}</span>
                 </div>
                 <div class="arena-creatures-row" id="arenaEnemyCreatures">
                     ${actualEnemyTeam.map((creature, idx) => `
@@ -3059,7 +3094,20 @@ async function initTelegramApp() {
                 arenaClient.startBattleTimer(data.timeLeft);
             }
         });
-        arenaClient.on('onBattleEnd', (isWin, prizePool) => { showNativeBattleResult(isWin, prizePool); refreshUserProfile(); });
+        // В файле script.js, в функции initTelegramApp, найдите блок arenaClient.on('onBattleEnd')
+// и ЗАМЕНИТЕ на этот:
+
+arenaClient.on('onBattleEnd', (isWin, prizePool) => { 
+    console.log('🏆 Бой завершён, победа:', isWin);
+    showNativeBattleResult(isWin, prizePool); 
+    // ИСПРАВЛЕНО: обновляем профиль и интерфейс арены
+    refreshUserProfile();
+    setTimeout(() => {
+        renderArenaFightTab();
+        renderArenaRanking();
+        renderArenaHistory();
+    }, 1000);
+});
         arenaClient.on('onTimerTick', (timeLeft) => { 
             const timerEl = document.getElementById('arenaBattleTimer'); 
             if (timerEl) { 

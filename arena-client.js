@@ -228,25 +228,31 @@ class ArenaClient {
         }, 3000);
     }
     
-    startBattleTimer(initialTimeLeft = 30) {
-        if (this.timers.battleTimer) clearInterval(this.timers.battleTimer);
-        
-        let timeLeft = initialTimeLeft;
-        // Сразу показываем текущее время без задержки
+    // В файле arena-client.js, найдите функцию startBattleTimer и ЗАМЕНИТЕ:
+
+startBattleTimer(initialTimeLeft = 30) {
+    // ИСПРАВЛЕНО: очищаем предыдущий таймер, чтобы избежать утечки
+    if (this.timers.battleTimer) {
+        clearInterval(this.timers.battleTimer);
+        this.timers.battleTimer = null;
+    }
+    
+    let timeLeft = initialTimeLeft;
+    // Сразу показываем текущее время без задержки
+    if (this.callbacks.onTimerTick) {
+        this.callbacks.onTimerTick(timeLeft);
+    }
+    this.timers.battleTimer = setInterval(() => {
+        timeLeft--;
         if (this.callbacks.onTimerTick) {
             this.callbacks.onTimerTick(timeLeft);
         }
-        this.timers.battleTimer = setInterval(() => {
-            timeLeft--;
-            if (this.callbacks.onTimerTick) {
-                this.callbacks.onTimerTick(timeLeft);
-            }
-            if (timeLeft <= 0) {
-                clearInterval(this.timers.battleTimer);
-                this.timers.battleTimer = null;
-            }
-        }, 1000);
-    }
+        if (timeLeft <= 0) {
+            clearInterval(this.timers.battleTimer);
+            this.timers.battleTimer = null;
+        }
+    }, 1000);
+}
     
     // ============================================================
     // WEBSOCKET (для Railway)
@@ -364,11 +370,25 @@ class ArenaClient {
                 this.endBattle(data.winnerId, data.prizePool);
             });
             
-            socket.on('confirmation_update', (data) => {
-                if (this.callbacks.onConfirmationUpdate) {
-                    this.callbacks.onConfirmationUpdate(data);
-                }
-            });
+            // В функции connectSocket, найдите блок socket.on('confirmation_update')
+// и ЗАМЕНИТЕ на этот:
+
+socket.on('confirmation_update', (data) => {
+    console.log('📡 Получено confirmation_update:', data);
+    // ИСПРАВЛЕНО: всегда обновляем состояние в клиенте
+    if (this.state.currentBattleId) {
+        // Обновляем статус подтверждения в состоянии
+        if (data.player1Confirmed !== undefined) {
+            this.state.player1Confirmed = data.player1Confirmed;
+        }
+        if (data.player2Confirmed !== undefined) {
+            this.state.player2Confirmed = data.player2Confirmed;
+        }
+    }
+    if (this.callbacks.onConfirmationUpdate) {
+        this.callbacks.onConfirmationUpdate(data);
+    }
+});
             
             socket.on('match_rejected', (data) => {
                 console.log('❌ Match rejected by opponent', data);
