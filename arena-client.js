@@ -37,6 +37,7 @@ class ArenaClient {
             onSearchTimeout: null,
             onSearchTick: null,
             onConfirmationUpdate: null,
+            onMatchRejected: null,
             onConnected: null,
             onDisconnected: null
         };
@@ -137,7 +138,7 @@ class ArenaClient {
         }, TIMEOUT * 1000);
     }
     
-    startBattle(battleId, isPlayer1, myTeam, enemyTeam, lastMoveAt) {
+    startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
         this.state.battleActive = true;
         this.state.currentBattleId = battleId;
         this.state.currentBattleIsPlayer1 = isPlayer1;
@@ -146,7 +147,7 @@ class ArenaClient {
         this.state.battleLog = [];
         
         this.stopSearch();
-        this.startBattleTimer(lastMoveAt);
+        this.startBattleTimer();
         
         if (this.callbacks.onBattleStart) {
             this.callbacks.onBattleStart(battleId, isPlayer1, myTeam, enemyTeam);
@@ -200,11 +201,6 @@ class ArenaClient {
         if (this.callbacks.onBattleUpdate) {
             this.callbacks.onBattleUpdate(data, this.state.currentBattleIsPlayer1);
         }
-        
-        // FIX: перезапускаем таймер при каждом ходе с синхронизацией по серверному времени
-        if (data.currentTurn !== undefined) {
-            this.startBattleTimer(data.lastMoveAt || null);
-        }
     }
     
     endBattle(winnerId, prizePool) {
@@ -229,20 +225,10 @@ class ArenaClient {
         }, 3000);
     }
     
-    startBattleTimer(lastMoveAt) {
+    startBattleTimer() {
         if (this.timers.battleTimer) clearInterval(this.timers.battleTimer);
         
-        const TURN_TIMEOUT = 30;
-        // FIX: синхронизируем с сервером через lastMoveAt
-        let timeLeft = TURN_TIMEOUT;
-        if (lastMoveAt) {
-            const elapsed = Math.floor((Date.now() - new Date(lastMoveAt).getTime()) / 1000);
-            timeLeft = Math.max(0, TURN_TIMEOUT - elapsed);
-        }
-        // Сразу показываем начальное значение
-        if (this.callbacks.onTimerTick) {
-            this.callbacks.onTimerTick(timeLeft);
-        }
+        let timeLeft = 30;
         this.timers.battleTimer = setInterval(() => {
             timeLeft--;
             if (this.callbacks.onTimerTick) {
@@ -319,14 +305,12 @@ class ArenaClient {
                         data.battleId,
                         data.isPlayer1,
                         data.myTeam,
-                        data.opponentTeam,
-                        data.lastMoveAt  // FIX: синхронизация таймера с сервером
+                        data.opponentTeam
                     );
                 } else if (data.hasBattle && data.status === 'pending_confirmation' && !this.state.confirmationShown) {
                     this.stopSearch();
                     this.state.confirmationShown = true;
                     this.state.currentBattleId = data.battleId;
-                    this.state.currentBattleIsPlayer1 = data.isPlayer1;
                     if (this.callbacks.onMatchFound) {
                         this.callbacks.onMatchFound(data);
                     }
@@ -337,6 +321,7 @@ class ArenaClient {
                 console.log('⚔️ Match found!', data);
                 this.state.confirmationShown = true;
                 this.state.currentBattleId = data.battleId;
+                this.state.currentBattleIsPlayer1 = data.isPlayer1; // FIX: нужен для updateConfirmationModal
                 if (this.callbacks.onMatchFound) {
                     this.callbacks.onMatchFound(data);
                 }
@@ -349,8 +334,7 @@ class ArenaClient {
                     data.battleId,
                     data.isPlayer1,
                     data.myTeam,
-                    data.opponentTeam,
-                    data.lastMoveAt
+                    data.opponentTeam
                 );
             });
             
@@ -366,6 +350,15 @@ class ArenaClient {
             socket.on('confirmation_update', (data) => {
                 if (this.callbacks.onConfirmationUpdate) {
                     this.callbacks.onConfirmationUpdate(data);
+                }
+            });
+            
+            socket.on('match_rejected', (data) => {
+                console.log('❌ Match rejected by opponent', data);
+                this.state.confirmationShown = false;
+                this.state.currentBattleId = null;
+                if (this.callbacks.onMatchRejected) {
+                    this.callbacks.onMatchRejected(data);
                 }
             });
             

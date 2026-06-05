@@ -2021,17 +2021,19 @@ function getLeagueName(league) {
 
 // Функция принятия боя из модального окна
 async function acceptBattleFromModal(battleId) {
-    const modal = document.getElementById('matchFoundModal');
-    if (modal) {
-        if (modal.timeoutId) clearTimeout(modal.timeoutId);
-        modal.remove();
-    }
+    // Не закрываем модалку — ждём подтверждения обоих игроков
+    const acceptBtn = document.querySelector('.match-btn-accept');
+    if (acceptBtn) { acceptBtn.disabled = true; acceptBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Принято...'; }
     
     const res = await apiRequest('POST', '/api/arena/accept-match', { battleId });
     if (res?.success) {
-        arenaClient?.setConfirmationShown(false);
-        showToast('Бой принят! Идёт загрузка...', '⚔️');
+        // Обновляем статус подтверждения внутри модалки
+        updateConfirmationModal({
+            player1Confirmed: res.battle?.player1Confirmed ?? (arenaClient?.state.currentBattleIsPlayer1 ? true : false),
+            player2Confirmed: res.battle?.player2Confirmed ?? (!arenaClient?.state.currentBattleIsPlayer1 ? true : false)
+        });
     } else {
+        if (acceptBtn) { acceptBtn.disabled = false; acceptBtn.innerHTML = '<i class="fa-solid fa-check"></i> ПРИНЯТЬ'; }
         showToast(res?.message || 'Ошибка при принятии боя', '❌');
     }
 }
@@ -2360,7 +2362,7 @@ async function renderArenaFightTab() {
             } else if (battleRes.status === 'active') {
                 const justEnded = arenaClient?.state.battleEndedAt && (Date.now() - arenaClient.state.battleEndedAt < 8000);
                 if (!arenaClient?.isBattleActive() && !justEnded) {
-                    arenaClient?.startBattle(battleRes.battleId, battleRes.isPlayer1, battleRes.myTeam, battleRes.opponentTeam, battleRes.lastMoveAt);
+                    arenaClient?.startBattle(battleRes.battleId, battleRes.isPlayer1, battleRes.myTeam, battleRes.opponentTeam);
                     renderBattleInterface(battleRes);
                 }
             } else if (battleRes.status === 'pending_confirmation') {
@@ -3086,7 +3088,7 @@ if (arenaClient) {
     arenaClient.on('onSearchTick', (secondsLeft) => { const searchStatus = document.getElementById('arenaSearchStatus'); if (searchStatus && arenaClient.isSearching()) { searchStatus.innerHTML = `⏳ В очереди поиска... <span style="color:var(--text2);font-size:11px;">${secondsLeft}с</span> <button onclick="cancelBattleSearch()" style="margin-left:8px;background:#ef4444;color:#fff;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px;">✕ Отменить</button>`; } });
     arenaClient.on('onConnected', () => addDebugLog('✅ WebSocket соединение установлено', 'success'));
     arenaClient.on('onDisconnected', (reason) => addDebugLog(`❌ WebSocket отключён: ${reason}`, 'error'));
-    arenaClient.on('onConfirmationUpdate', (data) => { updateConfirmationModal(data); });
+    arenaClient.on('onConfirmationUpdate', (data) => { updateConfirmationModal(data); });    arenaClient.on('onMatchRejected', (data) => {        const modal = document.getElementById('matchFoundModal');        if (modal) {            if (modal.timeoutId) clearTimeout(modal.timeoutId);            const card = modal.querySelector('.match-found-card');            if (card) card.innerHTML = `                <div style="text-align:center;padding:24px;">                    <div style="font-size:36px;margin-bottom:12px;">❌</div>                    <div style="font-size:16px;font-weight:700;color:#ef4444;margin-bottom:8px;">БОЙ ОТМЕНЁН</div>                    <div style="color:#94a3b8;font-size:13px;">\${data.message || 'Соперник отклонил бой. Ставка возвращена.'}</div>                </div>`;            setTimeout(() => {                modal.remove();                arenaClient?.stopSearch();                arenaClient?.setConfirmationShown(false);                renderArenaFightTab();            }, 2500);        } else {            showToast(data.message || 'Соперник отклонил бой', '❌');            arenaClient?.stopSearch();            arenaClient?.setConfirmationShown(false);            renderArenaFightTab();        }    });
 }
     
     initArenaWebhooks();
