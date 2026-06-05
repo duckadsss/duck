@@ -2284,3 +2284,66 @@ img {
     text-overflow: ellipsis;
     max-width: 100%;
 }
+.arena-selected-skill {
+    margin-top: 6px;
+    background: rgba(168, 85, 247, 0.1);
+    border: 1px solid rgba(168, 85, 247, 0.25);
+    border-radius: 10px;
+    padding: 6px 8px;
+    text-align: center;
+}
+
+.arena-selected-skill .skill-name {
+    font-size: 12px;
+    font-weight: 700;
+    color: #a855f7;
+    display: block;
+}
+
+.arena-selected-skill .skill-chance {
+    font-size: 10px;
+    color: #7c3aed;
+    background: rgba(124, 58, 237, 0.2);
+    border-radius: 6px;
+    padding: 1px 6px;
+    display: inline-block;
+    margin: 2px 0;
+}
+
+.arena-selected-skill .skill-desc {
+    font-size: 10px;
+    color: #94a3b8;
+    margin-top: 2px;
+}
+.arena-creatures-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    width: 100%;
+    overflow: hidden;
+}
+
+.arena-battle-creature {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: 32%;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.creature-skill-badge {
+    font-size: 10px;
+    color: #a855f7;
+    background: rgba(168, 85, 247, 0.15);
+    border: 1px solid rgba(168, 85, 247, 0.3);
+    border-radius: 8px;
+    padding: 2px 4px;
+    margin-top: 4px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    display: block;
+}

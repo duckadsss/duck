@@ -549,6 +549,42 @@
 <script src="arena-client.js"></script>
 <script src="script.js"></script>
 <script src="localization.js"></script>
-
+<script>
+// Скиллы для отображения в UI (клиентская копия)
+window.ARENA_SKILLS_MAP = {
+    duck_c: { name: '🍀 Lucky Quack', chance: 0.20, description: 'Враг промахивается — 0 урона' },
+    duck_u: { name: '💧 Puddle Dodge', chance: 0.25, description: 'Щит — следующая атака по нему отменяется' },
+    duck_r: { name: '🦅 Ancient Wings', chance: 0.20, description: 'Урон ×1.8' },
+    duck_e: { name: '🌊 Eternal Splash', chance: 0.25, description: 'Урон всем живым врагам' },
+    duck_l: { name: '🌀 Divine Flood', chance: 0.30, description: 'Урон ×1.5 всем живым врагам' },
+    owl_c: { name: '🌙 Night Sight', chance: 0.20, description: 'Игнорирует 30% защиты' },
+    owl_u: { name: '🦅 Sharp Talons', chance: 0.25, description: 'Урон ×1.5' },
+    owl_r: { name: '✨ Guardian Aura', chance: 0.20, description: 'Лечит союзника с наименьшим HP на 20%' },
+    owl_e: { name: '🧠 Mind Break', chance: 0.25, description: 'Снижает атаку врага на 30% в этом ударе' },
+    owl_l: { name: '👁️ Divine Sight', chance: 0.30, description: 'Урон ×2 + игнорирует всю защиту' },
+    shark_c: { name: '🦷 Bite', chance: 0.25, description: 'Урон +50%' },
+    shark_u: { name: '🩸 Frenzy', chance: 0.25, description: 'Восстанавливает 30% урона как HP' },
+    shark_r: { name: '🌊 Ocean Terror', chance: 0.20, description: 'Враг оглушён — пропускает следующий ход' },
+    shark_e: { name: '🦈 Apex Predator', chance: 0.30, description: 'Урон ×2 если у врага < 50% HP' },
+    shark_l: { name: '🐙 Kraken Call', chance: 0.35, description: 'Урон всем врагам + 20% HP себе' },
+    wolf_c: { name: '🐺 Pack Call', chance: 0.20, description: 'Урон +40%' },
+    wolf_u: { name: '🎯 Hunter Instinct', chance: 0.25, description: 'Игнорирует всю защиту' },
+    wolf_r: { name: '🌕 Howl', chance: 0.25, description: 'Урон ×1.5 + 10% HP себе' },
+    wolf_e: { name: '⚡ Alpha Strike', chance: 0.30, description: 'Урон ×2.5' },
+    wolf_l: { name: '🔥 Legendary Fury', chance: 0.35, description: 'Урон ×2 всем живым врагам' },
+    dragon_c: { name: '🔥 Flame', chance: 0.25, description: 'Урон +60%' },
+    dragon_u: { name: '🐉 Fire Breath', chance: 0.25, description: 'Урон всем живым врагам' },
+    dragon_r: { name: '🌋 Ancient Fire', chance: 0.20, description: 'Урон ×2' },
+    dragon_e: { name: '♾️ Eternal Flame', chance: 0.30, description: 'Урон ×1.5 всем + игнорирует защиту' },
+    dragon_l: { name: '☄️ Divine Inferno', chance: 0.35, description: 'Урон ×2 всем живым врагам' },
+    unicorn_c: { name: '🦄 Magic Touch', chance: 0.20, description: 'Восстанавливает 15% HP себе' },
+    unicorn_u: { name: '✨ Fairy Dust', chance: 0.25, description: 'Враг оглушён — пропускает ход' },
+    unicorn_r: { name: '💫 Rare Magic', chance: 0.20, description: 'Лечит всех союзников на 15% HP' },
+    unicorn_e: { name: '🌟 Eternal Magic', chance: 0.25, description: 'Урон ×2 + 20% HP себе' },
+    unicorn_l: { name: '🙏 Divine Blessing', chance: 0.30, description: 'Лечит всех союзников на 30% HP' },
+    lion_mythic: { name: '👑 King Roar', chance: 0.40, description: 'Урон ×2.5 + враг оглушён' },
+    panther_mythic: { name: '🐆 Shadow Strike', chance: 0.45, description: 'Игнорирует защиту + 40% урона как HP' }
+};
+</script>
 </body>
 </html>

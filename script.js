@@ -2178,13 +2178,16 @@ async function renderSelectedTeam() {
             const atk = Math.ceil((10 + (creature.incomeBase / 2) + (level * 2)) * multiplier);
             const def = Math.ceil((5 + (creature.incomeBase / 3) + (level * 1)) * multiplier);
             const crit = Math.round(0.10 * 100);
-            teamData.push({ creature, hp, atk, def, crit });
+        const skill = window.ARENA_SKILLS_MAP ? window.ARENA_SKILLS_MAP[creature.id] || null : null;
+        teamData.push({ creature, hp, atk, def, crit, skill });
         }
     }
     container.innerHTML = `<div class="arena-team-cards">${teamData.map(data => `<div class="arena-selected-card">
         <div class="arena-selected-icon">${getIconHtml(data.creature)}</div>
         <div class="arena-selected-name">${escapeHtml(data.creature.name)}</div>
         <div class="arena-selected-stats"><span>❤️ ${data.hp}</span><span>⚔️ ${data.atk}</span><span>🛡️ ${data.def}</span><span>✨ ${data.crit}%</span></div>
+        ${data.skill ? `<div class="arena-selected-skill" title="${data.skill.description}"><span class="skill-name">${data.skill.name}</span><span class="skill-chance">${Math.round(data.skill.chance * 100)}%</span><div class="skill-desc">${data.skill.description}</div></div>` : ''}
+    </div>
     </div>`).join('')}</div>`;
 }
 
