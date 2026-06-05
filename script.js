@@ -1991,8 +1991,6 @@ function showBattleConfirmationModal(battleData) {
 
 // ЗАМЕНИТЕ существующую функцию updateConfirmationModal на эту:
 
-// В файле script.js, найдите функцию updateConfirmationModal и ЗАМЕНИТЕ на:
-
 function updateConfirmationModal(data) {
     console.log('🔄 updateConfirmationModal вызван с данными:', data);
     
@@ -2002,6 +2000,7 @@ function updateConfirmationModal(data) {
         return;
     }
     
+    // ИСПРАВЛЕНО: получаем актуальные данные из состояния арены
     const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
     const myConfirmed = isPlayer1 ? data.player1Confirmed : data.player2Confirmed;
     const opponentConfirmed = isPlayer1 ? data.player2Confirmed : data.player1Confirmed;
@@ -2012,39 +2011,22 @@ function updateConfirmationModal(data) {
     if (myEl) {
         myEl.textContent = myConfirmed ? '✅ Принял' : '⏳ Ожидание';
         myEl.className = myConfirmed ? 'confirm-yes' : 'confirm-wait';
+        console.log(`Мой статус: ${myConfirmed ? 'Принял' : 'Ожидание'}`);
     }
     if (oppEl) {
         oppEl.textContent = opponentConfirmed ? '✅ Принял' : '⏳ Ожидание';
         oppEl.className = opponentConfirmed ? 'confirm-yes' : 'confirm-wait';
+        console.log(`Статус соперника: ${opponentConfirmed ? 'Принял' : 'Ожидание'}`);
     }
     
-    // ИСПРАВЛЕНО: если игрок уже подтвердил, скрываем кнопки и показываем ожидание
-    if (myConfirmed && !opponentConfirmed) {
-        const btns = document.getElementById('matchBtns');
-        if (btns) {
-            btns.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:8px;">⏳ Ожидаем соперника...</div>';
-        }
-    }
-    
-    // ИСПРАВЛЕНО: если оба подтвердили, закрываем модалку с задержкой
+    // ИСПРАВЛЕНО: если оба подтвердили, удаляем модалку
     if (myConfirmed && opponentConfirmed) {
         console.log('✅ Оба игрока подтвердили бой, закрываем модалку');
-        if (modal.timeoutId) {
-            clearTimeout(modal.timeoutId);
-            modal.timeoutId = null;
-        }
-        
-        // Добавляем анимацию исчезновения
-        modal.style.transition = 'opacity 0.3s ease';
-        modal.style.opacity = '0';
-        
+        if (modal.timeoutId) clearTimeout(modal.timeoutId);
         setTimeout(() => {
-            if (modal && modal.remove) {
-                modal.remove();
-            }
+            if (modal && modal.remove) modal.remove();
         }, 500);
     }
-}
     
     // ИСПРАВЛЕНО: если игрок уже подтвердил, скрываем кнопки
     if (myConfirmed) {
