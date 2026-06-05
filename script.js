@@ -2192,32 +2192,11 @@ function cancelBattleSearch() {
     showToast('Поиск отменён', '⚠️');
 }
 
-// script.js - ОБНОВЛЁННАЯ acceptBattleWebhook
-
 async function acceptBattleWebhook() {
     const battleId = arenaClient?.getBattleId();
     if (!battleId) return;
-    
-    // Закрываем модальное окно
-    const modal = document.getElementById('matchFoundModal');
-    if (modal) {
-        if (modal.timeoutId) clearTimeout(modal.timeoutId);
-        modal.remove();
-    }
-    
     const res = await apiRequest('POST', '/api/arena/accept-match', { battleId });
-    
-    if (res?.success) {
-        arenaClient?.setConfirmationShown(false);
-        
-        if (res.bothConfirmed) {
-            showToast('Бой принят! Начинается сражение...', '⚔️');
-        } else {
-            showToast('Вы приняли бой! Ожидаем подтверждения соперника...', '⏳');
-        }
-    } else {
-        showToast(res?.message || 'Ошибка при принятии боя', '❌');
-    }
+    if (res?.success) { closeOverlay(); arenaClient?.setConfirmationShown(false); }
 }
 
 // script.js - ОБНОВЛЁННАЯ rejectBattleWebhook
