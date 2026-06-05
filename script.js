@@ -3083,7 +3083,12 @@ async function initTelegramApp() {
         arenaClient.loadTeamFromStorage();
         arenaClient.connectSocket(state.token, API_URL);
         arenaClient.on('onMatchFound', (data) => showNativeBattleConfirmation(data));
-        arenaClient.on('onBattleStartUI', (data) => { 
+        arenaClient.on('onBattleStartUI', (data) => {
+            const confirmModal = document.getElementById('matchFoundModal');
+            if (confirmModal) {
+                if (confirmModal.timeoutId) clearTimeout(confirmModal.timeoutId);
+                confirmModal.remove();
+            }
             if (document.getElementById('overlay')?.classList.contains('show')) closeOverlay(); 
             renderBattleInterface(data);
             if (data.timeLeft !== undefined) {
