@@ -2305,9 +2305,9 @@ async function makeAttack(targetIndex) {
             turnCount: res.turnCount
         }, isPlayer1);
         
-        // Показываем урон
+        // Показываем урон по врагу (я атаковал)
         if (res.lastMove && res.lastMove.targetIndex !== undefined) {
-            showDamageAnimation(res.lastMove.targetIndex, res.lastMove.damage, res.lastMove.isCrit);
+            showDamageAnimation(res.lastMove.targetIndex, res.lastMove.damage, res.lastMove.isCrit, false);
         }
     }
 }
@@ -2628,10 +2628,8 @@ function updateBattleUIFromClient(data, isPlayer1) {
         }
     }
     
-    // Анимация урона
-    if (data.lastMove && data.lastMove.targetIndex !== undefined) {
-        showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit);
-        
+    // Анимация урона — НЕ здесь, вызывается снаружи с нужным hitMy
+    if (data.lastMove) {
         const logContainer = document.getElementById('arenaBattleLog');
         if (logContainer) {
             const logEntry = document.createElement('div');
@@ -2648,38 +2646,37 @@ function updateBattleUIFromClient(data, isPlayer1) {
 // ============================================================
 // SHOW DAMAGE ANIMATION (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 // ============================================================
-function showDamageAnimation(targetIndex, damage, isCrit) {
-    // Ищем элемент врага по правильному селектору
-    const enemyCreature = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${targetIndex}"]`);
-    if (enemyCreature) {
-        const damageDiv = document.createElement('div');
-        damageDiv.className = `arena-damage-number ${isCrit ? 'crit' : ''}`;
-        damageDiv.textContent = `-${damage}`;
-        enemyCreature.style.position = 'relative';
-        enemyCreature.appendChild(damageDiv);
-        
-        // Эффект встряски при крите
-        if (isCrit) {
-            enemyCreature.style.animation = 'damageShake 0.3s ease';
-            setTimeout(() => {
-                enemyCreature.style.animation = '';
-            }, 300);
-        }
-        
-        // Удаляем цифру урона через секунду
-        setTimeout(() => {
-            if (damageDiv && damageDiv.remove) damageDiv.remove();
-        }, 1000);
-        
-        // Дополнительный эффект — красная вспышка
-        enemyCreature.style.transition = 'background 0.1s ease';
-        enemyCreature.style.background = 'rgba(239, 68, 68, 0.3)';
-        setTimeout(() => {
-            if (enemyCreature) enemyCreature.style.background = '';
-        }, 150);
+// hitMy=true  → урон по МОИМ питомцам (я получил move_update, меня атаковали)
+// hitMy=false → урон по ВРАЖЕСКИМ питомцам (я сам атаковал)
+function showDamageAnimation(targetIndex, damage, isCrit, hitMy = false) {
+    let el;
+    if (hitMy) {
+        el = document.querySelector(`#arenaMyCreatures .arena-battle-creature[data-creature-index="${targetIndex}"]`);
     } else {
-        addDebugLog(`⚠️ Не найден элемент врага с индексом ${targetIndex} для анимации урона`, 'warn');
+        el = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${targetIndex}"]`);
     }
+
+    if (!el) {
+        addDebugLog(`⚠️ Не найден элемент [hitMy=${hitMy}] index=${targetIndex} для анимации урона`, 'warn');
+        return;
+    }
+
+    const damageDiv = document.createElement('div');
+    damageDiv.className = `arena-damage-number ${isCrit ? 'crit' : ''}`;
+    damageDiv.textContent = `-${damage}`;
+    el.style.position = 'relative';
+    el.appendChild(damageDiv);
+
+    if (isCrit) {
+        el.style.animation = 'damageShake 0.3s ease';
+        setTimeout(() => { el.style.animation = ''; }, 300);
+    }
+
+    setTimeout(() => { if (damageDiv && damageDiv.remove) damageDiv.remove(); }, 1000);
+
+    el.style.transition = 'background 0.1s ease';
+    el.style.background = 'rgba(239, 68, 68, 0.3)';
+    setTimeout(() => { if (el) el.style.background = ''; }, 150);
 }
 
 // ============================================================
@@ -3079,7 +3076,13 @@ async function initTelegramApp() {
         arenaClient.connectSocket(state.token, API_URL);
         arenaClient.on('onMatchFound', (data) => showNativeBattleConfirmation(data));
         arenaClient.on('onBattleStartUI', (data) => { if (document.getElementById('overlay')?.classList.contains('show')) closeOverlay(); renderBattleInterface(data); });
-        arenaClient.on('onBattleUpdate', (data, isPlayer1) => updateBattleUIFromClient(data, isPlayer1));
+        arenaClient.on('onBattleUpdate', (data, isPlayer1) => {
+            updateBattleUIFromClient(data, isPlayer1);
+            // move_update получает тот, кого атаковали → урон по МОИМ питомцам
+            if (data.lastMove && data.lastMove.targetIndex !== undefined) {
+                showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit, true);
+            }
+        });
         arenaClient.on('onBattleEnd', (isWin, prizePool) => { showNativeBattleResult(isWin, prizePool); refreshUserProfile(); });
         arenaClient.on('onTimerTick', (timeLeft) => { const timerEl = document.getElementById('arenaBattleTimer'); if (timerEl) { timerEl.textContent = `⏱ ${timeLeft}`; if (timeLeft <= 5) timerEl.classList.add('warning'); else timerEl.classList.remove('warning'); } });
         arenaClient.on('onSearchTimeout', () => { const findBtn = document.getElementById('findMatchBtn'); const searchStatus = document.getElementById('arenaSearchStatus'); if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; } if (searchStatus) searchStatus.innerHTML = '⏱ Поиск отменён (таймаут)'; showToast('Поиск занял слишком много времени, попробуйте снова', '⚠️'); });
