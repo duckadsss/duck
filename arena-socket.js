@@ -199,27 +199,24 @@ class ArenaBattleManager {
             return { success: false, message: 'Не удалось списать средства' };
         }
         
-        // FIX: атомарный захват waiting-боя — исключает race condition
-        const player2Team = await buildTeamFromIds(teamIds, userLevel, user._id, this.getCreature);
-        const waitingBattle = await this.Battle.findOneAndUpdate(
-            {
-                status: 'waiting',
-                league: userLeague,
-                player1Id: { $ne: user._id },
-                expiresAt: { $gt: new Date() }
-            },
-            {
-                $set: {
-                    status: 'pending_confirmation',
-                    player2Id: user._id,
-                    player2Team: player2Team,
-                    expiresAt: new Date(Date.now() + 60 * 1000)
-                }
-            },
-            { new: true, sort: { createdAt: 1 } }
-        );
+        const waitingBattle = await this.Battle.findOne({
+            status: 'waiting',
+            league: userLeague,
+            player1Id: { $ne: user._id },
+            expiresAt: { $gt: new Date() }
+        }).sort({ createdAt: 1 });
         
         if (waitingBattle) {
+            const player2Team = await buildTeamFromIds(teamIds, userLevel, user._id, this.getCreature);
+            
+            waitingBattle.player2Id = user._id;
+            waitingBattle.player2Team = player2Team;
+            waitingBattle.status = 'pending_confirmation';
+            waitingBattle.expiresAt = new Date(Date.now() + 60 * 1000);
+            
+            waitingBattle.markModified('player2Team');
+            await waitingBattle.save();
+            
             await this.User.updateOne(
                 { _id: user._id },
                 { $set: { currentBattleId: waitingBattle._id } }
@@ -315,136 +312,141 @@ class ArenaBattleManager {
     }
 
     async processMove(battleId, userId, requestedTargetIndex) {
-        const battle = await this.Battle.findById(battleId);
-        if (!battle) {
-            return { success: false, message: 'Бой не найден' };
+    const battle = await this.Battle.findById(battleId);
+    if (!battle) {
+        return { success: false, message: 'Бой не найден' };
+    }
+    
+    if (battle.status !== 'active') {
+        return { success: false, message: 'Бой не активен' };
+    }
+    
+    const isPlayer1 = battle.player1Id.toString() === userId.toString();
+    const isMyTurn = (battle.currentTurn === 'player1' && isPlayer1) || 
+                     (battle.currentTurn === 'player2' && !isPlayer1);
+    
+    if (!isMyTurn) {
+        return { success: false, message: 'Сейчас не ваш ход' };
+    }
+    
+    const myTeam = isPlayer1 ? battle.player1Team : battle.player2Team;
+    const enemyTeam = isPlayer1 ? battle.player2Team : battle.player1Team;
+    
+    let attackerIndex = -1;
+    let attacker = null;
+    for (let i = 0; i < myTeam.length; i++) {
+        if (myTeam[i].isAlive) {
+            attackerIndex = i;
+            attacker = myTeam[i];
+            break;
         }
-        
-        if (battle.status !== 'active') {
-            return { success: false, message: 'Бой не активен' };
+    }
+    
+    if (!attacker) {
+        battle.status = 'finished';
+        battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
+        await this.finishBattle(battle);
+        return { success: true, finished: true, winnerId: battle.winnerId };
+    }
+    
+    let targetIndex = -1;
+    if (requestedTargetIndex !== undefined && requestedTargetIndex >= 0 && requestedTargetIndex < enemyTeam.length && enemyTeam[requestedTargetIndex]?.isAlive) {
+        targetIndex = requestedTargetIndex;
+    } else {
+        for (let i = 0; i < enemyTeam.length; i++) {
+            if (enemyTeam[i].isAlive) { targetIndex = i; break; }
         }
-        
-        const isPlayer1 = battle.player1Id.toString() === userId.toString();
-        const isMyTurn = (battle.currentTurn === 'player1' && isPlayer1) || 
-                         (battle.currentTurn === 'player2' && !isPlayer1);
-        
-        if (!isMyTurn) {
-            return { success: false, message: 'Сейчас не ваш ход' };
-        }
-        
-        const myTeam = isPlayer1 ? battle.player1Team : battle.player2Team;
-        const enemyTeam = isPlayer1 ? battle.player2Team : battle.player1Team;
-        
-        let attackerIndex = -1;
-        let attacker = null;
-        for (let i = 0; i < myTeam.length; i++) {
-            if (myTeam[i].isAlive) {
-                attackerIndex = i;
-                attacker = myTeam[i];
-                break;
-            }
-        }
-        
-        if (!attacker) {
-            battle.status = 'finished';
-            battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
-            await this.finishBattle(battle);
-            return { success: true, finished: true, winnerId: battle.winnerId };
-        }
-        
-        let targetIndex = -1;
-        if (requestedTargetIndex !== undefined && requestedTargetIndex >= 0 && requestedTargetIndex < enemyTeam.length && enemyTeam[requestedTargetIndex]?.isAlive) {
-            targetIndex = requestedTargetIndex;
-        } else {
-            for (let i = 0; i < enemyTeam.length; i++) {
-                if (enemyTeam[i].isAlive) { targetIndex = i; break; }
-            }
-        }
-        
-        if (targetIndex === -1) {
-            battle.status = 'finished';
-            battle.winnerId = isPlayer1 ? battle.player1Id : battle.player2Id;
-            await this.finishBattle(battle);
-            return { success: true, finished: true, winnerId: battle.winnerId };
-        }
-        
-        const target = enemyTeam[targetIndex];
-        const isCrit = Math.random() < attacker.critChance;
-        let damage = Math.max(1, attacker.attack - target.defense);
-        if (isCrit) damage = Math.floor(damage * 1.5);
-        
-        target.currentHp = Math.max(0, target.currentHp - damage);
-        
-        if (target.currentHp <= 0) {
-            target.isAlive = false;
-        }
-        
-        battle.battleLog.push({
-            turn: battle.turnCount + 1,
-            player: battle.currentTurn,
-            attackerName: attacker.name,
-            attackerIndex: attackerIndex,
-            targetName: target.name,
-            targetIndex: targetIndex,
-            damage: damage,
-            isCrit: isCrit,
-            remainingHp: target.currentHp,
-            timestamp: new Date()
-        });
-        
-        const allEnemyDead = enemyTeam.every(p => !p.isAlive);
-        
-        if (allEnemyDead) {
-            battle.status = 'finished';
-            battle.winnerId = isPlayer1 ? battle.player1Id : battle.player2Id;
-            battle.turnCount++;
-            await this.finishBattle(battle);
-            
-            return {
-                success: true,
-                finished: true,
-                winnerId: battle.winnerId,
-                lastMove: { damage, isCrit, targetIndex, targetHp: target.currentHp, targetDead: true }
-            };
-        }
-        
-        battle.currentTurn = battle.currentTurn === 'player1' ? 'player2' : 'player1';
+    }
+    
+    if (targetIndex === -1) {
+        battle.status = 'finished';
+        battle.winnerId = isPlayer1 ? battle.player1Id : battle.player2Id;
+        await this.finishBattle(battle);
+        return { success: true, finished: true, winnerId: battle.winnerId };
+    }
+    
+    const target = enemyTeam[targetIndex];
+    const isCrit = Math.random() < attacker.critChance;
+    let damage = Math.max(1, attacker.attack - target.defense);
+    if (isCrit) damage = Math.floor(damage * 1.5);
+    
+    target.currentHp = Math.max(0, target.currentHp - damage);
+    
+    if (target.currentHp <= 0) {
+        target.isAlive = false;
+    }
+    
+    battle.battleLog.push({
+        turn: battle.turnCount + 1,
+        player: battle.currentTurn,
+        attackerName: attacker.name,
+        attackerIndex: attackerIndex,
+        targetName: target.name,
+        targetIndex: targetIndex,
+        damage: damage,
+        isCrit: isCrit,
+        remainingHp: target.currentHp,
+        timestamp: new Date()
+    });
+    
+    const allEnemyDead = enemyTeam.every(p => !p.isAlive);
+    
+    if (allEnemyDead) {
+        battle.status = 'finished';
+        battle.winnerId = isPlayer1 ? battle.player1Id : battle.player2Id;
         battle.turnCount++;
-        battle.lastMoveAt = new Date();
-        
-        if (isPlayer1) {
-            battle.player1LastMoveAt = new Date();
-        } else {
-            battle.player2LastMoveAt = new Date();
-        }
-        
-        if (isPlayer1) {
-            battle.markModified('player1Team');
-            battle.markModified('player2Team');
-        } else {
-            battle.markModified('player2Team');
-            battle.markModified('player1Team');
-        }
-        
-        await battle.save();
+        await this.finishBattle(battle);
         
         return {
             success: true,
-            finished: false,
-            lastMove: { 
-                damage, 
-                isCrit, 
-                targetIndex: targetIndex,
-                targetHp: target.currentHp, 
-                targetDead: false 
-            },
-            currentTurn: battle.currentTurn,
-            turnCount: battle.turnCount,
-            myTeam: myTeam,
-            enemyTeam: enemyTeam,
-            battleLog: battle.battleLog.slice(-1)
+            finished: true,
+            winnerId: battle.winnerId,
+            lastMove: { damage, isCrit, targetIndex, targetHp: target.currentHp, targetDead: true }
         };
     }
+    
+    battle.currentTurn = battle.currentTurn === 'player1' ? 'player2' : 'player1';
+    battle.turnCount++;
+    battle.lastMoveAt = new Date();
+    
+    if (isPlayer1) {
+        battle.player1LastMoveAt = new Date();
+    } else {
+        battle.player2LastMoveAt = new Date();
+    }
+    
+    if (isPlayer1) {
+        battle.markModified('player1Team');
+        battle.markModified('player2Team');
+    } else {
+        battle.markModified('player2Team');
+        battle.markModified('player1Team');
+    }
+    
+    await battle.save();
+    
+    // РАССЧИТЫВАЕМ ОСТАВШЕЕСЯ ВРЕМЯ ХОДА
+    const timeSinceLastMove = (Date.now() - battle.lastMoveAt.getTime()) / 1000;
+    const timeLeft = Math.max(0, 30 - Math.floor(timeSinceLastMove));
+    
+    return {
+        success: true,
+        finished: false,
+        lastMove: { 
+            damage, 
+            isCrit, 
+            targetIndex: targetIndex,
+            targetHp: target.currentHp, 
+            targetDead: false 
+        },
+        currentTurn: battle.currentTurn,
+        turnCount: battle.turnCount,
+        myTeam: myTeam,
+        enemyTeam: enemyTeam,
+        battleLog: battle.battleLog.slice(-1),
+        timeLeft: timeLeft
+    };
+}
 
     async finishBattle(battle) {
         const winnerId = battle.winnerId;
@@ -514,7 +516,11 @@ class ArenaBattleManager {
                 newLoserRating = LEAGUE_CONFIG[oldLoserLeague].minRating;
                 loserStats.promotionProtection = false;
             }
-            // Примечание: дублирующий if ниже удалён (dead code — флаг уже сброшен выше)
+            
+            // Сбрасываем promotionProtection проигравшего (защита использована)
+            if (loserStats.promotionProtection && !(newLoserRating >= LEAGUE_CONFIG[oldLoserLeague].minRating)) {
+                loserStats.promotionProtection = false;
+            }
             
             winnerStats.rating = newWinnerRating;
             winnerStats.league = newWinnerLeague;
@@ -543,7 +549,7 @@ class ArenaBattleManager {
                 if (winner) {
                     await this.sendNotification(winner.telegramId,
                         `🏆 <b>ПОБЕДА В АРЕНЕ!</b>\n\n` +
-                        `Вы победили ${escapeHtmlTg(loser?.username || loser?.firstName || 'игрока')}!\n` +
+                        `Вы победили ${loser?.username || loser?.firstName || 'игрока'}!\n` +
                         `💰 Выигрыш: +${battle.prizePool.toLocaleString()} MMO\n` +
                         `📊 Рейтинг: ${winnerStats.rating} ${ratingChange > 0 ? `(+${ratingChange})` : `(${ratingChange})`}\n` +
                         `🔥 Серия побед: ${winnerStats.streak}\n` +
@@ -555,7 +561,7 @@ class ArenaBattleManager {
                 if (loser) {
                     await this.sendNotification(loser.telegramId,
                         `💀 <b>ПОРАЖЕНИЕ В АРЕНЕ</b>\n\n` +
-                        `Вы проиграли ${escapeHtmlTg(winner?.username || winner?.firstName || 'игроку')}.\n` +
+                        `Вы проиграли ${winner?.username || winner?.firstName || 'игроку'}.\n` +
                         `📊 Рейтинг: ${loserStats.rating} (${ratingChange > 0 ? `-${ratingChange}` : `-${Math.abs(ratingChange)}`})\n` +
                         `${demotionMessage ? `\n${demotionMessage}` : ''}\n` +
                         `💪 Следующий бой будет лучше!`
@@ -729,12 +735,6 @@ class ArenaBattleManager {
         }
         return stats;
     }
-}
-
-// Экранирование HTML для Telegram Bot API (parse_mode: HTML)
-function escapeHtmlTg(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 module.exports = {

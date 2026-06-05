@@ -89,7 +89,6 @@ class ArenaClient {
     // ============================================================
     
     startSearch() {
-        // Очищаем предыдущий поиск
         if (this.state.isSearching) {
             this.stopSearch();
         }
@@ -147,7 +146,6 @@ class ArenaClient {
         this.state.battleLog = [];
         
         this.stopSearch();
-        this.startBattleTimer();
         
         if (this.callbacks.onBattleStart) {
             this.callbacks.onBattleStart(battleId, isPlayer1, myTeam, enemyTeam);
@@ -198,6 +196,11 @@ class ArenaClient {
             }
         }
         
+        // Обновляем таймер, если сервер прислал время
+        if (data.timeLeft !== undefined && this.callbacks.onTimerTick) {
+            this.callbacks.onTimerTick(data.timeLeft);
+        }
+        
         if (this.callbacks.onBattleUpdate) {
             this.callbacks.onBattleUpdate(data, this.state.currentBattleIsPlayer1);
         }
@@ -225,10 +228,14 @@ class ArenaClient {
         }, 3000);
     }
     
-    startBattleTimer() {
+    startBattleTimer(initialTimeLeft = 30) {
         if (this.timers.battleTimer) clearInterval(this.timers.battleTimer);
         
-        let timeLeft = 30;
+        let timeLeft = initialTimeLeft;
+        // Сразу показываем текущее время без задержки
+        if (this.callbacks.onTimerTick) {
+            this.callbacks.onTimerTick(timeLeft);
+        }
         this.timers.battleTimer = setInterval(() => {
             timeLeft--;
             if (this.callbacks.onTimerTick) {
@@ -321,7 +328,7 @@ class ArenaClient {
                 console.log('⚔️ Match found!', data);
                 this.state.confirmationShown = true;
                 this.state.currentBattleId = data.battleId;
-                this.state.currentBattleIsPlayer1 = data.isPlayer1; // FIX: нужен для updateConfirmationModal
+                this.state.currentBattleIsPlayer1 = data.isPlayer1;
                 if (this.callbacks.onMatchFound) {
                     this.callbacks.onMatchFound(data);
                 }
@@ -336,10 +343,20 @@ class ArenaClient {
                     data.myTeam,
                     data.opponentTeam
                 );
+                // Запускаем таймер с переданным временем
+                if (data.timeLeft !== undefined) {
+                    this.startBattleTimer(data.timeLeft);
+                } else {
+                    this.startBattleTimer(30);
+                }
             });
             
             socket.on('move_update', (data) => {
                 this.updateBattle(data);
+                // Обновляем таймер, если есть время
+                if (data.timeLeft !== undefined) {
+                    this.startBattleTimer(data.timeLeft);
+                }
             });
             
             socket.on('battle_end', (data) => {
