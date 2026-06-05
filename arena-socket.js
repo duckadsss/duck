@@ -472,17 +472,23 @@ async findMatch(user, teamIds) {
         
         await battle.save();
         
-        return {
-            success: true,
-            finished: false,
-            lastMove: { damage, isCrit, targetIndex, targetHp: target.currentHp, targetDead: false },
-            currentTurn: battle.currentTurn,
-            turnCount: battle.turnCount,
-            myTeam: myTeam,
-            enemyTeam: enemyTeam,
-            battleLog: battle.battleLog.slice(-1)
-        };
-    }
+        // В processMove, при возврате результата:
+return {
+    success: true,
+    finished: false,
+    lastMove: { 
+        damage, 
+        isCrit, 
+        targetIndex: targetIndex,  // Убедитесь, что это правильный индекс
+        targetHp: target.currentHp, 
+        targetDead: false 
+    },
+    currentTurn: battle.currentTurn,
+    turnCount: battle.turnCount,
+    myTeam: myTeam,
+    enemyTeam: enemyTeam,
+    battleLog: battle.battleLog.slice(-1)
+};
 
     // arena-socket.js - НОВАЯ ВЕРСИЯ finishBattle
 

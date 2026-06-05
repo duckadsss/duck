@@ -2206,33 +2206,64 @@ async function rejectBattleWebhook() {
     if (res?.success) { arenaClient?.stopSearch(); closeOverlay(); showToast('Бой отклонён', '⚠️'); renderArenaFightTab(); }
 }
 
+// ============================================================
+// MAKE ATTACK (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+// ============================================================
 async function makeAttack(targetIndex) {
     if (!arenaClient?.isBattleActive()) { 
         showToast('Бой не активен', '⚠️'); 
         return; 
     }
+    
     const battleId = arenaClient?.getBattleId();
     if (!battleId) { 
         showToast('ID боя не найден', '⚠️'); 
         return; 
     }
     
+    addDebugLog(`⚔️ Атака по цели с индексом ${targetIndex}`, 'info');
+    
+    // Показываем визуальный фидбек, что атака началась
+    const attackBtn = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${targetIndex}"] .arena-attack-btn`);
+    if (attackBtn) {
+        attackBtn.disabled = true;
+        attackBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    }
+    
     const res = await apiRequest('POST', '/api/arena/move', { battleId });
     
     if (!res?.success) {
         showToast(res?.message || 'Ошибка атаки', '❌');
+        // Восстанавливаем кнопку
+        if (attackBtn) {
+            attackBtn.disabled = false;
+            attackBtn.innerHTML = '⚔️ Атаковать';
+        }
         return;
     }
     
-    if (!res.finished) {
+    if (res.finished) {
+        // Бой закончен, обновляем интерфейс
+        if (res.winnerId) {
+            const isWin = res.winnerId === arenaClient?.getCurrentUserId();
+            showNativeBattleResult(isWin, res.prizePool || 0);
+            renderArenaFightTab();
+        }
+    } else {
+        // Обновляем UI после атаки
         const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
         updateBattleUIFromClient({
-            player1Team: res.myTeam,
-            player2Team: res.enemyTeam,
+            player1Team: res.player1Team,
+            player2Team: res.player2Team,
             lastMove: res.lastMove,
             currentTurn: res.currentTurn,
             turnCount: res.turnCount
         }, isPlayer1);
+        
+        // Показываем урон
+        if (res.lastMove && res.lastMove.targetIndex !== undefined) {
+            showDamageAnimation(res.lastMove.targetIndex, res.lastMove.damage, res.lastMove.isCrit);
+        }
     }
 }
 
@@ -2448,7 +2479,8 @@ function renderBattleInterface(battleData) {
                             <div class="creature-name">${escapeHtml(creature.name)}</div>
                             <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
                             <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
-                            ${isMyTurn && creature.isAlive ? `<button class="arena-attack-btn" onclick="makeAttack(${idx})">⚔️ Атаковать</button>` : ''}
+                    
+${isMyTurn && creature.isAlive ? `<button class="arena-attack-btn" data-enemy-idx="${idx}" onclick="makeAttack(${idx})">⚔️ Атаковать</button>` : ''}
                         </div>
                     `).join('')}
                 </div>
@@ -2466,10 +2498,14 @@ function renderBattleInterface(battleData) {
     addDebugLog('✅ Battle interface rendered', 'success');
 }
 
+// ============================================================
+// UPDATE BATTLE UI FROM CLIENT (С ПРАВИЛЬНЫМ ОБНОВЛЕНИЕМ КНОПОК)
+// ============================================================
 function updateBattleUIFromClient(data, isPlayer1) {
     if (!data) return;
     
     let myTeam, enemyTeam;
+    
     if (data.player1Team && data.player2Team) {
         myTeam = isPlayer1 ? data.player1Team : data.player2Team;
         enemyTeam = isPlayer1 ? data.player2Team : data.player1Team;
@@ -2482,6 +2518,7 @@ function updateBattleUIFromClient(data, isPlayer1) {
     
     if (!myTeam || !enemyTeam) return;
     
+    // Обновляем HP своей команды
     for (let i = 0; i < myTeam.length; i++) {
         const creature = myTeam[i];
         const creatureEl = document.querySelector(`#arenaMyCreatures .arena-battle-creature[data-creature-index="${i}"]`);
@@ -2497,32 +2534,56 @@ function updateBattleUIFromClient(data, isPlayer1) {
     
     const isMyTurn = data.currentTurn && ((data.currentTurn === 'player1' && isPlayer1) || (data.currentTurn === 'player2' && !isPlayer1));
     
+    // Обновляем команду врага И КНОПКИ АТАКИ
     for (let i = 0; i < enemyTeam.length; i++) {
         const creature = enemyTeam[i];
         const creatureEl = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${i}"]`);
         if (!creatureEl || !creature) continue;
         
+        // Обновляем HP
         const hpEl = creatureEl.querySelector('.creature-hp');
         const fillEl = creatureEl.querySelector('.arena-hp-fill');
         if (hpEl) hpEl.textContent = `❤️ ${Math.max(0, creature.currentHp)}/${creature.maxHp}`;
         if (fillEl) fillEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
-        if (!creature.isAlive) creatureEl.classList.add('dead');
-        else creatureEl.classList.remove('dead');
         
+        // Обновляем статус alive
+        if (!creature.isAlive) {
+            creatureEl.classList.add('dead');
+        } else {
+            creatureEl.classList.remove('dead');
+        }
+        
+        // Управляем кнопкой атаки
         const existingBtn = creatureEl.querySelector('.arena-attack-btn');
-        if (isMyTurn && creature.isAlive && arenaClient?.isBattleActive()) {
-            if (!existingBtn) {
-                const btn = document.createElement('button');
-                btn.className = 'arena-attack-btn';
-                btn.textContent = '⚔️ Атаковать';
-                btn.onclick = () => makeAttack(i);
-                creatureEl.appendChild(btn);
-            }
-        } else if (existingBtn) {
+        const canAttack = isMyTurn && creature.isAlive && arenaClient?.isBattleActive();
+        
+        if (canAttack && !existingBtn) {
+            // Создаём кнопку, если её нет и можно атаковать
+            const btn = document.createElement('button');
+            btn.className = 'arena-attack-btn';
+            btn.setAttribute('data-enemy-idx', i);
+            btn.innerHTML = '⚔️ Атаковать';
+            btn.onclick = (function(index) {
+                return function() { makeAttack(index); };
+            })(i);
+            creatureEl.appendChild(btn);
+        } else if (!canAttack && existingBtn) {
+            // Удаляем кнопку, если нельзя атаковать
             existingBtn.remove();
+        } else if (canAttack && existingBtn) {
+            // Обновляем существующую кнопку (на случай если была disabled)
+            existingBtn.disabled = false;
+            existingBtn.innerHTML = '⚔️ Атаковать';
+            // Пересоздаём onclick, чтобы избежать замыканий
+            const newBtn = existingBtn.cloneNode(true);
+            existingBtn.parentNode.replaceChild(newBtn, existingBtn);
+            newBtn.onclick = (function(index) {
+                return function() { makeAttack(index); };
+            })(i);
         }
     }
     
+    // Анимация урона
     if (data.lastMove && data.lastMove.targetIndex !== undefined) {
         showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit);
         
@@ -2539,7 +2600,11 @@ function updateBattleUIFromClient(data, isPlayer1) {
     }
 }
 
+// ============================================================
+// SHOW DAMAGE ANIMATION (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+// ============================================================
 function showDamageAnimation(targetIndex, damage, isCrit) {
+    // Ищем элемент врага по правильному селектору
     const enemyCreature = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${targetIndex}"]`);
     if (enemyCreature) {
         const damageDiv = document.createElement('div');
@@ -2547,8 +2612,28 @@ function showDamageAnimation(targetIndex, damage, isCrit) {
         damageDiv.textContent = `-${damage}`;
         enemyCreature.style.position = 'relative';
         enemyCreature.appendChild(damageDiv);
-        setTimeout(() => damageDiv.remove(), 1000);
-        if (isCrit) { enemyCreature.style.animation = 'damageShake 0.3s ease'; setTimeout(() => enemyCreature.style.animation = '', 300); }
+        
+        // Эффект встряски при крите
+        if (isCrit) {
+            enemyCreature.style.animation = 'damageShake 0.3s ease';
+            setTimeout(() => {
+                enemyCreature.style.animation = '';
+            }, 300);
+        }
+        
+        // Удаляем цифру урона через секунду
+        setTimeout(() => {
+            if (damageDiv && damageDiv.remove) damageDiv.remove();
+        }, 1000);
+        
+        // Дополнительный эффект — красная вспышка
+        enemyCreature.style.transition = 'background 0.1s ease';
+        enemyCreature.style.background = 'rgba(239, 68, 68, 0.3)';
+        setTimeout(() => {
+            if (enemyCreature) enemyCreature.style.background = '';
+        }, 150);
+    } else {
+        addDebugLog(`⚠️ Не найден элемент врага с индексом ${targetIndex} для анимации урона`, 'warn');
     }
 }
 
