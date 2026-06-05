@@ -2078,8 +2078,7 @@ function switchArenaTab(tab) {
     
     if (tab === 'team') renderArenaTeamInventory();
     if (tab === 'fight') renderArenaFightTab();
-    if (tab === 'ranking') renderArenaRanking();
-    if (tab === 'ranks') updateArenaRanksInfo();
+    if (tab === 'ranks') updateArenaRanksInfo();  // ИСПРАВЛЕНО: было 'ranking'
     if (tab === 'history') renderArenaHistory();
 }
 
@@ -2352,7 +2351,6 @@ async function renderArenaFightTab() {
             if (battleContainer) battleContainer.style.display = 'block';
             
             if (battleRes.status === 'waiting') {
-                // НЕ запускаем поиск автоматически — только показываем UI
                 if (statusContainer) statusContainer.style.display = 'block';
                 if (battleContainer) battleContainer.style.display = 'none';
                 const findBtn = document.getElementById('findMatchBtn');
@@ -2386,19 +2384,23 @@ async function renderArenaFightTab() {
                 const leaderboardRes = await apiRequest('GET', '/api/arena/leaderboard');
                 if (leaderboardRes?.success && leaderboardRes.myStats) {
                     const myLeague = leaderboardRes.myStats.league || 'bronze';
-                    // Берём данные из ответа API, если сервер их вернул, иначе фоллбэк
-                    const leagueFromApi = leaderboardRes.myStats;
-                    const entryFee = leagueFromApi.entryFee ?? { bronze:200, silver:500, gold:1000, platinum:2000, diamond:5000 }[myLeague];
-                    const prizePool = leagueFromApi.prizePool ?? { bronze:350, silver:800, gold:1600, platinum:3200, diamond:8000 }[myLeague];
-                    const leagueNames = { bronze:'🥉 Бронзовая', silver:'🥈 Серебряная', gold:'🥇 Золотая', platinum:'💎 Платиновая', diamond:'🏆 Алмазная' };
+                    // ИСПРАВЛЕНО: используем отдельную конфигурацию
+                    const leagueConfigs = {
+                        bronze: { entryFee: 200, prizePool: 350, name: '🥉 Бронзовая' },
+                        silver: { entryFee: 500, prizePool: 800, name: '🥈 Серебряная' },
+                        gold: { entryFee: 1000, prizePool: 1600, name: '🥇 Золотая' },
+                        platinum: { entryFee: 2000, prizePool: 3200, name: '💎 Платиновая' },
+                        diamond: { entryFee: 5000, prizePool: 8000, name: '🏆 Алмазная' }
+                    };
+                    const config = leagueConfigs[myLeague] || leagueConfigs.bronze;
                     
                     const entryFeeEl = document.getElementById('arenaEntryFee');
                     const prizePoolEl = document.getElementById('arenaPrizePool');
                     const leagueEl = document.getElementById('arenaLeague');
-                    if (entryFeeEl) entryFeeEl.textContent = entryFee;
-                    if (prizePoolEl) prizePoolEl.textContent = prizePool;
+                    if (entryFeeEl) entryFeeEl.textContent = config.entryFee;
+                    if (prizePoolEl) prizePoolEl.textContent = config.prizePool;
                     if (leagueEl) {
-                        leagueEl.innerHTML = `<span class="arena-league-badge league-${myLeague}">${leagueNames[myLeague] || myLeague}</span>`;
+                        leagueEl.innerHTML = `<span class="arena-league-badge league-${myLeague}">${config.name}</span>`;
                     }
                 }
             } catch (err) {
@@ -3066,26 +3068,26 @@ async function initTelegramApp() {
     updateAdsStatus();
     
     arenaClient = window.arenaClient;
-    if (arenaClient) {
-        arenaClient.loadTeamFromStorage();
-        arenaClient.connectSocket(state.token, API_URL);
-        arenaClient.on('onMatchFound', (data) => showNativeBattleConfirmation(data));
-        arenaClient.on('onBattleStartUI', (data) => { if (document.getElementById('overlay')?.classList.contains('show')) closeOverlay(); renderBattleInterface(data); });
-        arenaClient.on('onBattleUpdate', (data, isPlayer1) => {
-            updateBattleUIFromClient(data, isPlayer1);
-            // move_update получает тот, кого атаковали → урон по МОИМ питомцам
-            if (data.lastMove && data.lastMove.targetIndex !== undefined) {
-                showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit, true);
-            }
-        });
-        arenaClient.on('onBattleEnd', (isWin, prizePool) => { showNativeBattleResult(isWin, prizePool); refreshUserProfile(); });
-        arenaClient.on('onTimerTick', (timeLeft) => { const timerEl = document.getElementById('arenaBattleTimer'); if (timerEl) { timerEl.textContent = `⏱ ${timeLeft}`; if (timeLeft <= 5) timerEl.classList.add('warning'); else timerEl.classList.remove('warning'); } });
-        arenaClient.on('onSearchTimeout', () => { const findBtn = document.getElementById('findMatchBtn'); const searchStatus = document.getElementById('arenaSearchStatus'); if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; } if (searchStatus) searchStatus.innerHTML = '⏱ Поиск отменён (таймаут)'; showToast('Поиск занял слишком много времени, попробуйте снова', '⚠️'); });
-        arenaClient.on('onSearchTick', (secondsLeft) => { const searchStatus = document.getElementById('arenaSearchStatus'); if (searchStatus && arenaClient.isSearching()) { searchStatus.innerHTML = `⏳ В очереди поиска... <span style="color:var(--text2);font-size:11px;">${secondsLeft}с</span> <button onclick="cancelBattleSearch()" style="margin-left:8px;background:#ef4444;color:#fff;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px;">✕ Отменить</button>`; } });
-        arenaClient.on('onConfirmationUpdate', (data) => { updateConfirmationModal(data); });
-        arenaClient.on('onConnected', () => addDebugLog('✅ WebSocket соединение установлено', 'success'));
-        arenaClient.on('onDisconnected', (reason) => addDebugLog(`❌ WebSocket отключён: ${reason}`, 'error'));
-    }
+if (arenaClient) {
+    arenaClient.stopSearch();  // Останавливаем поиск при загрузке
+    arenaClient.loadTeamFromStorage();
+    arenaClient.connectSocket(state.token, API_URL);
+    arenaClient.on('onMatchFound', (data) => showNativeBattleConfirmation(data));
+    arenaClient.on('onBattleStartUI', (data) => { if (document.getElementById('overlay')?.classList.contains('show')) closeOverlay(); renderBattleInterface(data); });
+    arenaClient.on('onBattleUpdate', (data, isPlayer1) => {
+        updateBattleUIFromClient(data, isPlayer1);
+        if (data.lastMove && data.lastMove.targetIndex !== undefined) {
+            showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit, true);
+        }
+    });
+    arenaClient.on('onBattleEnd', (isWin, prizePool) => { showNativeBattleResult(isWin, prizePool); refreshUserProfile(); });
+    arenaClient.on('onTimerTick', (timeLeft) => { const timerEl = document.getElementById('arenaBattleTimer'); if (timerEl) { timerEl.textContent = `⏱ ${timeLeft}`; if (timeLeft <= 5) timerEl.classList.add('warning'); else timerEl.classList.remove('warning'); } });
+    arenaClient.on('onSearchTimeout', () => { const findBtn = document.getElementById('findMatchBtn'); const searchStatus = document.getElementById('arenaSearchStatus'); if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; } if (searchStatus) searchStatus.innerHTML = '⏱ Поиск отменён (таймаут)'; showToast('Поиск занял слишком много времени, попробуйте снова', '⚠️'); });
+    arenaClient.on('onSearchTick', (secondsLeft) => { const searchStatus = document.getElementById('arenaSearchStatus'); if (searchStatus && arenaClient.isSearching()) { searchStatus.innerHTML = `⏳ В очереди поиска... <span style="color:var(--text2);font-size:11px;">${secondsLeft}с</span> <button onclick="cancelBattleSearch()" style="margin-left:8px;background:#ef4444;color:#fff;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px;">✕ Отменить</button>`; } });
+    arenaClient.on('onConnected', () => addDebugLog('✅ WebSocket соединение установлено', 'success'));
+    arenaClient.on('onDisconnected', (reason) => addDebugLog(`❌ WebSocket отключён: ${reason}`, 'error'));
+    arenaClient.on('onConfirmationUpdate', (data) => { updateConfirmationModal(data); });
+}
     
     initArenaWebhooks();
     

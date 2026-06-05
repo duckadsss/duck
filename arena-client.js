@@ -88,6 +88,10 @@ class ArenaClient {
     // ============================================================
     
     startSearch() {
+        // Очищаем предыдущий поиск
+        if (this.state.isSearching) {
+            this.stopSearch();
+        }
         this.state.isSearching = true;
         this.state.confirmationShown = false;
         this.startSearchTimer();
@@ -133,36 +137,34 @@ class ArenaClient {
         }, TIMEOUT * 1000);
     }
     
-// arena-client.js - метод startBattle
-startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
-    this.state.battleActive = true;
-    this.state.currentBattleId = battleId;
-    this.state.currentBattleIsPlayer1 = isPlayer1;
-    this.state.myTeam = myTeam;
-    this.state.enemyTeam = enemyTeam;
-    this.state.battleLog = [];
-    
-    this.stopSearch(); // stopSearch сам ставит isSearching = false
-    this.startBattleTimer();
-    
-    if (this.callbacks.onBattleStart) {
-        this.callbacks.onBattleStart(battleId, isPlayer1, myTeam, enemyTeam);
+    startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
+        this.state.battleActive = true;
+        this.state.currentBattleId = battleId;
+        this.state.currentBattleIsPlayer1 = isPlayer1;
+        this.state.myTeam = myTeam;
+        this.state.enemyTeam = enemyTeam;
+        this.state.battleLog = [];
+        
+        this.stopSearch();
+        this.startBattleTimer();
+        
+        if (this.callbacks.onBattleStart) {
+            this.callbacks.onBattleStart(battleId, isPlayer1, myTeam, enemyTeam);
+        }
+        
+        if (this.callbacks.onBattleStartUI) {
+            this.callbacks.onBattleStartUI({
+                battleId: battleId,
+                isPlayer1: isPlayer1,
+                player1Team: isPlayer1 ? myTeam : enemyTeam,
+                player2Team: isPlayer1 ? enemyTeam : myTeam,
+                myTeam: myTeam,
+                opponentTeam: enemyTeam,
+                currentTurn: isPlayer1 ? 'player1' : 'player2',
+                battleLog: []
+            });
+        }
     }
-    
-    // ВАЖНО: передаём правильные поля для battleData
-    if (this.callbacks.onBattleStartUI) {
-        this.callbacks.onBattleStartUI({
-            battleId: battleId,
-            isPlayer1: isPlayer1,
-            player1Team: isPlayer1 ? myTeam : enemyTeam,  // Если игрок player1, его команда в player1Team
-            player2Team: isPlayer1 ? enemyTeam : myTeam,  // Если игрок player1, враг в player2Team
-            myTeam: myTeam,
-            opponentTeam: enemyTeam,
-            currentTurn: isPlayer1 ? 'player1' : 'player2',
-            battleLog: []
-        });
-    }
-}
     
     updateBattle(data) {
         if (!this.state.battleActive) return;
@@ -285,12 +287,10 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
                 if (this.callbacks.onDisconnected) {
                     this.callbacks.onDisconnected(reason);
                 }
-                // встроенный reconnection: true в io() сам обработает переподключение
             });
             
             socket.on('connect_error', (err) => {
                 console.error('WebSocket connect error:', err.message);
-                // Socket.IO сам повторит попытку через reconnectionDelay
             });
             
             socket.on('connected', (data) => {
@@ -306,7 +306,6 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
                         data.myTeam,
                         data.opponentTeam
                     );
-                    // onBattleStartUI уже вызывается внутри startBattle()
                 } else if (data.hasBattle && data.status === 'pending_confirmation' && !this.state.confirmationShown) {
                     this.stopSearch();
                     this.state.confirmationShown = true;
@@ -335,7 +334,6 @@ startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
                     data.myTeam,
                     data.opponentTeam
                 );
-                // onBattleStartUI уже вызывается внутри startBattle()
             });
             
             socket.on('move_update', (data) => {
