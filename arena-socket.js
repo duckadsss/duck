@@ -54,18 +54,6 @@ function getLeagueByRating(rating) {
     return 'bronze';
 }
 
-function canPromoteToLeague(currentRating, targetLeague) {
-    const targetConfig = LEAGUE_CONFIG[targetLeague];
-    return currentRating >= targetConfig.minRating;
-}
-
-function shouldDemote(currentRating, currentLeague) {
-    const config = LEAGUE_CONFIG[currentLeague];
-    const demoteThreshold = config.minRating - 150;
-    return currentRating < demoteThreshold;
-}
-
-// ===== ОСТАВЛЯЕМ ТОЛЬКО ОДНУ ФУНКЦИЮ calculateEloChange =====
 function calculateEloChange(winnerRating, loserRating, k = 32) {
     const expectedScore = 1 / (1 + Math.pow(10, (loserRating - winnerRating) / 400));
     let change = Math.round(k * (1 - expectedScore));
@@ -86,7 +74,6 @@ const RARITY_MULTIPLIERS = {
     mythic: 1.40
 };
 
-// Исправленная функция getLeagueByLevel (по уровням)
 function getLeagueByLevel(level) {
     if (level >= 20) return 'diamond';
     if (level >= 15) return 'platinum';
@@ -196,8 +183,11 @@ class ArenaBattleManager {
         return battle;
     }
 
-    // ===== ИСПРАВЛЕННЫЙ МЕТОД findMatch =====
     async findMatch(user, teamIds) {
+        if (!Array.isArray(teamIds) || teamIds.length !== 3) {
+            return { success: false, message: 'Нужно выбрать ровно 3 питомца' };
+        }
+        
         const userLevel = user.level;
         let userStats = await this.ArenaStats.findOne({ userId: user._id });
         
@@ -296,6 +286,12 @@ class ArenaBattleManager {
         
         await battle.save();
         
+        this.socketManager.sendBoth(battle, 'confirmation_update', {
+            battleId: battle._id,
+            player1Confirmed: battle.player1Confirmed,
+            player2Confirmed: battle.player2Confirmed
+        });
+        
         return { success: true, battle, bothConfirmed: battle.status === 'active' };
     }
 
@@ -305,8 +301,8 @@ class ArenaBattleManager {
             return { success: false, message: 'Бой не найден' };
         }
         
-        if (!['active', 'pending_confirmation'].includes(battle.status)) {
-            return { success: false, message: 'Бой уже не активен' };
+        if (!['pending_confirmation'].includes(battle.status)) {
+            return { success: false, message: 'Бой уже не активен для отклонения' };
         }
         
         const isPlayer1 = battle.player1Id.toString() === userId.toString();
@@ -319,22 +315,26 @@ class ArenaBattleManager {
         battle.status = 'expired';
         await battle.save();
         
-        // Возвращаем взносы обоим игрокам
-        await this.User.findByIdAndUpdate(battle.player1Id, {
+        // Возвращаем взнос отклонившему игроку
+        await this.User.findByIdAndUpdate(userId, {
             $inc: { balance: battle.entryFee },
-            $set: { currentBattleId: null, arenaCooldownUntil: null }
+            $set: { currentBattleId: null }
         });
-        if (battle.player2Id) {
-            await this.User.findByIdAndUpdate(battle.player2Id, {
-                $inc: { balance: battle.entryFee },
-                $set: { currentBattleId: null, arenaCooldownUntil: null }
-            });
+        
+        // Если второй игрок уже есть, очищаем его currentBattleId
+        const otherPlayerId = isPlayer1 ? battle.player2Id : battle.player1Id;
+        if (otherPlayerId) {
+            await this.User.updateOne({ _id: otherPlayerId }, { $set: { currentBattleId: null } });
         }
         
-        return { success: true, message: 'Бой отклонён, взносы возвращены' };
+        return { success: true, message: 'Бой отклонён, взнос возвращён' };
     }
 
     async processMove(battleId, userId, requestedTargetIndex) {
+        if (requestedTargetIndex === undefined || requestedTargetIndex < 0) {
+            return { success: false, message: 'Не указана цель атаки' };
+        }
+        
         const battle = await this.Battle.findById(battleId);
         if (!battle) {
             return { success: false, message: 'Бой не найден' };
@@ -373,7 +373,8 @@ class ArenaBattleManager {
         }
         
         let targetIndex = -1;
-        if (requestedTargetIndex !== undefined && requestedTargetIndex >= 0 && requestedTargetIndex < enemyTeam.length && enemyTeam[requestedTargetIndex]?.isAlive) {
+        if (requestedTargetIndex !== undefined && requestedTargetIndex >= 0 && 
+            requestedTargetIndex < enemyTeam.length && enemyTeam[requestedTargetIndex]?.isAlive) {
             targetIndex = requestedTargetIndex;
         } else {
             for (let i = 0; i < enemyTeam.length; i++) {
@@ -447,6 +448,15 @@ class ArenaBattleManager {
         }
         
         await battle.save();
+        
+        this.socketManager.sendBoth(battle, 'move_update', {
+            battleId: battle._id,
+            player1Team: battle.player1Team,
+            player2Team: battle.player2Team,
+            lastMove: { damage, isCrit, targetIndex, targetHp: target.currentHp, targetDead: false, attackerName: attacker.name, targetName: target.name },
+            currentTurn: battle.currentTurn,
+            turnCount: battle.turnCount
+        });
         
         return {
             success: true,
@@ -573,6 +583,13 @@ class ArenaBattleManager {
         );
         
         await battle.save();
+        
+        this.socketManager.sendBoth(battle, 'battle_end', {
+            battleId: battle._id,
+            winnerId: winnerId?.toString(),
+            prizePool: battle.prizePool
+        });
+        
         return { winnerId, loserId };
     }
 
@@ -608,14 +625,12 @@ class ArenaBattleManager {
             const entryFee = battle.entryFee;
             const player1Id = battle.player1Id;
             const player2Id = battle.player2Id;
-            const wasWaiting = battle.status === 'waiting';
             const wasPendingConfirmation = battle.status === 'pending_confirmation';
             
             battle.status = 'expired';
             await battle.save();
             expiredCount++;
             
-            // Возвращаем взнос player1 при любом незавершённом статусе
             if (player1Id) {
                 await this.User.findByIdAndUpdate(player1Id, {
                     $inc: { balance: entryFee },
@@ -623,7 +638,6 @@ class ArenaBattleManager {
                 });
             }
             
-            // Возвращаем взнос player2 если он уже был найден (pending_confirmation)
             if (player2Id && wasPendingConfirmation) {
                 await this.User.findByIdAndUpdate(player2Id, {
                     $inc: { balance: entryFee },
@@ -647,12 +661,6 @@ class ArenaBattleManager {
             battle.winnerId = lastMovePlayer === 'player1' ? battle.player2Id : battle.player1Id;
             battle.status = 'finished';
             await this.finishBattle(battle);
-            this.socketManager.sendBoth(battle, 'battle_end', {
-                battleId: battle._id,
-                winnerId: battle.winnerId?.toString(),
-                prizePool: battle.prizePool,
-                reason: 'timeout'
-            });
             expiredCount++;
         }
         
@@ -684,6 +692,20 @@ class ArenaBattleManager {
             }
             
             const isPlayer1 = battle.player1Id.toString() === userId.toString();
+            const opponentId = isPlayer1 ? battle.player2Id : battle.player1Id;
+            
+            let opponent = null;
+            if (opponentId) {
+                const opponentUser = await this.User.findById(opponentId).select('username firstName level');
+                if (opponentUser) {
+                    let opponentStats = await this.ArenaStats.findOne({ userId: opponentId });
+                    opponent = {
+                        name: opponentUser.username || opponentUser.firstName || 'Игрок',
+                        level: opponentUser.level,
+                        league: opponentStats?.league || 'bronze'
+                    };
+                }
+            }
             
             return {
                 hasBattle: true,
@@ -700,6 +722,7 @@ class ArenaBattleManager {
                 lastMoveAt: battle.lastMoveAt,
                 myTeam: isPlayer1 ? battle.player1Team : battle.player2Team,
                 opponentTeam: isPlayer1 ? battle.player2Team : battle.player1Team,
+                opponent: opponent,
                 battleLog: battle.battleLog ? battle.battleLog.slice(-20) : []
             };
         } catch (err) {
@@ -735,7 +758,6 @@ class ArenaBattleManager {
     }
 }
 
-// ===== ИСПРАВЛЕННЫЙ ЭКСПОРТ =====
 module.exports = {
     LEAGUE_CONFIG,
     RARITY_MULTIPLIERS,

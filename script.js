@@ -1887,14 +1887,10 @@ function initArenaWebhooks() {
     });
 }
 
-// В script.js - ЗАМЕНЯЕМ showNativeBattleConfirmation
-
 function showNativeBattleConfirmation(battleData) {
-    // Создаём красивое модальное окно вместо системного уведомления
     showBattleConfirmationModal(battleData);
 }
 
-// Новая функция для красивого модального окна
 function showBattleConfirmationModal(battleData) {
     const existingModal = document.getElementById('matchFoundModal');
     if (existingModal) existingModal.remove();
@@ -1909,7 +1905,6 @@ function showBattleConfirmationModal(battleData) {
     const leagueIcons = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '💎', diamond: '🏆' };
     const opponentLeagueIcon = leagueIcons[battleData.opponentLeague] || '⚔️';
 
-    // Определяем кто мы (player1 или player2) чтобы показать статус подтверждения
     const isPlayer1 = battleData.isPlayer1;
     const myConfirmed = isPlayer1 ? battleData.player1Confirmed : battleData.player2Confirmed;
     const opponentConfirmed = isPlayer1 ? battleData.player2Confirmed : battleData.player1Confirmed;
@@ -1979,7 +1974,6 @@ function showBattleConfirmationModal(battleData) {
     }, 15000);
 }
 
-// Обновляет статус подтверждения внутри открытой модалки
 function updateConfirmationModal(data) {
     const modal = document.getElementById('matchFoundModal');
     if (!modal) return;
@@ -2000,14 +1994,12 @@ function updateConfirmationModal(data) {
         oppEl.className = opponentConfirmed ? 'confirm-yes' : 'confirm-wait';
     }
     
-    // Если я уже принял — скрываем кнопки, показываем "ждём соперника"
     if (myConfirmed) {
         const btns = document.getElementById('matchBtns');
         if (btns) btns.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:8px;">⏳ Ожидаем соперника...</div>';
     }
 }
 
-// Вспомогательная функция для получения названия лиги
 function getLeagueName(league) {
     const leagueNames = {
         bronze: 'Бронзовой',
@@ -2019,7 +2011,6 @@ function getLeagueName(league) {
     return leagueNames[league] || 'Бронзовой';
 }
 
-// Функция принятия боя из модального окна
 async function acceptBattleFromModal(battleId) {
     const modal = document.getElementById('matchFoundModal');
     if (modal) {
@@ -2036,7 +2027,6 @@ async function acceptBattleFromModal(battleId) {
     }
 }
 
-// Функция отклонения боя из модального окна
 async function rejectBattleFromModal(battleId) {
     const modal = document.getElementById('matchFoundModal');
     if (modal) {
@@ -2053,6 +2043,7 @@ async function rejectBattleFromModal(battleId) {
         showToast(res?.message || 'Ошибка', '❌');
     }
 }
+
 function showNativeBattleResult(isWin, prizePool) {
     if (!window.Telegram?.WebApp) {
         const overlay = document.getElementById('overlay');
@@ -2226,13 +2217,10 @@ async function acceptBattleWebhook() {
     if (res?.success) { closeOverlay(); arenaClient?.setConfirmationShown(false); }
 }
 
-// script.js - ОБНОВЛЁННАЯ rejectBattleWebhook
-
 async function rejectBattleWebhook() {
     const battleId = arenaClient?.getBattleId();
     if (!battleId) return;
     
-    // Закрываем модальное окно, если оно открыто
     const modal = document.getElementById('matchFoundModal');
     if (modal) {
         if (modal.timeoutId) clearTimeout(modal.timeoutId);
@@ -2268,7 +2256,6 @@ async function makeAttack(targetIndex) {
     
     addDebugLog(`⚔️ Атака по цели с индексом ${targetIndex}`, 'info');
     
-    // Показываем визуальный фидбек, что атака началась
     const attackBtn = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${targetIndex}"] .arena-attack-btn`);
     if (attackBtn) {
         attackBtn.disabled = true;
@@ -2279,7 +2266,6 @@ async function makeAttack(targetIndex) {
     
     if (!res?.success) {
         showToast(res?.message || 'Ошибка атаки', '❌');
-        // Восстанавливаем кнопку
         if (attackBtn) {
             attackBtn.disabled = false;
             attackBtn.innerHTML = '⚔️ Атаковать';
@@ -2288,24 +2274,24 @@ async function makeAttack(targetIndex) {
     }
     
     if (res.finished) {
-        // Бой закончен, обновляем интерфейс
         if (res.winnerId) {
             const isWin = res.winnerId === arenaClient?.getCurrentUserId();
             showNativeBattleResult(isWin, res.prizePool || 0);
             renderArenaFightTab();
         }
     } else {
-        // Обновляем UI после атаки
         const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
-        updateBattleUIFromClient({
+        
+        const moveData = {
             player1Team: res.player1Team,
             player2Team: res.player2Team,
             lastMove: res.lastMove,
             currentTurn: res.currentTurn,
-            turnCount: res.turnCount
-        }, isPlayer1);
+            turnCount: res.turnCount,
+            fromMyAttack: true
+        };
+        updateBattleUIFromClient(moveData, isPlayer1);
         
-        // Показываем урон по врагу (я атаковал)
         if (res.lastMove && res.lastMove.targetIndex !== undefined) {
             showDamageAnimation(res.lastMove.targetIndex, res.lastMove.damage, res.lastMove.isCrit, false);
         }
@@ -2354,7 +2340,6 @@ async function renderArenaFightTab() {
             if (battleContainer) battleContainer.style.display = 'block';
             
             if (battleRes.status === 'waiting') {
-                // НЕ запускаем поиск автоматически — только показываем UI
                 if (statusContainer) statusContainer.style.display = 'block';
                 if (battleContainer) battleContainer.style.display = 'none';
                 const findBtn = document.getElementById('findMatchBtn');
@@ -2450,30 +2435,37 @@ function renderBattleInterface(battleData) {
     if (statusContainer) statusContainer.style.display = 'none';
     container.style.display = 'block';
     
-    // ВАЖНО: правильно определяем команды
-    // isPlayer1 = true - игрок играет за player1, false - игрок играет за player2
     const isPlayer1 = battleData.isPlayer1;
     
-    // СВОЯ команда: если игрок player1, то его команда player1Team, иначе player2Team
-    const myTeam = isPlayer1 ? battleData.player1Team : battleData.player2Team;
+    let myTeam, enemyTeam;
     
-    // КОМАНДА СОПЕРНИКА: если игрок player1, то соперник player2Team, иначе player1Team
-    const enemyTeam = isPlayer1 ? battleData.player2Team : battleData.player1Team;
-    
-    // Если в battleData используются другие названия полей
-    const actualMyTeam = myTeam || battleData.myTeam;
-    const actualEnemyTeam = enemyTeam || battleData.opponentTeam;
-    
-    if (!actualMyTeam || !actualEnemyTeam) {
+    // Сначала проверяем myTeam/opponentTeam (от WebSocket)
+    if (battleData.myTeam && battleData.opponentTeam) {
+        myTeam = battleData.myTeam;
+        enemyTeam = battleData.opponentTeam;
+        addDebugLog(`📦 Данные из WebSocket (myTeam/opponentTeam)`, 'info');
+    } 
+    // Затем проверяем формат player1Team/player2Team (от HTTP API)
+    else if (battleData.player1Team && battleData.player2Team) {
+        myTeam = isPlayer1 ? battleData.player1Team : battleData.player2Team;
+        enemyTeam = isPlayer1 ? battleData.player2Team : battleData.player1Team;
+        addDebugLog(`📦 Данные из HTTP (player1Team/player2Team)`, 'info');
+    } 
+    else {
         addDebugLog('❌ Нет данных команд!', 'error');
         container.innerHTML = '<div class="arena-battle-container" style="text-align:center;padding:40px;color:red;">Ошибка загрузки боя</div>';
+        return;
+    }
+    
+    if (!myTeam || !enemyTeam) {
+        addDebugLog('❌ myTeam или enemyTeam пустые!', 'error');
+        container.innerHTML = '<div class="arena-battle-container" style="text-align:center;padding:40px;color:red;">Ошибка загрузки команд</div>';
         return;
     }
     
     const isMyTurn = (battleData.currentTurn === 'player1' && isPlayer1) || 
                      (battleData.currentTurn === 'player2' && !isPlayer1);
     
-    // Лиги
     const opponentLeague = battleData.opponentLeague || battleData.league || 'bronze';
     const myLeague = battleData.myLeague || 'bronze';
     const leagueNames = {
@@ -2484,8 +2476,8 @@ function renderBattleInterface(battleData) {
         diamond: '🏆 Алмазная'
     };
     
-    addDebugLog(`👤 Своя команда: ${actualMyTeam.length} питомцев`, 'info');
-    addDebugLog(`👥 Команда соперника: ${actualEnemyTeam.length} питомцев`, 'info');
+    addDebugLog(`👤 Своя команда: ${myTeam.length} питомцев`, 'info');
+    addDebugLog(`👥 Команда соперника: ${enemyTeam.length} питомцев`, 'info');
     addDebugLog(`🎮 Игрок за player1: ${isPlayer1}, мой ход: ${isMyTurn}`, 'info');
     
     container.innerHTML = `
@@ -2496,7 +2488,7 @@ function renderBattleInterface(battleData) {
                     <span class="arena-league-badge-small league-${myLeague}" style="margin-left: 8px;">${leagueNames[myLeague] || 'Бронзовая'}</span>
                 </div>
                 <div class="arena-creatures-row" id="arenaMyCreatures">
-                    ${actualMyTeam.map((creature, idx) => `
+                    ${myTeam.map((creature, idx) => `
                         <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-creature-index="${idx}">
                             <div class="creature-icon">${getIconHtml(creature)}</div>
                             <div class="creature-name">${escapeHtml(creature.name)}</div>
@@ -2518,14 +2510,13 @@ function renderBattleInterface(battleData) {
                     <span class="arena-league-badge-small league-${opponentLeague}" style="margin-left: 8px;">${leagueNames[opponentLeague] || 'Бронзовая'}</span>
                 </div>
                 <div class="arena-creatures-row" id="arenaEnemyCreatures">
-                    ${actualEnemyTeam.map((creature, idx) => `
+                    ${enemyTeam.map((creature, idx) => `
                         <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-enemy-index="${idx}">
                             <div class="creature-icon">${getIconHtml(creature)}</div>
                             <div class="creature-name">${escapeHtml(creature.name)}</div>
                             <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
                             <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
-                    
-${isMyTurn && creature.isAlive ? `<button class="arena-attack-btn" data-enemy-idx="${idx}" onclick="makeAttack(${idx})">⚔️ Атаковать</button>` : ''}
+                            ${isMyTurn && creature.isAlive ? `<button class="arena-attack-btn" data-enemy-idx="${idx}" onclick="makeAttack(${idx})">⚔️ Атаковать</button>` : ''}
                         </div>
                     `).join('')}
                 </div>
@@ -2585,25 +2576,21 @@ function updateBattleUIFromClient(data, isPlayer1) {
         const creatureEl = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${i}"]`);
         if (!creatureEl || !creature) continue;
         
-        // Обновляем HP
         const hpEl = creatureEl.querySelector('.creature-hp');
         const fillEl = creatureEl.querySelector('.arena-hp-fill');
         if (hpEl) hpEl.textContent = `❤️ ${Math.max(0, creature.currentHp)}/${creature.maxHp}`;
         if (fillEl) fillEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
         
-        // Обновляем статус alive
         if (!creature.isAlive) {
             creatureEl.classList.add('dead');
         } else {
             creatureEl.classList.remove('dead');
         }
         
-        // Управляем кнопкой атаки
         const existingBtn = creatureEl.querySelector('.arena-attack-btn');
         const canAttack = isMyTurn && creature.isAlive && arenaClient?.isBattleActive();
         
         if (canAttack && !existingBtn) {
-            // Создаём кнопку, если её нет и можно атаковать
             const btn = document.createElement('button');
             btn.className = 'arena-attack-btn';
             btn.setAttribute('data-enemy-idx', i);
@@ -2613,13 +2600,10 @@ function updateBattleUIFromClient(data, isPlayer1) {
             })(i);
             creatureEl.appendChild(btn);
         } else if (!canAttack && existingBtn) {
-            // Удаляем кнопку, если нельзя атаковать
             existingBtn.remove();
         } else if (canAttack && existingBtn) {
-            // Обновляем существующую кнопку (на случай если была disabled)
             existingBtn.disabled = false;
             existingBtn.innerHTML = '⚔️ Атаковать';
-            // Пересоздаём onclick, чтобы избежать замыканий
             const newBtn = existingBtn.cloneNode(true);
             existingBtn.parentNode.replaceChild(newBtn, existingBtn);
             newBtn.onclick = (function(index) {
@@ -2628,8 +2612,21 @@ function updateBattleUIFromClient(data, isPlayer1) {
         }
     }
     
-    // Анимация урона — НЕ здесь, вызывается снаружи с нужным hitMy
-    if (data.lastMove) {
+    // Анимация урона - только если это move_update от атаки противника
+    if (data.lastMove && data.lastMove.targetIndex !== undefined && !data.fromMyAttack) {
+        showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit, true);
+        
+        const logContainer = document.getElementById('arenaBattleLog');
+        if (logContainer) {
+            const logEntry = document.createElement('div');
+            logEntry.className = `arena-log-entry ${data.lastMove.isCrit ? 'crit' : ''}`;
+            logEntry.innerHTML = `Ход ${data.turnCount || '?'}: ${data.lastMove.attackerName || 'Противник'} нанёс ${data.lastMove.damage} урона ${data.lastMove.isCrit ? '💥 КРИТ!' : ''}`;
+            logContainer.insertBefore(logEntry, logContainer.firstChild);
+            if (logContainer.children.length > 10) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
+        }
+    } else if (data.lastMove && data.lastMove.targetIndex !== undefined && data.fromMyAttack) {
         const logContainer = document.getElementById('arenaBattleLog');
         if (logContainer) {
             const logEntry = document.createElement('div');
@@ -2644,16 +2641,16 @@ function updateBattleUIFromClient(data, isPlayer1) {
 }
 
 // ============================================================
-// SHOW DAMAGE ANIMATION (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+// SHOW DAMAGE ANIMATION
 // ============================================================
-// hitMy=true  → урон по МОИМ питомцам (я получил move_update, меня атаковали)
-// hitMy=false → урон по ВРАЖЕСКИМ питомцам (я сам атаковал)
 function showDamageAnimation(targetIndex, damage, isCrit, hitMy = false) {
     let el;
     if (hitMy) {
         el = document.querySelector(`#arenaMyCreatures .arena-battle-creature[data-creature-index="${targetIndex}"]`);
+        addDebugLog(`💥 Урон по МОЕМУ питомцу index=${targetIndex}, урон=${damage}, крит=${isCrit}`, 'info');
     } else {
         el = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${targetIndex}"]`);
+        addDebugLog(`💥 Урон по ВРАГУ index=${targetIndex}, урон=${damage}, крит=${isCrit}`, 'info');
     }
 
     if (!el) {
@@ -2771,11 +2768,11 @@ async function renderArenaRanking() {
         addDebugLog('❌ renderArenaRanking error: ' + err.message, 'error');
     }
 }
+
 // ============================================================
 // ARENA RANKS TAB FUNCTIONS
 // ============================================================
 
-// Переключение деталей ранга
 async function toggleRankDetailsCompact(rankId) {
     const details = document.getElementById(`rankCompactDetails-${rankId}`);
     const item = details?.closest('.rank-item-compact');
@@ -2792,7 +2789,6 @@ async function toggleRankDetailsCompact(rankId) {
     }
 }
 
-// Загрузка игроков для компактного списка
 async function loadCompactRankPlayers(league) {
     const container = document.getElementById(`${league}CompactList`);
     if (!container) return;
@@ -2827,7 +2823,6 @@ async function loadCompactRankPlayers(league) {
     }
 }
 
-// Обновление информации о рангах внутри арены
 async function updateArenaRanksInfo() {
     try {
         const res = await apiRequest('GET', '/api/arena/leaderboard');
@@ -2954,7 +2949,8 @@ function switchTab(tab) {
         renderArenaTeamInventory();
         renderArenaFightTab();
         renderArenaRanking();
-        
+        updateArenaRanksInfo();
+        renderArenaHistory();
     }
 }
 
@@ -3078,10 +3074,6 @@ async function initTelegramApp() {
         arenaClient.on('onBattleStartUI', (data) => { if (document.getElementById('overlay')?.classList.contains('show')) closeOverlay(); renderBattleInterface(data); });
         arenaClient.on('onBattleUpdate', (data, isPlayer1) => {
             updateBattleUIFromClient(data, isPlayer1);
-            // move_update получает тот, кого атаковали → урон по МОИМ питомцам
-            if (data.lastMove && data.lastMove.targetIndex !== undefined) {
-                showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit, true);
-            }
         });
         arenaClient.on('onBattleEnd', (isWin, prizePool) => { showNativeBattleResult(isWin, prizePool); refreshUserProfile(); });
         arenaClient.on('onTimerTick', (timeLeft) => { const timerEl = document.getElementById('arenaBattleTimer'); if (timerEl) { timerEl.textContent = `⏱ ${timeLeft}`; if (timeLeft <= 5) timerEl.classList.add('warning'); else timerEl.classList.remove('warning'); } });
@@ -3181,4 +3173,5 @@ window.showDamageAnimation = showDamageAnimation;
 window.renderArenaRanking = renderArenaRanking;
 window.toggleRankDetailsCompact = toggleRankDetailsCompact;
 window.loadCompactRankPlayers = loadCompactRankPlayers;
-window.updateArenaRanksInfo = updateArenaRanksInfo;window.renderArenaHistory = renderArenaHistory;
+window.updateArenaRanksInfo = updateArenaRanksInfo;
+window.renderArenaHistory = renderArenaHistory;
