@@ -2295,8 +2295,8 @@ async function makeAttack(targetIndex) {
     } else {
         const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
        updateBattleUIFromClient({
-          myTeam: res.myTeam,
-            opponentTeam: res.enemyTeam,
+          myTeam: isPlayer1 ? res.myTeam : res.enemyTeam,
+            opponentTeam: isPlayer1 ? res.enemyTeam : res.myTeam,
             lastMove: res.lastMove,
            currentTurn: res.currentTurn,
          turnCount: res.turnCount
@@ -2360,7 +2360,7 @@ async function renderArenaFightTab() {
             } else if (battleRes.status === 'active') {
                 const justEnded = arenaClient?.state.battleEndedAt && (Date.now() - arenaClient.state.battleEndedAt < 8000);
                 if (!arenaClient?.isBattleActive() && !justEnded) {
-                    arenaClient?.startBattle(battleRes.battleId, battleRes.isPlayer1, battleRes.myTeam, battleRes.opponentTeam);
+                    arenaClient?.startBattle(battleRes.battleId, battleRes.isPlayer1, battleRes.myTeam, battleRes.opponentTeam, battleRes.lastMoveAt);
                     renderBattleInterface(battleRes);
                 }
             } else if (battleRes.status === 'pending_confirmation') {

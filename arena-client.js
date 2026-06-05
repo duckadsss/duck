@@ -137,7 +137,7 @@ class ArenaClient {
         }, TIMEOUT * 1000);
     }
     
-    startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
+    startBattle(battleId, isPlayer1, myTeam, enemyTeam, lastMoveAt) {
         this.state.battleActive = true;
         this.state.currentBattleId = battleId;
         this.state.currentBattleIsPlayer1 = isPlayer1;
@@ -146,7 +146,7 @@ class ArenaClient {
         this.state.battleLog = [];
         
         this.stopSearch();
-        this.startBattleTimer();
+        this.startBattleTimer(lastMoveAt);
         
         if (this.callbacks.onBattleStart) {
             this.callbacks.onBattleStart(battleId, isPlayer1, myTeam, enemyTeam);
@@ -200,6 +200,11 @@ class ArenaClient {
         if (this.callbacks.onBattleUpdate) {
             this.callbacks.onBattleUpdate(data, this.state.currentBattleIsPlayer1);
         }
+        
+        // FIX: перезапускаем таймер при каждом ходе с синхронизацией по серверному времени
+        if (data.currentTurn !== undefined) {
+            this.startBattleTimer(data.lastMoveAt || null);
+        }
     }
     
     endBattle(winnerId, prizePool) {
@@ -224,11 +229,17 @@ class ArenaClient {
         }, 3000);
     }
     
-    startBattleTimer() {
+    startBattleTimer(lastMoveAt) {
         if (this.timers.battleTimer) clearInterval(this.timers.battleTimer);
         
-        let timeLeft = 30;
-        // Сразу показываем начальное значение без задержки
+        const TURN_TIMEOUT = 30;
+        // FIX: синхронизируем с сервером через lastMoveAt
+        let timeLeft = TURN_TIMEOUT;
+        if (lastMoveAt) {
+            const elapsed = Math.floor((Date.now() - new Date(lastMoveAt).getTime()) / 1000);
+            timeLeft = Math.max(0, TURN_TIMEOUT - elapsed);
+        }
+        // Сразу показываем начальное значение
         if (this.callbacks.onTimerTick) {
             this.callbacks.onTimerTick(timeLeft);
         }
@@ -308,13 +319,14 @@ class ArenaClient {
                         data.battleId,
                         data.isPlayer1,
                         data.myTeam,
-                        data.opponentTeam
+                        data.opponentTeam,
+                        data.lastMoveAt  // FIX: синхронизация таймера с сервером
                     );
                 } else if (data.hasBattle && data.status === 'pending_confirmation' && !this.state.confirmationShown) {
                     this.stopSearch();
                     this.state.confirmationShown = true;
                     this.state.currentBattleId = data.battleId;
-                    this.state.currentBattleIsPlayer1 = data.isPlayer1; // FIX: аналогично match_found
+                    this.state.currentBattleIsPlayer1 = data.isPlayer1;
                     if (this.callbacks.onMatchFound) {
                         this.callbacks.onMatchFound(data);
                     }
@@ -325,7 +337,6 @@ class ArenaClient {
                 console.log('⚔️ Match found!', data);
                 this.state.confirmationShown = true;
                 this.state.currentBattleId = data.battleId;
-                this.state.currentBattleIsPlayer1 = data.isPlayer1; // FIX: без этого updateConfirmationModal путал статусы
                 if (this.callbacks.onMatchFound) {
                     this.callbacks.onMatchFound(data);
                 }
@@ -338,7 +349,8 @@ class ArenaClient {
                     data.battleId,
                     data.isPlayer1,
                     data.myTeam,
-                    data.opponentTeam
+                    data.opponentTeam,
+                    data.lastMoveAt
                 );
             });
             

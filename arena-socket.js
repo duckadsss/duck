@@ -199,24 +199,27 @@ class ArenaBattleManager {
             return { success: false, message: 'Не удалось списать средства' };
         }
         
-        const waitingBattle = await this.Battle.findOne({
-            status: 'waiting',
-            league: userLeague,
-            player1Id: { $ne: user._id },
-            expiresAt: { $gt: new Date() }
-        }).sort({ createdAt: 1 });
+        // FIX: атомарный захват waiting-боя — исключает race condition
+        const player2Team = await buildTeamFromIds(teamIds, userLevel, user._id, this.getCreature);
+        const waitingBattle = await this.Battle.findOneAndUpdate(
+            {
+                status: 'waiting',
+                league: userLeague,
+                player1Id: { $ne: user._id },
+                expiresAt: { $gt: new Date() }
+            },
+            {
+                $set: {
+                    status: 'pending_confirmation',
+                    player2Id: user._id,
+                    player2Team: player2Team,
+                    expiresAt: new Date(Date.now() + 60 * 1000)
+                }
+            },
+            { new: true, sort: { createdAt: 1 } }
+        );
         
         if (waitingBattle) {
-            const player2Team = await buildTeamFromIds(teamIds, userLevel, user._id, this.getCreature);
-            
-            waitingBattle.player2Id = user._id;
-            waitingBattle.player2Team = player2Team;
-            waitingBattle.status = 'pending_confirmation';
-            waitingBattle.expiresAt = new Date(Date.now() + 60 * 1000);
-            
-            waitingBattle.markModified('player2Team');
-            await waitingBattle.save();
-            
             await this.User.updateOne(
                 { _id: user._id },
                 { $set: { currentBattleId: waitingBattle._id } }
@@ -511,11 +514,7 @@ class ArenaBattleManager {
                 newLoserRating = LEAGUE_CONFIG[oldLoserLeague].minRating;
                 loserStats.promotionProtection = false;
             }
-            
-            // Сбрасываем promotionProtection проигравшего (защита использована)
-            if (loserStats.promotionProtection && !(newLoserRating >= LEAGUE_CONFIG[oldLoserLeague].minRating)) {
-                loserStats.promotionProtection = false;
-            }
+            // Примечание: дублирующий if ниже удалён (dead code — флаг уже сброшен выше)
             
             winnerStats.rating = newWinnerRating;
             winnerStats.league = newWinnerLeague;
@@ -544,7 +543,7 @@ class ArenaBattleManager {
                 if (winner) {
                     await this.sendNotification(winner.telegramId,
                         `🏆 <b>ПОБЕДА В АРЕНЕ!</b>\n\n` +
-                        `Вы победили ${loser?.username || loser?.firstName || 'игрока'}!\n` +
+                        `Вы победили ${escapeHtmlTg(loser?.username || loser?.firstName || 'игрока')}!\n` +
                         `💰 Выигрыш: +${battle.prizePool.toLocaleString()} MMO\n` +
                         `📊 Рейтинг: ${winnerStats.rating} ${ratingChange > 0 ? `(+${ratingChange})` : `(${ratingChange})`}\n` +
                         `🔥 Серия побед: ${winnerStats.streak}\n` +
@@ -556,7 +555,7 @@ class ArenaBattleManager {
                 if (loser) {
                     await this.sendNotification(loser.telegramId,
                         `💀 <b>ПОРАЖЕНИЕ В АРЕНЕ</b>\n\n` +
-                        `Вы проиграли ${winner?.username || winner?.firstName || 'игроку'}.\n` +
+                        `Вы проиграли ${escapeHtmlTg(winner?.username || winner?.firstName || 'игроку')}.\n` +
                         `📊 Рейтинг: ${loserStats.rating} (${ratingChange > 0 ? `-${ratingChange}` : `-${Math.abs(ratingChange)}`})\n` +
                         `${demotionMessage ? `\n${demotionMessage}` : ''}\n` +
                         `💪 Следующий бой будет лучше!`
@@ -730,6 +729,12 @@ class ArenaBattleManager {
         }
         return stats;
     }
+}
+
+// Экранирование HTML для Telegram Bot API (parse_mode: HTML)
+function escapeHtmlTg(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 module.exports = {
