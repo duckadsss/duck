@@ -2988,3 +2988,51 @@ img {
     color: var(--accent3);
     font-size: 14px;
 }
+
+/* ===== CONFIRMATION STATUS ===== */
+.confirmation-status {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin: 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.confirm-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    color: #94a3b8;
+}
+.confirm-yes { color: #22c55e; font-weight: 600; }
+.confirm-wait { color: #f59e0b; }
+
+/* ===== ARENA HISTORY ===== */
+.arena-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+.arena-history-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 12px 14px;
+    border-left: 3px solid transparent;
+}
+.arena-history-item.win { border-left-color: #22c55e; }
+.arena-history-item.loss { border-left-color: #ef4444; }
+.history-result { font-size: 24px; min-width: 32px; }
+.history-info { flex: 1; }
+.history-opponent { font-size: 14px; font-weight: 600; color: #e2e8f0; }
+.history-meta { font-size: 12px; color: #64748b; margin-top: 2px; }
+.history-prize { font-size: 13px; font-weight: 700; }
+.prize-win { color: #22c55e; }
+.prize-loss { color: #ef4444; }

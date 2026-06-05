@@ -230,10 +230,13 @@
             <i class="fa-solid fa-users"></i> <span>Команда</span>
         </button>
         <button class="arena-tab-btn" data-arena-tab="fight" onclick="switchArenaTab('fight')">
-            <i class="fa-solid fa-shield-halbed"></i> <span>Бой</span>
+            <i class="fa-solid fa-shield-halved"></i> <span>Бой</span>
         </button>
         <button class="arena-tab-btn" data-arena-tab="ranks" onclick="switchArenaTab('ranks')">
             <i class="fa-solid fa-chart-simple"></i> <span>Ранги</span>
+        </button>
+        <button class="arena-tab-btn" data-arena-tab="history" onclick="switchArenaTab('history')">
+            <i class="fa-solid fa-clock-rotate-left"></i> <span>История</span>
         </button>
     </div>
     
@@ -449,6 +452,12 @@
             <i class="fa-solid fa-lightbulb"></i>
             <span>Победа над сильным соперником даёт больше рейтинга! После повышения вы получаете защиту от падения на 1 бой.</span>
         </div>
+    </div>
+    
+    <!-- Вкладка История -->
+    <div class="arena-subtab" id="arena-history-tab">
+        <div class="section-title"><i class="fa-solid fa-clock-rotate-left"></i> История боёв</div>
+        <div id="arenaHistoryList" class="arena-history-list"></div>
     </div>
 </div>
 
