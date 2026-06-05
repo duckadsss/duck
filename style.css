@@ -2988,3 +2988,11 @@ img {
     color: var(--accent3);
     font-size: 14px;
 }
+/* Статусы боя */
+.battle-status-rejected {
+    color: #ef4444;
+}
+
+.battle-status-expired {
+    color: #f59e0b;
+}

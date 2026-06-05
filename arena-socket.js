@@ -328,35 +328,87 @@ async findMatch(user, teamIds) {
         return { success: true, battle, bothConfirmed: battle.status === 'active' };
     }
 
-    async rejectMatch(battleId, userId) {
-        const battle = await this.Battle.findById(battleId);
-        if (!battle) {
-            return { success: false, message: 'Бой не найден' };
-        }
-        
-        if (!['active', 'pending_confirmation'].includes(battle.status)) {
-            return { success: false, message: 'Бой уже не активен' };
-        }
-        
-        const isPlayer1 = battle.player1Id.toString() === userId.toString();
-        const isPlayer2 = battle.player2Id && battle.player2Id.toString() === userId.toString();
-        
-        if (!isPlayer1 && !isPlayer2) {
-            return { success: false, message: 'Вы не участник этого боя' };
-        }
-        
-        battle.status = 'finished';
-        battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
-        
-        await this.finishBattle(battle);
-        
-        await this.User.updateMany(
-            { _id: { $in: [battle.player1Id, battle.player2Id] } },
-            { $set: { currentBattleId: null, arenaCooldownUntil: null } }
-        );
-        
-        return { success: true, message: 'Бой отклонён' };
+    // arena-socket.js - ОБНОВЛЁННЫЙ МЕТОД rejectMatch
+
+async rejectMatch(battleId, userId) {
+    const battle = await this.Battle.findById(battleId);
+    if (!battle) {
+        return { success: false, message: 'Бой не найден' };
     }
+    
+    // Проверяем, что бой ещё не начался (только в статусе pending_confirmation)
+    if (battle.status !== 'pending_confirmation') {
+        return { success: false, message: 'Бой уже не активен для отклонения' };
+    }
+    
+    const isPlayer1 = battle.player1Id.toString() === userId.toString();
+    const isPlayer2 = battle.player2Id && battle.player2Id.toString() === userId.toString();
+    
+    if (!isPlayer1 && !isPlayer2) {
+        return { success: false, message: 'Вы не участник этого боя' };
+    }
+    
+    // Отмечаем, кто отклонил бой
+    battle.status = 'rejected';  // Новый статус
+    battle.cancelledBy = userId;
+    battle.cancellationReason = `Игрок ${isPlayer1 ? '1' : '2'} отклонил бой`;
+    
+    // ВОЗВРАЩАЕМ СТАВКУ ОТКЛОНИВШЕМУ ИГРОКУ
+    const user = await this.User.findById(userId);
+    if (user) {
+        user.balance += battle.entryFee;
+        addTransaction(user, `Возврат ставки (отклонение боя)`, battle.entryFee);
+        await user.save();
+    }
+    
+    // Второму игроку тоже возвращаем ставку, если он уже заплатил
+    const otherPlayerId = isPlayer1 ? battle.player2Id : battle.player1Id;
+    if (otherPlayerId) {
+        const otherUser = await this.User.findById(otherPlayerId);
+        if (otherUser) {
+            // Проверяем, не был ли уже списан entryFee у второго игрока
+            // Для этого можно проверить, есть ли у него транзакция на списание
+            const hasPaid = otherUser.transactions?.some(tx => 
+                tx.name === 'Arena Entry Fee' && Math.abs(tx.amount) === battle.entryFee
+            );
+            if (hasPaid) {
+                otherUser.balance += battle.entryFee;
+                addTransaction(otherUser, `Возврат ставки (бой отклонён)`, battle.entryFee);
+                await otherUser.save();
+            }
+        }
+    }
+    
+    await battle.save();
+    
+    // Очищаем currentBattleId у обоих игроков
+    await this.User.updateMany(
+        { _id: { $in: [battle.player1Id, battle.player2Id] } },
+        { $set: { currentBattleId: null, arenaCooldownUntil: new Date(Date.now() + 5 * 1000) } }  // Короткий кулдаун 5 сек
+    );
+    
+    // Уведомляем обоих игроков
+    const rejectingPlayer = await this.User.findById(userId);
+    const otherPlayer = otherPlayerId ? await this.User.findById(otherPlayerId) : null;
+    
+    if (otherPlayer && this.sendNotification) {
+        await this.sendNotification(otherPlayer.telegramId,
+            `⚠️ <b>БОЙ ОТКЛОНЁН</b>\n\n` +
+            `Игрок ${rejectingPlayer?.username || rejectingPlayer?.firstName || 'Соперник'} отклонил бой.\n` +
+            `💰 Ваша ставка ${battle.entryFee} MMO возвращена.\n\n` +
+            `Вы можете начать новый поиск!`
+        );
+    }
+    
+    if (rejectingPlayer && this.sendNotification) {
+        await this.sendNotification(rejectingPlayer.telegramId,
+            `⚠️ <b>ВЫ ОТКЛОНИЛИ БОЙ</b>\n\n` +
+            `💰 Ваша ставка ${battle.entryFee} MMO возвращена.`
+        );
+    }
+    
+    return { success: true, message: 'Бой отклонён, ставка возвращена' };
+}
 
     async processMove(battleId, userId, requestedTargetIndex) {
         const battle = await this.Battle.findById(battleId);
@@ -639,67 +691,113 @@ async finishBattle(battle) {
         return { success: true, message: 'Вы сдались' };
     }
 
-    async expireOldBattles() {
-        const now = new Date();
-        let expiredCount = 0;
+    // arena-socket.js - ОБНОВЛЁННЫЙ expireOldBattles
+
+async expireOldBattles() {
+    const now = new Date();
+    let expiredCount = 0;
+    
+    // Истекшие бои в статусе waiting (никто не присоединился)
+    const expiredWaiting = await this.Battle.find({
+        status: { $in: ['waiting'] },
+        expiresAt: { $lt: now }
+    });
+    
+    for (const battle of expiredWaiting) {
+        const entryFee = battle.entryFee;
+        const player1Id = battle.player1Id;
         
-        const expiredWaiting = await this.Battle.find({
-            status: { $in: ['waiting', 'pending_confirmation'] },
-            expiresAt: { $lt: now }
-        });
+        battle.status = 'expired';
+        await battle.save();
+        expiredCount++;
         
-        for (const battle of expiredWaiting) {
-            const entryFee = battle.entryFee;
-            const player1Id = battle.player1Id;
-            const player2Id = battle.player2Id;
-            
-            battle.status = 'expired';
-            await battle.save();
-            expiredCount++;
-            
-            if (battle.status === 'waiting' && player1Id) {
-                await this.User.findByIdAndUpdate(player1Id, {
-                    $inc: { balance: entryFee },
-                    $set: { currentBattleId: null }
-                });
-            }
-            
-            if (player1Id) {
-                await this.User.updateOne({ _id: player1Id }, { $set: { currentBattleId: null } });
-            }
-            if (player2Id) {
-                await this.User.updateOne({ _id: player2Id }, { $set: { currentBattleId: null } });
-            }
-        }
-        
-        const timeoutSeconds = 30;
-        const timeoutAgo = new Date(now.getTime() - timeoutSeconds * 1000);
-        
-        const stalledBattles = await this.Battle.find({
-            status: 'active',
-            lastMoveAt: { $lt: timeoutAgo }
-        });
-        
-        for (const battle of stalledBattles) {
-            const lastMovePlayer = battle.currentTurn === 'player1' ? 'player1' : 'player2';
-            battle.winnerId = lastMovePlayer === 'player1' ? battle.player2Id : battle.player1Id;
-            battle.status = 'finished';
-            await this.finishBattle(battle);
-            this.socketManager.sendBoth(battle, 'battle_end', {
-                battleId: battle._id,
-                winnerId: battle.winnerId?.toString(),
-                prizePool: battle.prizePool,
-                reason: 'timeout'
+        // Возвращаем ставку создателю боя, если никто не присоединился
+        if (player1Id) {
+            await this.User.findByIdAndUpdate(player1Id, {
+                $inc: { balance: entryFee },
+                $set: { currentBattleId: null }
             });
-            expiredCount++;
         }
         
-        if (expiredCount > 0) {
-            console.log(`🧹 Истекло ${expiredCount} боёв`);
+        if (player1Id) {
+            await this.User.updateOne({ _id: player1Id }, { $set: { currentBattleId: null } });
         }
-        
-        return expiredCount;
     }
+    
+    // Истекшие подтверждения (бой не начался, потому что кто-то не подтвердил)
+    const expiredPending = await this.Battle.find({
+        status: { $in: ['pending_confirmation'] },
+        expiresAt: { $lt: now }
+    });
+    
+    for (const battle of expiredPending) {
+        battle.status = 'expired';
+        battle.cancellationReason = 'Истекло время подтверждения';
+        await battle.save();
+        expiredCount++;
+        
+        // ВОЗВРАЩАЕМ СТАВКИ ОБОИМ ИГРОКАМ
+        const player1 = await this.User.findById(battle.player1Id);
+        const player2 = battle.player2Id ? await this.User.findById(battle.player2Id) : null;
+        
+        if (player1) {
+            player1.balance += battle.entryFee;
+            addTransaction(player1, `Возврат ставки (таймаут подтверждения)`, battle.entryFee);
+            await player1.save();
+            await this.User.updateOne({ _id: battle.player1Id }, { $set: { currentBattleId: null } });
+        }
+        
+        if (player2) {
+            player2.balance += battle.entryFee;
+            addTransaction(player2, `Возврат ставки (таймаут подтверждения)`, battle.entryFee);
+            await player2.save();
+            await this.User.updateOne({ _id: battle.player2Id }, { $set: { currentBattleId: null } });
+        }
+        
+        // Уведомления
+        if (player1 && this.sendNotification) {
+            await this.sendNotification(player1.telegramId,
+                `⏰ <b>ВРЕМЯ ПОДТВЕРЖДЕНИЯ ИСТЕКЛО</b>\n\n` +
+                `Соперник не подтвердил участие в бою.\n` +
+                `💰 Ваша ставка ${battle.entryFee} MMO возвращена.\n\n` +
+                `Вы можете начать новый поиск!`
+            );
+        }
+        
+        if (player2 && this.sendNotification) {
+            await this.sendNotification(player2.telegramId,
+                `⏰ <b>ВРЕМЯ ПОДТВЕРЖДЕНИЯ ИСТЕКЛО</b>\n\n` +
+                `Вы не подтвердили участие в бою.\n` +
+                `💰 Ваша ставка ${battle.entryFee} MMO возвращена.\n\n` +
+                `В следующий раз подтверждайте быстрее!`
+            );
+        }
+    }
+    
+    // Зависшие активные бои (старый код)
+    const timeoutSeconds = 30;
+    const timeoutAgo = new Date(now.getTime() - timeoutSeconds * 1000);
+    
+    const stalledBattles = await this.Battle.find({
+        status: 'active',
+        lastMoveAt: { $lt: timeoutAgo }
+    });
+    
+    for (const battle of stalledBattles) {
+        // Определяем победителя по последнему ходу
+        const lastMovePlayer = battle.currentTurn === 'player1' ? 'player2' : 'player1'; // Тот, кто ходил последним, побеждает?
+        battle.winnerId = lastMovePlayer === 'player1' ? battle.player1Id : battle.player2Id;
+        battle.status = 'finished';
+        await this.finishBattle(battle);
+        expiredCount++;
+    }
+    
+    if (expiredCount > 0) {
+        console.log(`🧹 Истекло ${expiredCount} боёв`);
+    }
+    
+    return expiredCount;
+}
 
     async getBattleStatus(userId) {
     try {

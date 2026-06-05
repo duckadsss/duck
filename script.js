@@ -2192,18 +2192,57 @@ function cancelBattleSearch() {
     showToast('Поиск отменён', '⚠️');
 }
 
+// script.js - ОБНОВЛЁННАЯ acceptBattleWebhook
+
 async function acceptBattleWebhook() {
     const battleId = arenaClient?.getBattleId();
     if (!battleId) return;
+    
+    // Закрываем модальное окно
+    const modal = document.getElementById('matchFoundModal');
+    if (modal) {
+        if (modal.timeoutId) clearTimeout(modal.timeoutId);
+        modal.remove();
+    }
+    
     const res = await apiRequest('POST', '/api/arena/accept-match', { battleId });
-    if (res?.success) { closeOverlay(); arenaClient?.setConfirmationShown(false); }
+    
+    if (res?.success) {
+        arenaClient?.setConfirmationShown(false);
+        
+        if (res.bothConfirmed) {
+            showToast('Бой принят! Начинается сражение...', '⚔️');
+        } else {
+            showToast('Вы приняли бой! Ожидаем подтверждения соперника...', '⏳');
+        }
+    } else {
+        showToast(res?.message || 'Ошибка при принятии боя', '❌');
+    }
 }
+
+// script.js - ОБНОВЛЁННАЯ rejectBattleWebhook
 
 async function rejectBattleWebhook() {
     const battleId = arenaClient?.getBattleId();
     if (!battleId) return;
+    
+    // Закрываем модальное окно, если оно открыто
+    const modal = document.getElementById('matchFoundModal');
+    if (modal) {
+        if (modal.timeoutId) clearTimeout(modal.timeoutId);
+        modal.remove();
+    }
+    
     const res = await apiRequest('POST', '/api/arena/reject-match', { battleId });
-    if (res?.success) { arenaClient?.stopSearch(); closeOverlay(); showToast('Бой отклонён', '⚠️'); renderArenaFightTab(); }
+    
+    if (res?.success) {
+        arenaClient?.stopSearch();
+        arenaClient?.setConfirmationShown(false);
+        showToast(res.message || 'Бой отклонён, ставка возвращена', '⚠️');
+        renderArenaFightTab();
+    } else {
+        showToast(res?.message || 'Ошибка при отклонении боя', '❌');
+    }
 }
 
 // ============================================================
