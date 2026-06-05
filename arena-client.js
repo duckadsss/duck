@@ -14,8 +14,7 @@ class ArenaClient {
             confirmationShown: false,
             battleLog: [],
             myTeam: [],
-            enemyTeam: [],
-            battleEndedAt: null
+            enemyTeam: []
         };
         
         this.timers = {
@@ -87,7 +86,6 @@ class ArenaClient {
     // ============================================================
     
     startSearch() {
-        if (this.state.isSearching) return;
         this.state.isSearching = true;
         this.state.confirmationShown = false;
         this.startSearchTimer();
@@ -113,42 +111,37 @@ class ArenaClient {
         }, 60000);
     }
     
-    startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
-        // Защита от дублирования
-        if (this.state.battleActive && this.state.currentBattleId === battleId) {
-            console.log('⚠️ Battle already active, ignoring duplicate start');
-            return;
-        }
-        
-        this.state.battleActive = true;
-        this.state.currentBattleId = battleId;
-        this.state.currentBattleIsPlayer1 = isPlayer1;
-        this.state.isSearching = false;
-        this.state.myTeam = myTeam;
-        this.state.enemyTeam = enemyTeam;
-        this.state.battleLog = [];
-        this.state.battleEndedAt = null;
-        
-        this.stopSearch();
-        this.startBattleTimer();
-        
-        if (this.callbacks.onBattleStart) {
-            this.callbacks.onBattleStart(battleId, isPlayer1, myTeam, enemyTeam);
-        }
-        
-        if (this.callbacks.onBattleStartUI) {
-            this.callbacks.onBattleStartUI({
-                battleId: battleId,
-                isPlayer1: isPlayer1,
-                player1Team: isPlayer1 ? myTeam : enemyTeam,
-                player2Team: isPlayer1 ? enemyTeam : myTeam,
-                myTeam: myTeam,
-                opponentTeam: enemyTeam,
-                currentTurn: isPlayer1 ? 'player1' : 'player2',
-                battleLog: []
-            });
-        }
+// arena-client.js - метод startBattle
+startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
+    this.state.battleActive = true;
+    this.state.currentBattleId = battleId;
+    this.state.currentBattleIsPlayer1 = isPlayer1;
+    this.state.isSearching = false;
+    this.state.myTeam = myTeam;
+    this.state.enemyTeam = enemyTeam;
+    this.state.battleLog = [];
+    
+    this.stopSearch();
+    this.startBattleTimer();
+    
+    if (this.callbacks.onBattleStart) {
+        this.callbacks.onBattleStart(battleId, isPlayer1, myTeam, enemyTeam);
     }
+    
+    // ВАЖНО: передаём правильные поля для battleData
+    if (this.callbacks.onBattleStartUI) {
+        this.callbacks.onBattleStartUI({
+            battleId: battleId,
+            isPlayer1: isPlayer1,
+            player1Team: isPlayer1 ? myTeam : enemyTeam,  // Если игрок player1, его команда в player1Team
+            player2Team: isPlayer1 ? enemyTeam : myTeam,  // Если игрок player1, враг в player2Team
+            myTeam: myTeam,
+            opponentTeam: enemyTeam,
+            currentTurn: isPlayer1 ? 'player1' : 'player2',
+            battleLog: []
+        });
+    }
+}
     
     updateBattle(data) {
         if (!this.state.battleActive) return;
@@ -295,6 +288,9 @@ class ArenaClient {
                         data.myTeam,
                         data.opponentTeam
                     );
+                    if (this.callbacks.onBattleStartUI) {
+                        this.callbacks.onBattleStartUI(data);
+                    }
                 } else if (data.hasBattle && data.status === 'pending_confirmation' && !this.state.confirmationShown) {
                     this.state.confirmationShown = true;
                     this.state.currentBattleId = data.battleId;
@@ -322,6 +318,9 @@ class ArenaClient {
                     data.myTeam,
                     data.opponentTeam
                 );
+                if (this.callbacks.onBattleStartUI) {
+                    this.callbacks.onBattleStartUI(data);
+                }
             });
             
             socket.on('move_update', (data) => {
@@ -372,10 +371,7 @@ class ArenaClient {
     }
     
     scheduleReconnect(token, apiUrl) {
-        if (this.timers.reconnectTimer) {
-            clearTimeout(this.timers.reconnectTimer);
-            this.timers.reconnectTimer = null;
-        }
+        if (this.timers.reconnectTimer) return;
         
         this.reconnectAttempts++;
         if (this.reconnectAttempts > this.maxReconnectAttempts) {
@@ -446,8 +442,7 @@ class ArenaClient {
             confirmationShown: false,
             battleLog: [],
             myTeam: [],
-            enemyTeam: [],
-            battleEndedAt: null
+            enemyTeam: []
         };
         this.reconnectAttempts = 0;
     }
