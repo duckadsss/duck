@@ -240,23 +240,13 @@
         </button>
     </div>
     
-    <!-- Вкладка Команда -->
+<!-- Вкладка Команда -->
     <div class="arena-subtab active" id="arena-team-tab">
-        <div class="section-title"><i class="fa-solid fa-dog"></i> <span>Выберите 3 питомца</span></div>
-        
-        <div id="arenaTeamInventory" class="cards-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 20px;"></div>
-        
-        <div class="arena-selected-team">
-            <div class="section-title"><i class="fa-solid fa-circle-check"></i> <span>Ваша команда</span></div>
-            <div id="arenaSelectedTeam" class="arena-team-cards"></div>
-            <div style="display: flex; gap: 12px; margin-top: 12px;">
-                <button class="arena-save-btn" onclick="saveArenaTeam()" id="saveTeamBtn" style="flex: 1;">
-                    <i class="fa-solid fa-save"></i> <span>Сохранить команду</span>
-                </button>
-                <button class="arena-reset-btn" onclick="resetArenaTeam()" id="resetTeamBtn" style="flex: 1; background: linear-gradient(135deg, #ef4444, #dc2626);">
-                    <i class="fa-solid fa-trash"></i> <span>Сбросить команду</span>
-                </button>
-            </div>
+        <div id="arenaTeamInventory"></div>
+        <div style="padding: 12px 16px 24px;">
+            <button class="arena-save-btn" onclick="saveArenaTeam()" id="saveTeamBtn" style="width:100%;">
+                <i class="fa-solid fa-save"></i> <span>Сохранить команду</span>
+            </button>
         </div>
     </div>
     
