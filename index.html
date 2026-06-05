@@ -14,11 +14,11 @@
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-<!-- Font Awesome 6.7.2 (полностью рабочая) -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <link rel="stylesheet" href="style.css">
 <!-- Telegram WebApp SDK -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<!-- Giga Pub Enhanced Reliability Script -->
 <script data-project-id="6820">
   !function(){
     var s=document.currentScript,p=s.getAttribute('data-project-id')||'default';
@@ -55,7 +55,6 @@
                 <div class="player-level" id="playerLevelLabel">LVL 1 · Researcher</div>
             </div>
         </div>
-        
         <div style="display:flex;align-items:center;gap:10px">
             <div class="balance-area">
                 <div class="balance-icon"><i class="fa-solid fa-dna"></i></div>
@@ -77,15 +76,14 @@
 
 <!-- GAME TAB -->
 <div class="tab-content active" id="tab-game">
-    <div class="section-title"><i class="fa-solid fa-flask" style="color:var(--accent3)"></i> <span data-i18n="game.capsules">DNA Capsules</span></div>
-
+    <div class="section-title"><i class="fa-solid fa-flask-vial" style="color:var(--accent3)"></i> <span data-i18n="game.capsules">DNA Capsules</span></div>
     <div class="capsule-area">
         <div class="capsule-card" id="basicCapsuleCard" onclick="showCapsuleModal('basic')">
             <div class="capsule-icon">
                 <img src="1.png" alt="DNA Capsule" style="object-fit:contain">
             </div>
             <div class="capsule-name" data-i18n="game.dnaCapsule">DNA CAPSULE</div>
-            <div class="capsule-cost"><i class="fa-solid fa-dna" style="font-size:10px"></i> 500 MMO</div>
+            <div class="capsule-cost"><i class="fa-solid fa-dna" style="font-size:10px"></i> 1000 MMO</div>
             <button class="capsule-btn" onclick="event.stopPropagation();showCapsuleModal('basic')" data-i18n="game.open">OPEN</button>
         </div>
         <div class="capsule-card premium" id="premiumCapsuleCard" onclick="showCapsuleModal('premium')">
@@ -93,7 +91,7 @@
                 <img src="2.png" alt="Premium DNA Capsule" style="object-fit:contain">
             </div>
             <div class="capsule-name" data-i18n="game.premiumCapsule">PREMIUM DNA</div>
-            <div class="capsule-cost gold"><i class="fa-solid fa-gem" style="font-size:10px"></i> 2000 MMO</div>
+            <div class="capsule-cost gold"><i class="fa-solid fa-gem" style="font-size:10px"></i> 6000 MMO</div>
             <button class="capsule-btn gold-btn" onclick="event.stopPropagation();showCapsuleModal('premium')" data-i18n="game.open">OPEN</button>
         </div>
     </div>
@@ -117,9 +115,9 @@
     </div>
 
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-        <div class="section-title" style="margin-bottom:0"><i class="fa-solid fa-cubes" style="color:var(--accent3)"></i> <span data-i18n="inventory.myCreatures">My Creatures</span> <span id="inventorySlots" style="font-size:10px;color:var(--text2);font-weight:400;letter-spacing:0">0/10</span></div>
+        <div class="section-title" style="margin-bottom:0"><i class="fa-solid fa-layer-group" style="color:var(--accent3)"></i> <span data-i18n="inventory.myCreatures">My Creatures</span> <span id="inventorySlots" style="font-size:10px;color:var(--text2);font-weight:400;letter-spacing:0">0/10</span></div>
         <button style="padding:6px 12px;border:none;border-radius:8px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;font-size:10px;font-weight:700;font-family:'Orbitron',monospace;cursor:pointer;transition:all 0.2s;white-space:nowrap" onclick="event.stopPropagation(); upgradeInventory()" id="quickUpgradeBtn">
-            <i class="fa-solid fa-plus"></i> <span id="upgradeSlotCost">100</span> <span data-i18n="game.mmo">MMO</span>
+            <i class="fa-solid fa-plus"></i> +1 слот (<span id="upgradeSlotCost">100</span>)
         </button>
     </div>
     <div class="cards-grid" id="cardsGrid">
@@ -135,7 +133,7 @@
     <div class="section-title"><i class="fa-solid fa-store" style="color:var(--accent2)"></i> <span data-i18n="marketplace.title">Marketplace</span></div>
     <div class="marketplace-tabs">
         <button class="marketplace-tab-btn active" onclick="switchMarketplaceTab('buy')">
-            <i class="fa-solid fa-bag-shopping"></i> <span data-i18n="marketplace.buy">Buy</span>
+            <i class="fa-solid fa-shopping-bag"></i> <span data-i18n="marketplace.buy">Buy</span>
         </button>
         <button class="marketplace-tab-btn" onclick="switchMarketplaceTab('sell')">
             <i class="fa-solid fa-tag"></i> <span data-i18n="marketplace.sell">Sell</span>
@@ -148,7 +146,7 @@
         <div id="marketplaceListings" style="display:flex;flex-direction:column;gap:10px"></div>
     </div>
     <div class="marketplace-subtab" id="marketplace-sell">
-        <div class="section-title" style="margin-bottom:12px"><i class="fa-solid fa-hand-holding-dollar" style="color:var(--uncommon)"></i> <span data-i18n="marketplace.yourCreatures">Your Creatures</span></div>
+        <div class="section-title" style="margin-bottom:12px"><i class="fa-solid fa-hand-holding-heart" style="color:var(--uncommon)"></i> <span data-i18n="marketplace.yourCreatures">Your Creatures</span></div>
         <div id="marketplaceSellCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"></div>
     </div>
     <div class="marketplace-subtab" id="marketplace-mylistings">
@@ -161,8 +159,6 @@
 <div class="tab-content" id="tab-leaderboard">
     <div style="position:relative;border-radius:20px;overflow:hidden;margin-bottom:16px;cursor:pointer" onclick="showToast('🏆 Займи #1 и получи Black Pantera Mythic!', '🏆')">
         <div style="position:absolute;inset:0;z-index:2;pointer-events:none;border-radius:20px;border:1px solid rgba(255,255,255,0.18);background:linear-gradient(135deg,rgba(255,255,255,0.10) 0%,rgba(168,85,247,0.08) 40%,rgba(0,0,0,0) 100%)"></div>
-        <div style="position:absolute;top:0;left:-10%;width:40%;height:100%;z-index:3;pointer-events:none;background:linear-gradient(105deg,rgba(255,255,255,0) 40%,rgba(255,255,255,0.13) 50%,rgba(255,255,255,0) 60%);border-radius:20px"></div>
-        <div style="position:absolute;top:0;left:12%;width:76%;height:1.5px;z-index:4;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.55),transparent);border-radius:2px"></div>
         <img src="https://storage.yandexcloud.net/timenote/tmp/824f3177814a9035c2d9d37847e9c169caa97f4123274f5630877aefe899602c.jpg"
              alt="Season 1 — Black Pantera Mythic"
              style="width:100%;display:block;border-radius:20px;object-fit:cover;max-height:160px;object-position:center top">
@@ -182,37 +178,29 @@
             <span data-i18n="friends.inviteBtn">INVITE FRIEND</span>
         </button>
     </div>
-    
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px">
         <div class="friends-reward-card" id="reward-10" data-reward="10">
-            <div class="reward-icon">
-                <img src="https://ndammo.github.io/Mmodna/wr.png" alt="Rare Wolf" style="width:48px;height:48px;object-fit:contain">
-            </div>
+            <div class="reward-icon"><img src="https://ndammo.github.io/Mmodna/wr.png" alt="Rare Wolf" style="width:48px;height:48px;object-fit:contain"></div>
             <div class="reward-name rare">RARE WOLF</div>
             <div class="reward-friends"><i class="fa-solid fa-users"></i> 10</div>
             <div class="reward-income"><i class="fa-solid fa-bolt"></i> 25/hr</div>
             <button class="reward-btn" id="reward-10-btn">🔒</button>
         </div>
         <div class="friends-reward-card" id="reward-50" data-reward="50">
-            <div class="reward-icon">
-                <img src="https://ndammo.github.io/Mmodna/we.png" alt="Epic Wolf" style="width:48px;height:48px;object-fit:contain">
-            </div>
+            <div class="reward-icon"><img src="https://ndammo.github.io/Mmodna/we.png" alt="Epic Wolf" style="width:48px;height:48px;object-fit:contain"></div>
             <div class="reward-name epic">EPIC WOLF</div>
             <div class="reward-friends"><i class="fa-solid fa-users"></i> 50</div>
             <div class="reward-income"><i class="fa-solid fa-bolt"></i> 80/hr</div>
             <button class="reward-btn" id="reward-50-btn">🔒</button>
         </div>
         <div class="friends-reward-card" id="reward-150" data-reward="150">
-            <div class="reward-icon">
-                <img src="https://ndammo.github.io/Mmodna/wl.png" alt="Legendary Wolf" style="width:48px;height:48px;object-fit:contain">
-            </div>
+            <div class="reward-icon"><img src="https://ndammo.github.io/Mmodna/wl.png" alt="Legendary Wolf" style="width:48px;height:48px;object-fit:contain"></div>
             <div class="reward-name legendary">LEGENDARY WOLF</div>
             <div class="reward-friends"><i class="fa-solid fa-users"></i> 150</div>
             <div class="reward-income"><i class="fa-solid fa-bolt"></i> 250/hr</div>
             <button class="reward-btn" id="reward-150-btn">🔒</button>
         </div>
     </div>
-    
     <div class="section-title"><i class="fa-solid fa-heart" style="color:#f472b6"></i> <span data-i18n="friends.myFriends">My Friends</span></div>
     <div class="leaderboard-list" id="friendsList"></div>
 </div>
@@ -224,23 +212,15 @@
 </div>
 
 <!-- ARENA TAB -->
-<div class="tab-content" id="tab-arena">
-    <div class="arena-tabs">
-        <button class="arena-tab-btn active" data-arena-tab="team" onclick="switchArenaTab('team')">
-            <i class="fa-solid fa-users"></i> <span>Команда</span>
-        </button>
-        <button class="arena-tab-btn" data-arena-tab="fight" onclick="switchArenaTab('fight')">
-            <i class="fa-solid fa-shield-halved"></i> <span>Бой</span>
-        </button>
-        <button class="arena-tab-btn" data-arena-tab="ranks" onclick="switchArenaTab('ranks')">
-            <i class="fa-solid fa-chart-simple"></i> <span>Ранги</span>
-        </button>
-        <button class="arena-tab-btn" data-arena-tab="history" onclick="switchArenaTab('history')">
-            <i class="fa-solid fa-clock-rotate-left"></i> <span>История</span>
-        </button>
+<div class="tab-content" id="tab-pvp">
+    <div class="arena-subtabs">
+        <button class="arena-subtab-btn active" onclick="switchArenaTab('team')" id="arena-tab-team"><i class="fa-solid fa-users"></i> Команда</button>
+        <button class="arena-subtab-btn" onclick="switchArenaTab('fight')" id="arena-tab-fight"><i class="fa-solid fa-shield-halved"></i> Бой</button>
+        <button class="arena-subtab-btn" onclick="switchArenaTab('ranks')" id="arena-tab-ranks"><i class="fa-solid fa-chart-bar"></i> Ранги</button>
+        <button class="arena-subtab-btn" onclick="switchArenaTab('history')" id="arena-tab-history"><i class="fa-solid fa-clock-rotate-left"></i> История</button>
     </div>
-    
-<!-- Вкладка Команда -->
+
+    <!-- Вкладка Команда -->
     <div class="arena-subtab active" id="arena-team-tab">
         <div id="arenaTeamInventory"></div>
         <div style="padding: 12px 16px 24px;">
@@ -249,7 +229,7 @@
             </button>
         </div>
     </div>
-    
+
     <!-- Вкладка Бой -->
     <div class="arena-subtab" id="arena-fight-tab">
         <div id="arenaFightStatus" class="arena-fight-status">
@@ -263,191 +243,25 @@
                     <span class="arena-stat-value" id="arenaPrizePool">800</span>
                 </div>
                 <div class="arena-stat-item">
-                    <span class="arena-stat-label"><i class="fa-solid fa-chart-line"></i> Лига:</span>
-                    <span class="arena-stat-value" id="arenaLeague">Бронзовая</span>
+                    <span class="arena-stat-label"><i class="fa-solid fa-shield-halved"></i> Лига:</span>
+                    <span class="arena-stat-value" id="arenaLeague">Bronze</span>
                 </div>
             </div>
-            
-            <div id="arenaCurrentTeam" class="arena-current-team"></div>
-            
-            <button class="arena-find-btn" onclick="findMatch()" id="findMatchBtn">
-                <i class="fa-solid fa-magnifying-glass"></i> Найти бой
+            <button class="arena-find-btn" id="arenaFindBtn" onclick="findMatch()">
+                <i class="fa-solid fa-magnifying-glass"></i> Найти соперника
             </button>
-            
-            <div id="arenaSearchStatus" class="arena-search-status"></div>
         </div>
-        
-        <div id="arenaBattleContainer" style="display: none;"></div>
+        <div id="arenaBattleContainer"></div>
     </div>
-    
+
     <!-- Вкладка Ранги -->
     <div class="arena-subtab" id="arena-ranks-tab">
-        <div class="arena-ranks-header">
-            <div class="arena-ranks-title">
-                <i class="fa-solid fa-crown"></i> Система рангов
-            </div>
-            <div class="arena-ranks-subtitle">Поднимайся в лигах и получай больше наград!</div>
-        </div>
-        
-        <div class="arena-current-rank-card">
-            <div class="current-rank-icon" id="arenaCurrentRankIcon">🥉</div>
-            <div class="current-rank-info">
-                <div class="current-rank-label">Ваш текущий ранг</div>
-                <div class="current-rank-name" id="arenaCurrentRankName">Бронзовая лига</div>
-                <div class="current-rank-rating">Рейтинг: <span id="arenaCurrentRankRating">1000</span></div>
-            </div>
-            <div class="current-rank-stats">
-                <div class="rank-stat-mini">
-                    <span class="stat-value" id="arenaRankWins">0</span>
-                    <span class="stat-label">Побед</span>
-                </div>
-                <div class="rank-stat-mini">
-                    <span class="stat-value" id="arenaRankLosses">0</span>
-                    <span class="stat-label">Пораж.</span>
-                </div>
-                <div class="rank-stat-mini">
-                    <span class="stat-value" id="arenaRankStreak">0</span>
-                    <span class="stat-label">Стрик</span>
-                </div>
-            </div>
-        </div>
-        
-        <div class="arena-rank-progress">
-            <div class="progress-header">
-                <span>До следующего ранга:</span>
-                <span class="next-rank-name" id="arenaNextRankName">Серебряная лига</span>
-            </div>
-            <div class="progress-bar-container">
-                <div class="progress-bar-fill" id="arenaRankProgressFill" style="width: 0%;"></div>
-            </div>
-            <div class="progress-values">
-                <span id="arenaCurrentRankValue">1000</span>
-                <span id="arenaNextRankValue">1300</span>
-            </div>
-        </div>
-        
-        <div class="ranks-list-compact">
-            <div class="rank-item-compact rank-bronze" onclick="toggleRankDetailsCompact('bronze')">
-                <div class="rank-compact-header">
-                    <div class="rank-compact-icon">🥉</div>
-                    <div class="rank-compact-info">
-                        <div class="rank-compact-name">Бронзовая лига</div>
-                        <div class="rank-compact-range">0 - 1299 рейтинга</div>
-                    </div>
-                    <div class="rank-compact-expand"><i class="fa-solid fa-chevron-down"></i></div>
-                </div>
-                <div class="rank-compact-details" id="rankCompactDetails-bronze" style="display: none;">
-                    <div class="compact-rewards">
-                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 200 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 350 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-arrow-up"></i> До 1300</div>
-                    </div>
-                    <div class="compact-players">
-                        <div class="compact-players-title"><i class="fa-solid fa-users"></i> Топ игроки</div>
-                        <div class="compact-players-list" id="bronzeCompactList">Загрузка...</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="rank-item-compact rank-silver" onclick="toggleRankDetailsCompact('silver')">
-                <div class="rank-compact-header">
-                    <div class="rank-compact-icon">🥈</div>
-                    <div class="rank-compact-info">
-                        <div class="rank-compact-name">Серебряная лига</div>
-                        <div class="rank-compact-range">1300 - 1599 рейтинга</div>
-                    </div>
-                    <div class="rank-compact-expand"><i class="fa-solid fa-chevron-down"></i></div>
-                </div>
-                <div class="rank-compact-details" id="rankCompactDetails-silver" style="display: none;">
-                    <div class="compact-rewards">
-                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 500 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 800 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-arrow-up"></i> До 1600</div>
-                    </div>
-                    <div class="compact-players">
-                        <div class="compact-players-title"><i class="fa-solid fa-users"></i> Топ игроки</div>
-                        <div class="compact-players-list" id="silverCompactList">Загрузка...</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="rank-item-compact rank-gold" onclick="toggleRankDetailsCompact('gold')">
-                <div class="rank-compact-header">
-                    <div class="rank-compact-icon">🥇</div>
-                    <div class="rank-compact-info">
-                        <div class="rank-compact-name">Золотая лига</div>
-                        <div class="rank-compact-range">1600 - 1899 рейтинга</div>
-                    </div>
-                    <div class="rank-compact-expand"><i class="fa-solid fa-chevron-down"></i></div>
-                </div>
-                <div class="rank-compact-details" id="rankCompactDetails-gold" style="display: none;">
-                    <div class="compact-rewards">
-                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 1000 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 1600 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-arrow-up"></i> До 1900</div>
-                    </div>
-                    <div class="compact-players">
-                        <div class="compact-players-title"><i class="fa-solid fa-users"></i> Топ игроки</div>
-                        <div class="compact-players-list" id="goldCompactList">Загрузка...</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="rank-item-compact rank-platinum" onclick="toggleRankDetailsCompact('platinum')">
-                <div class="rank-compact-header">
-                    <div class="rank-compact-icon">💎</div>
-                    <div class="rank-compact-info">
-                        <div class="rank-compact-name">Платиновая лига</div>
-                        <div class="rank-compact-range">1900 - 2199 рейтинга</div>
-                    </div>
-                    <div class="rank-compact-expand"><i class="fa-solid fa-chevron-down"></i></div>
-                </div>
-                <div class="rank-compact-details" id="rankCompactDetails-platinum" style="display: none;">
-                    <div class="compact-rewards">
-                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 2000 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 3200 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-arrow-up"></i> До 2200</div>
-                    </div>
-                    <div class="compact-players">
-                        <div class="compact-players-title"><i class="fa-solid fa-users"></i> Топ игроки</div>
-                        <div class="compact-players-list" id="platinumCompactList">Загрузка...</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="rank-item-compact rank-diamond" onclick="toggleRankDetailsCompact('diamond')">
-                <div class="rank-compact-header">
-                    <div class="rank-compact-icon">🏆</div>
-                    <div class="rank-compact-info">
-                        <div class="rank-compact-name">Алмазная лига</div>
-                        <div class="rank-compact-range">2200+ рейтинга</div>
-                    </div>
-                    <div class="rank-compact-expand"><i class="fa-solid fa-chevron-down"></i></div>
-                </div>
-                <div class="rank-compact-details" id="rankCompactDetails-diamond" style="display: none;">
-                    <div class="compact-rewards">
-                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 5000 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 8000 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-crown"></i> Элита!</div>
-                    </div>
-                    <div class="compact-players">
-                        <div class="compact-players-title"><i class="fa-solid fa-users"></i> Топ игроки</div>
-                        <div class="compact-players-list" id="diamondCompactList">Загрузка...</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="arena-rank-tip">
-            <i class="fa-solid fa-lightbulb"></i>
-            <span>Победа над сильным соперником даёт больше рейтинга! После повышения вы получаете защиту от падения на 1 бой.</span>
-        </div>
+        <div id="arenaLeaderboard"></div>
     </div>
-    
+
     <!-- Вкладка История -->
     <div class="arena-subtab" id="arena-history-tab">
-        <div class="section-title"><i class="fa-solid fa-clock-rotate-left"></i> История боёв</div>
-        <div id="arenaHistoryList" class="arena-history-list"></div>
+        <div id="arenaHistory"></div>
     </div>
 </div>
 
@@ -518,10 +332,10 @@
         <i class="fa-solid fa-star"></i>
         <span data-i18n="nav.special">Special</span>
     </div>
-<div class="nav-item" onclick="switchTab('arena')" id="nav-arena">
-    <i class="fa-solid fa-shield-halved"></i>
-    <span>Арена</span>
-</div>
+    <div class="nav-item" onclick="switchTab('pvp')" id="nav-pvp">
+        <i class="fa-solid fa-shield-halved"></i>
+        <span data-i18n="nav.pvp">Арена</span>
+    </div>
     <div class="nav-item" onclick="switchTab('wallet')" id="nav-wallet">
         <i class="fa-solid fa-wallet"></i>
         <span data-i18n="nav.wallet">Wallet</span>
@@ -535,46 +349,127 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="arena-client.js"></script>
+<!-- SCRIPTS -->
+<script src="/socket.io/socket.io.js"></script>
 <script src="script.js"></script>
 <script src="localization.js"></script>
+
+<!-- ARENA SKILLS MAP -->
 <script>
-// Скиллы для отображения в UI (клиентская копия)
 window.ARENA_SKILLS_MAP = {
-    duck_c: { name: '🍀 Lucky Quack', chance: 0.20, description: 'Враг промахивается — 0 урона' },
-    duck_u: { name: '💧 Puddle Dodge', chance: 0.25, description: 'Щит — следующая атака по нему отменяется' },
-    duck_r: { name: '🦅 Ancient Wings', chance: 0.20, description: 'Урон ×1.8' },
-    duck_e: { name: '🌊 Eternal Splash', chance: 0.25, description: 'Урон всем живым врагам' },
-    duck_l: { name: '🌀 Divine Flood', chance: 0.30, description: 'Урон ×1.5 всем живым врагам' },
-    owl_c: { name: '🌙 Night Sight', chance: 0.20, description: 'Игнорирует 30% защиты' },
-    owl_u: { name: '🦅 Sharp Talons', chance: 0.25, description: 'Урон ×1.5' },
-    owl_r: { name: '✨ Guardian Aura', chance: 0.20, description: 'Лечит союзника с наименьшим HP на 20%' },
-    owl_e: { name: '🧠 Mind Break', chance: 0.25, description: 'Снижает атаку врага на 30% в этом ударе' },
-    owl_l: { name: '👁️ Divine Sight', chance: 0.30, description: 'Урон ×2 + игнорирует всю защиту' },
-    shark_c: { name: '🦷 Bite', chance: 0.25, description: 'Урон +50%' },
-    shark_u: { name: '🩸 Frenzy', chance: 0.25, description: 'Восстанавливает 30% урона как HP' },
-    shark_r: { name: '🌊 Ocean Terror', chance: 0.20, description: 'Враг оглушён — пропускает следующий ход' },
-    shark_e: { name: '🦈 Apex Predator', chance: 0.30, description: 'Урон ×2 если у врага < 50% HP' },
-    shark_l: { name: '🐙 Kraken Call', chance: 0.35, description: 'Урон всем врагам + 20% HP себе' },
-    wolf_c: { name: '🐺 Pack Call', chance: 0.20, description: 'Урон +40%' },
-    wolf_u: { name: '🎯 Hunter Instinct', chance: 0.25, description: 'Игнорирует всю защиту' },
-    wolf_r: { name: '🌕 Howl', chance: 0.25, description: 'Урон ×1.5 + 10% HP себе' },
-    wolf_e: { name: '⚡ Alpha Strike', chance: 0.30, description: 'Урон ×2.5' },
-    wolf_l: { name: '🔥 Legendary Fury', chance: 0.35, description: 'Урон ×2 всем живым врагам' },
-    dragon_c: { name: '🔥 Flame', chance: 0.25, description: 'Урон +60%' },
-    dragon_u: { name: '🐉 Fire Breath', chance: 0.25, description: 'Урон всем живым врагам' },
-    dragon_r: { name: '🌋 Ancient Fire', chance: 0.20, description: 'Урон ×2' },
-    dragon_e: { name: '♾️ Eternal Flame', chance: 0.30, description: 'Урон ×1.5 всем + игнорирует защиту' },
-    dragon_l: { name: '☄️ Divine Inferno', chance: 0.35, description: 'Урон ×2 всем живым врагам' },
-    unicorn_c: { name: '🦄 Magic Touch', chance: 0.20, description: 'Восстанавливает 15% HP себе' },
-    unicorn_u: { name: '✨ Fairy Dust', chance: 0.25, description: 'Враг оглушён — пропускает ход' },
-    unicorn_r: { name: '💫 Rare Magic', chance: 0.20, description: 'Лечит всех союзников на 15% HP' },
-    unicorn_e: { name: '🌟 Eternal Magic', chance: 0.25, description: 'Урон ×2 + 20% HP себе' },
-    unicorn_l: { name: '🙏 Divine Blessing', chance: 0.30, description: 'Лечит всех союзников на 30% HP' },
-    lion_mythic: { name: '👑 King Roar', chance: 0.40, description: 'Урон ×2.5 + враг оглушён' },
-    panther_mythic: { name: '🐆 Shadow Strike', chance: 0.45, description: 'Игнорирует защиту + 40% урона как HP' }
+    duck_c:        { name: '🍀 Lucky Quack',     chance: 0.20, description: 'Враг промахивается — 0 урона' },
+    duck_u:        { name: '💧 Puddle Dodge',     chance: 0.25, description: 'Щит — следующая атака отменяется' },
+    duck_r:        { name: '🦅 Ancient Wings',    chance: 0.20, description: 'Урон ×1.8' },
+    duck_e:        { name: '🌊 Eternal Splash',   chance: 0.25, description: 'Урон всем живым врагам' },
+    duck_l:        { name: '🌀 Divine Flood',     chance: 0.30, description: 'Урон ×1.5 всем живым врагам' },
+    owl_c:         { name: '🌙 Night Sight',      chance: 0.20, description: 'Игнорирует 30% защиты' },
+    owl_u:         { name: '🦅 Sharp Talons',     chance: 0.25, description: 'Урон ×1.5' },
+    owl_r:         { name: '✨ Guardian Aura',    chance: 0.20, description: 'Лечит союзника с наим. HP на 20%' },
+    owl_e:         { name: '🧠 Mind Break',       chance: 0.25, description: 'Снижает атаку врага на 30%' },
+    owl_l:         { name: '👁️ Divine Sight',    chance: 0.30, description: 'Урон ×2 + игнорирует всю защиту' },
+    shark_c:       { name: '🦷 Bite',             chance: 0.25, description: 'Урон +50%' },
+    shark_u:       { name: '🩸 Frenzy',           chance: 0.25, description: 'Восстанавливает 30% урона как HP' },
+    shark_r:       { name: '🌊 Ocean Terror',     chance: 0.20, description: 'Враг оглушён — пропускает ход' },
+    shark_e:       { name: '🦈 Apex Predator',    chance: 0.30, description: 'Урон ×2 если у врага < 50% HP' },
+    shark_l:       { name: '🐙 Kraken Call',      chance: 0.35, description: 'Урон всем врагам + 20% HP себе' },
+    wolf_c:        { name: '🐺 Pack Call',        chance: 0.20, description: 'Урон +40%' },
+    wolf_u:        { name: '🎯 Hunter Instinct',  chance: 0.25, description: 'Игнорирует всю защиту' },
+    wolf_r:        { name: '🌕 Howl',             chance: 0.25, description: 'Урон ×1.5 + 10% HP себе' },
+    wolf_e:        { name: '⚡ Alpha Strike',     chance: 0.30, description: 'Урон ×2.5' },
+    wolf_l:        { name: '🔥 Legendary Fury',   chance: 0.35, description: 'Урон ×2 всем живым врагам' },
+    dragon_c:      { name: '🔥 Flame',            chance: 0.25, description: 'Урон +60%' },
+    dragon_u:      { name: '🐉 Fire Breath',      chance: 0.25, description: 'Урон всем живым врагам' },
+    dragon_r:      { name: '🌋 Ancient Fire',     chance: 0.20, description: 'Урон ×2' },
+    dragon_e:      { name: '♾️ Eternal Flame',   chance: 0.30, description: 'Урон ×1.5 всем + игнорирует защиту' },
+    dragon_l:      { name: '☄️ Divine Inferno',  chance: 0.35, description: 'Урон ×2 всем живым врагам' },
+    unicorn_c:     { name: '🦄 Magic Touch',      chance: 0.20, description: 'Восстанавливает 15% HP себе' },
+    unicorn_u:     { name: '✨ Fairy Dust',       chance: 0.25, description: 'Враг оглушён — пропускает ход' },
+    unicorn_r:     { name: '💫 Rare Magic',       chance: 0.20, description: 'Лечит всех союзников на 15% HP' },
+    unicorn_e:     { name: '🌟 Eternal Magic',    chance: 0.25, description: 'Урон ×2 + 20% HP себе' },
+    unicorn_l:     { name: '🙏 Divine Blessing',  chance: 0.30, description: 'Лечит всех союзников на 30% HP' },
+    lion_mythic:   { name: '👑 King Roar',        chance: 0.40, description: 'Урон ×2.5 + враг оглушён' },
+    panther_mythic:{ name: '🐆 Shadow Strike',    chance: 0.45, description: 'Игнорирует защиту + 40% урона как HP' }
 };
 </script>
+
+<!-- Arena CSS animations -->
+<style>
+@keyframes fadeInOut {
+    0%   { opacity:0; transform:translateX(-50%) translateY(-10px); }
+    15%  { opacity:1; transform:translateX(-50%) translateY(0); }
+    75%  { opacity:1; }
+    100% { opacity:0; transform:translateX(-50%) translateY(-10px); }
+}
+@keyframes floatUp {
+    0%   { opacity:1; transform:translateX(-50%) translateY(0); }
+    100% { opacity:0; transform:translateX(-50%) translateY(-30px); }
+}
+.damage-flash { animation: damageFlash 0.3s ease; }
+@keyframes damageFlash {
+    0%,100% { filter:brightness(1); }
+    50%     { filter:brightness(2) saturate(2); }
+}
+
+/* Arena list cards */
+.arena-list-card { display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid rgba(255,255,255,0.06); cursor:pointer; transition:background 0.2s; position:relative; }
+.arena-list-card:active { background:rgba(168,85,247,0.08); }
+.arena-list-card.selected { background:rgba(168,85,247,0.12); border-left:3px solid #a855f7; }
+.arena-list-card.disabled { opacity:0.4; pointer-events:none; }
+.arena-list-left { position:relative; flex-shrink:0; }
+.arena-list-icon img, .arena-list-icon { width:56px; height:56px; object-fit:contain; }
+.arena-list-num { position:absolute; top:-4px; left:-4px; background:#a855f7; color:#fff; font-size:10px; font-weight:700; width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+.arena-list-info { flex:1; min-width:0; }
+.arena-list-name { font-size:15px; font-weight:700; color:var(--text1); display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+.arena-list-rarity { font-size:9px; font-weight:600; padding:1px 6px; border-radius:6px; text-transform:uppercase; background:rgba(255,255,255,0.08); }
+.arena-list-stats { display:flex; gap:10px; font-size:11px; color:var(--text2); margin-bottom:6px; }
+.arena-list-skill { background:rgba(168,85,247,0.1); border:1px solid rgba(168,85,247,0.2); border-radius:8px; padding:5px 8px; }
+.arena-list-skill-name { font-size:11px; font-weight:700; color:#a855f7; }
+.arena-list-skill-chance { font-size:10px; color:#7c3aed; background:rgba(124,58,237,0.2); border-radius:5px; padding:0 5px; margin-left:4px; }
+.arena-list-skill-desc { font-size:10px; color:var(--text3); margin-top:2px; }
+.arena-list-check { font-size:20px; color:#a855f7; flex-shrink:0; }
+.arena-list-card:not(.selected) .arena-list-check { color:rgba(255,255,255,0.2); }
+
+/* Skill badge in battle */
+.creature-skill-badge { font-size:10px; color:#a855f7; background:rgba(168,85,247,0.15); border:1px solid rgba(168,85,247,0.3); border-radius:8px; padding:2px 6px; margin-top:4px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; display:block; }
+
+/* Arena save btn */
+.arena-save-btn { background:linear-gradient(135deg,#7c3aed,#a855f7); border:none; border-radius:14px; padding:14px 20px; color:#fff; font-family:'Orbitron',monospace; font-size:13px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; }
+
+/* Arena fight status */
+.arena-fight-status { padding:16px; }
+.arena-stats-preview { display:flex; gap:8px; margin-bottom:16px; }
+.arena-stat-item { flex:1; background:#0d1120; border:1px solid #1e2d4a; border-radius:12px; padding:10px; text-align:center; }
+.arena-stat-label { font-size:10px; color:#94a3b8; display:block; margin-bottom:4px; }
+.arena-stat-value { font-size:16px; font-weight:700; color:#a855f7; font-family:'Orbitron',monospace; }
+.arena-find-btn { width:100%; padding:16px; background:linear-gradient(135deg,#7c3aed,#a855f7); border:none; border-radius:14px; color:#fff; font-family:'Orbitron',monospace; font-size:14px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:10px; }
+
+/* Battle interface */
+.arena-battle-container { padding:12px; }
+.arena-team-side { margin-bottom:12px; }
+.arena-side-title { font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+.arena-creatures-row { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+.arena-battle-creature { flex:1 1 0; min-width:0; max-width:32%; background:#0d1120; border:1px solid #1e2d4a; border-radius:12px; padding:8px; text-align:center; box-sizing:border-box; overflow:hidden; transition:all 0.2s; }
+.arena-battle-creature.dead { opacity:0.3; filter:grayscale(1); }
+.creature-icon img { width:48px; height:48px; object-fit:contain; }
+.creature-name { font-size:10px; font-weight:700; color:#e2e8f0; margin:4px 0 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.creature-hp { font-size:9px; color:#94a3b8; margin-bottom:3px; }
+.arena-hp-bar { height:4px; background:#1e2d4a; border-radius:2px; overflow:hidden; margin-bottom:4px; }
+.arena-hp-fill { height:100%; background:linear-gradient(90deg,#22c55e,#16a34a); border-radius:2px; transition:width 0.3s; }
+.arena-attack-btn { width:100%; padding:6px 4px; background:linear-gradient(135deg,#7c3aed,#a855f7); border:none; border-radius:8px; color:#fff; font-size:10px; font-weight:700; cursor:pointer; margin-top:4px; }
+.arena-battle-vs { text-align:center; font-family:'Orbitron',monospace; font-size:20px; font-weight:900; color:#a855f7; margin:8px 0; }
+.arena-battle-log { background:#080b14; border:1px solid #1e2d4a; border-radius:10px; padding:8px; max-height:80px; overflow-y:auto; margin:8px 0; }
+.arena-log-entry { font-size:10px; color:#94a3b8; padding:2px 0; }
+.arena-log-entry.crit { color:#f59e0b; }
+.arena-battle-timer { text-align:center; font-family:'Orbitron',monospace; font-size:24px; font-weight:900; color:#22c55e; margin:8px 0; }
+.arena-surrender-btn { width:100%; padding:12px; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); border-radius:12px; color:#ef4444; font-weight:700; font-size:13px; cursor:pointer; margin-top:8px; }
+
+/* Arena subtabs */
+.arena-subtabs { display:flex; gap:4px; padding:12px 12px 0; overflow-x:auto; }
+.arena-subtab-btn { flex-shrink:0; padding:8px 12px; background:#0d1120; border:1px solid #1e2d4a; border-radius:10px; color:#94a3b8; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px; white-space:nowrap; }
+.arena-subtab-btn.active { background:linear-gradient(135deg,rgba(124,58,237,0.3),rgba(168,85,247,0.2)); border-color:#a855f7; color:#a855f7; }
+.arena-subtab { display:none; }
+.arena-subtab.active { display:block; }
+</style>
+
 </body>
 </html>
