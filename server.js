@@ -10,6 +10,9 @@ const crypto = require('crypto');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
+const http = require('http');
+const socketIo = require('socket.io');
+const ArenaModule = require('./arena-socket');
 
 const app = express();
 
@@ -488,10 +491,8 @@ const ArenaBattleSchema = new mongoose.Schema({
     prizePool: { type: Number, required: true },
     player1Confirmed: { type: Boolean, default: false },
     player2Confirmed: { type: Boolean, default: false },
-    player1LastMoveAt: { type: Date, default: null },
-    player2LastMoveAt: { type: Date, default: null },
     lastMoveAt: { type: Date, default: Date.now },
-    expiresAt: { type: Date, default: () => new Date(Date.now() + 30 * 1000) },
+    expiresAt: { type: Date, default: () => new Date(Date.now() + 30000) },
     createdAt: { type: Date, default: Date.now }
 });
 ArenaBattleSchema.index({ status: 1, league: 1, expiresAt: 1 });
@@ -503,12 +504,9 @@ const ArenaStatsSchema = new mongoose.Schema({
     rating: { type: Number, default: 1000 },
     league: { type: String, default: 'bronze' },
     peakRating: { type: Number, default: 1000 },
-    promotions: { type: Number, default: 0 },
-    demotions: { type: Number, default: 0 },
     promotionProtection: { type: Boolean, default: true },
     wins: { type: Number, default: 0 },
     losses: { type: Number, default: 0 },
-    draws: { type: Number, default: 0 },
     streak: { type: Number, default: 0 },
     bestStreak: { type: Number, default: 0 },
     totalBattles: { type: Number, default: 0 },
@@ -3548,22 +3546,14 @@ app.post('/api/admin/refresh-cache', adminAuthMiddleware, async (req, res) => {
 });
 
 // ============================================
+// WEBSOCKET + ARENA
+// ============================================
+let arenaSocketManager = null;
+let arenaManager = null;
 
-// ============================================================
-// ARENA — добавляется перед разделом ЗАПУСК
-// ============================================================
-
-// ============================================================
-// ИМПОРТ МОДУЛЕЙ АРЕНЫ
-// ============================================================
-const http = require('http');
-const socketIo = require('socket.io');
-const ArenaModule = require('./arena-socket');
-
-// Переопределяем app в http-сервер
-const arenaServer = http.createServer(app);
-const io = socketIo(arenaServer, {
-    cors: { origin: '*', methods: ['GET', 'POST'], credentials: true },
+const server = http.createServer(app);
+const io = socketIo(server, {
+    cors: { origin: '*', methods: ['GET', 'POST'] },
     allowEIO3: true,
     pingTimeout: 60000,
     pingInterval: 25000,
@@ -3571,12 +3561,6 @@ const io = socketIo(arenaServer, {
     path: '/socket.io/'
 });
 
-let arenaSocketManager = null;
-let arenaManager = null;
-
-// ============================================================
-// WEBSOCKET AUTH
-// ============================================================
 io.use(async (socket, next) => {
     try {
         const token = socket.handshake.auth.token;
@@ -3595,21 +3579,31 @@ io.on('connection', (socket) => {
     const user = socket.user;
     console.log(`🔌 WS connected: ${user.telegramId}`);
     socket.emit('connected', { ok: true });
-
     if (arenaSocketManager) arenaSocketManager.add(user._id, socket.id);
-
     const pingInterval = setInterval(() => { if (socket.connected) socket.emit('ping'); }, 20000);
     socket.on('pong', () => {});
-
+    socket.on('check_battle_status', async (data) => {
+        try {
+            const battle = await ArenaBattle.findById(data.battleId);
+            if (battle && battle.status === 'active') {
+                const isPlayer1 = battle.player1Id.toString() === user._id.toString();
+                socket.emit('battle_status', {
+                    hasBattle: true, battleId: battle._id, status: battle.status,
+                    isPlayer1, currentTurn: battle.currentTurn,
+                    myTeam: isPlayer1 ? battle.player1Team : battle.player2Team,
+                    opponentTeam: isPlayer1 ? battle.player2Team : battle.player1Team,
+                    battleLog: (battle.battleLog || []).slice(-20)
+                });
+            }
+        } catch (err) { console.error('check_battle_status error:', err); }
+    });
     socket.on('disconnect', () => {
         clearInterval(pingInterval);
         if (arenaSocketManager) arenaSocketManager.remove(user._id);
     });
 });
 
-// ============================================================
-// ARENA ENDPOINTS
-// ============================================================
+// ── Arena endpoints ─────────────────────────────────────────
 
 app.get('/api/arena/team', authMiddleware, async (req, res) => {
     try {
@@ -3633,13 +3627,12 @@ app.post('/api/arena/team', authMiddleware, async (req, res) => {
         const user = req.user;
         if (!Array.isArray(team) || team.length !== 3)
             return res.status(400).json({ success: false, message: 'Нужно выбрать ровно 3 питомца' });
-        const uniqueIds = new Set(team);
-        if (uniqueIds.size !== 3)
+        if (new Set(team).size !== 3)
             return res.status(400).json({ success: false, message: 'Питомцы не должны повторяться' });
         const inventory = await Inventory.find({ telegramId: user.telegramId }).lean();
-        const inventoryMap = new Map(inventory.map(i => [i.creatureId, i.count]));
+        const invMap = new Map(inventory.map(i => [i.creatureId, i.count]));
         for (const creatureId of team) {
-            if (!inventoryMap.has(creatureId))
+            if (!invMap.has(creatureId))
                 return res.status(400).json({ success: false, message: `У вас нет питомца ${creatureId}` });
         }
         await User.updateOne({ _id: user._id }, { $set: { arenaTeam: team } });
@@ -3671,35 +3664,33 @@ app.post('/api/arena/find-match', authMiddleware, async (req, res) => {
         if (arenaTeam.length !== 3)
             return res.status(400).json({ success: false, message: 'Сначала выберите команду из 3 питомцев' });
         if (user.currentBattleId) {
-            const existingBattle = await ArenaBattle.findById(user.currentBattleId);
-            if (existingBattle && ['waiting', 'pending_confirmation', 'active'].includes(existingBattle.status))
+            const existing = await ArenaBattle.findById(user.currentBattleId);
+            if (existing && ['waiting', 'pending_confirmation', 'active'].includes(existing.status))
                 return res.status(400).json({ success: false, message: 'У вас уже есть активный бой или поиск' });
         }
         if (user.arenaCooldownUntil && new Date(user.arenaCooldownUntil) > new Date()) {
-            const secondsLeft = Math.ceil((new Date(user.arenaCooldownUntil) - new Date()) / 1000);
-            return res.status(400).json({ success: false, message: `Подождите ${secondsLeft} секунд` });
+            const s = Math.ceil((new Date(user.arenaCooldownUntil) - new Date()) / 1000);
+            return res.status(400).json({ success: false, message: `Подождите ${s} секунд` });
         }
         const result = await arenaManager.findMatch(user, arenaTeam);
         if (!result.success) return res.status(400).json(result);
-
-        const player1 = await User.findById(result.battle.player1Id).select('username firstName level');
-        const player2 = result.battle.player2Id ? await User.findById(result.battle.player2Id).select('username firstName level') : null;
-
+        const p1 = await User.findById(result.battle.player1Id).select('username firstName level');
+        const p2 = result.battle.player2Id ? await User.findById(result.battle.player2Id).select('username firstName level') : null;
         if (!result.isNew) {
             arenaSocketManager.send(result.battle.player1Id, 'match_found', {
-                battleId: result.battle._id, status: 'pending_confirmation', isPlayer1: true,
-                opponent: { name: player2?.username || player2?.firstName || 'Игрок', level: player2?.level },
-                prizePool: result.battle.prizePool, entryFee: result.entryFee,
+                battleId: result.battle._id, isPlayer1: true,
+                opponent: { name: p2?.username || p2?.firstName || 'Игрок', level: p2?.level },
+                prizePool: result.battle.prizePool, entryFee: result.battle.entryFee,
                 myTeam: result.battle.player1Team, opponentTeam: result.battle.player2Team
             });
             arenaSocketManager.send(result.battle.player2Id, 'match_found', {
-                battleId: result.battle._id, status: 'pending_confirmation', isPlayer1: false,
-                opponent: { name: player1?.username || player1?.firstName || 'Игрок', level: player1?.level },
-                prizePool: result.battle.prizePool, entryFee: result.entryFee,
+                battleId: result.battle._id, isPlayer1: false,
+                opponent: { name: p1?.username || p1?.firstName || 'Игрок', level: p1?.level },
+                prizePool: result.battle.prizePool, entryFee: result.battle.entryFee,
                 myTeam: result.battle.player2Team, opponentTeam: result.battle.player1Team
             });
         }
-        res.json({ success: true, battle: result.battle, isNew: result.isNew, message: result.isNew ? 'Поиск...' : 'Соперник найден!' });
+        res.json({ success: true, battle: result.battle, isNew: result.isNew });
     } catch (e) { console.error('find-match error:', e); res.status(500).json({ success: false, message: e.message }); }
 });
 
@@ -3724,14 +3715,14 @@ app.get('/api/arena/battle/status', authMiddleware, async (req, res) => {
             success: true, hasBattle: true, battleId: battle._id, status: battle.status,
             isPlayer1, player1Confirmed: battle.player1Confirmed, player2Confirmed: battle.player2Confirmed,
             league: battle.league, entryFee: battle.entryFee, prizePool: battle.prizePool,
-            currentTurn: battle.currentTurn, turnCount: battle.turnCount, lastMoveAt: battle.lastMoveAt,
+            currentTurn: battle.currentTurn, turnCount: battle.turnCount,
             myTeam: isPlayer1 ? battle.player1Team : battle.player2Team,
             opponentTeam: isPlayer1 ? battle.player2Team : battle.player1Team,
             battleLog: (battle.battleLog || []).slice(-20)
         };
         if (battle.status === 'active') {
-            const timeSince = (Date.now() - new Date(battle.lastMoveAt).getTime()) / 1000;
-            response.timeLeft = Math.max(0, 30 - Math.floor(timeSince));
+            const elapsed = (Date.now() - new Date(battle.lastMoveAt).getTime()) / 1000;
+            response.timeLeft = Math.max(0, 30 - Math.floor(elapsed));
         }
         return res.json(response);
     } catch (e) { return res.status(200).json({ success: false, hasBattle: false, message: e.message }); }
@@ -3747,16 +3738,18 @@ app.post('/api/arena/accept-match', authMiddleware, async (req, res) => {
             const p1 = await User.findById(battle.player1Id).select('username firstName level');
             const p2 = await User.findById(battle.player2Id).select('username firstName level');
             arenaSocketManager.send(battle.player1Id, 'battle_start', {
-                battleId: battle._id, status: 'active', isPlayer1: true, currentTurn: battle.currentTurn,
+                battleId: battle._id, isPlayer1: true, currentTurn: battle.currentTurn,
+                player1Team: battle.player1Team, player2Team: battle.player2Team,
                 myTeam: battle.player1Team, opponentTeam: battle.player2Team,
                 opponent: { name: p2?.username || p2?.firstName, level: p2?.level },
-                prizePool: battle.prizePool, entryFee: battle.entryFee, battleLog: battle.battleLog, timeLeft: 30
+                prizePool: battle.prizePool, timeLeft: 30
             });
             arenaSocketManager.send(battle.player2Id, 'battle_start', {
-                battleId: battle._id, status: 'active', isPlayer1: false, currentTurn: battle.currentTurn,
+                battleId: battle._id, isPlayer1: false, currentTurn: battle.currentTurn,
+                player1Team: battle.player1Team, player2Team: battle.player2Team,
                 myTeam: battle.player2Team, opponentTeam: battle.player1Team,
                 opponent: { name: p1?.username || p1?.firstName, level: p1?.level },
-                prizePool: battle.prizePool, entryFee: battle.entryFee, battleLog: battle.battleLog, timeLeft: 30
+                prizePool: battle.prizePool, timeLeft: 30
             });
         } else {
             arenaSocketManager.send(result.battle.player1Id, 'confirmation_update', { player1Confirmed: result.battle.player1Confirmed, player2Confirmed: result.battle.player2Confirmed });
@@ -3772,7 +3765,7 @@ app.post('/api/arena/reject-match', authMiddleware, async (req, res) => {
         const battleBefore = await ArenaBattle.findById(battleId);
         const result = await arenaManager.rejectMatch(battleId, req.user._id);
         if (!result.success) return res.status(400).json(result);
-        if (battleBefore && arenaSocketManager) {
+        if (battleBefore) {
             const rejecterId = req.user._id.toString();
             const otherId = battleBefore.player1Id.toString() === rejecterId ? battleBefore.player2Id : battleBefore.player1Id;
             if (otherId) arenaSocketManager.send(otherId, 'match_rejected', { battleId, message: 'Соперник отклонил бой. Ставка возвращена.' });
@@ -3796,7 +3789,7 @@ app.post('/api/arena/move', authMiddleware, async (req, res) => {
                 arenaSocketManager.send(isP1 ? battle.player2Id : battle.player1Id, 'move_update', {
                     battleId: battle._id, lastMove: result.lastMove, currentTurn: result.currentTurn,
                     turnCount: result.turnCount, player1Team: battle.player1Team, player2Team: battle.player2Team,
-                    skillResult: result.skillResult || null
+                    skillResult: result.skillResult || null, timeLeft: result.timeLeft || 30
                 });
             }
         }
@@ -3822,15 +3815,13 @@ app.get('/api/arena/leaderboard', authMiddleware, async (req, res) => {
         const myStats = await arenaManager.getUserStats(req.user._id);
         const myRank = await ArenaStats.countDocuments({ rating: { $gt: myStats?.rating || 1000 } }) + 1;
         const leagues = ['bronze', 'silver', 'gold', 'platinum', 'diamond'];
-        const currentIdx = leagues.indexOf(myStats?.league || 'bronze');
-        const nextLeague = currentIdx < leagues.length - 1 ? leagues[currentIdx + 1] : null;
-        const nextRatingRequired = nextLeague ? (ArenaModule.LEAGUE_CONFIG?.[nextLeague]?.minRating || null) : null;
+        const nextLeague = leagues[leagues.indexOf(myStats?.league || 'bronze') + 1] || null;
         res.json({
             success: true,
             leaders: leaders.map(l => ({ ...l, league: l.league || 'bronze' })),
             myRank,
             myStats: { rating: myStats?.rating || 1000, league: myStats?.league || 'bronze', wins: myStats?.wins || 0, losses: myStats?.losses || 0, streak: myStats?.streak || 0 },
-            nextLeague, nextRatingRequired
+            nextLeague
         });
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
@@ -3841,20 +3832,18 @@ app.get('/api/arena/history', authMiddleware, async (req, res) => {
         const battles = await ArenaBattle.find({ $or: [{ player1Id: userId }, { player2Id: userId }], status: 'finished' })
             .sort({ createdAt: -1 }).limit(50)
             .populate('player1Id', 'username firstName').populate('player2Id', 'username firstName').lean();
-        const history = battles.map(battle => {
-            const isPlayer1 = battle.player1Id._id.toString() === userId.toString();
-            const opponent = isPlayer1 ? battle.player2Id : battle.player1Id;
-            const isWin = battle.winnerId && battle.winnerId.toString() === userId.toString();
-            return { id: battle._id, opponent: opponent?.username || opponent?.firstName || 'Unknown', isWin, league: battle.league, prizePool: battle.prizePool, createdAt: battle.createdAt };
+        const history = battles.map(b => {
+            const isP1 = b.player1Id._id.toString() === userId.toString();
+            const opp = isP1 ? b.player2Id : b.player1Id;
+            return { id: b._id, opponent: opp?.username || opp?.firstName || 'Unknown', isWin: b.winnerId?.toString() === userId.toString(), league: b.league, prizePool: b.prizePool, createdAt: b.createdAt };
         });
         res.json({ success: true, history });
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-
-// ============================================================
-// ЗАПУСК С WEBSOCKET
-// ============================================================
+// ============================================
+// ЗАПУСК
+// ============================================
 mongoose.connection.once('open', async () => {
     await initCreatures();
     await getGameConfig();
@@ -3863,17 +3852,21 @@ mongoose.connection.once('open', async () => {
     arenaManager = new ArenaModule.ArenaBattleManager(
         ArenaBattle, User, ArenaStats, getCreature, sendNotificationToUser, arenaSocketManager
     );
-
-    setInterval(async () => {
-        if (arenaManager) await arenaManager.expireOldBattles();
-    }, 10000);
+    setInterval(async () => { if (arenaManager) await arenaManager.expireOldBattles(); }, 10000);
 
     console.log('✅ Сервер готов');
-    console.log('⚔️ Арена активна (WebSocket)');
+    console.log('👥 Telegram Админы: ' + (ADMIN_IDS.join(', ') || 'не заданы'));
+    console.log('🔐 Web Админ: ' + ADMIN_LOGIN);
+    console.log('💰 Мин. сумма транзакции: ' + MIN_TRANSACTION_AMOUNT + ' MMO');
+    console.log('📋 Макс. активных заявок: ' + MAX_ACTIVE_REQUESTS);
+    console.log('📺 Реклама: макс. ' + MAX_ADS_AVAILABLE + ', восстановление +1/час');
+    console.log('🎁 Реферальный бонус: ' + REFERRAL_BONUS_PERCENT + '%');
+    console.log('🏪 Маркет: мин. цена ' + MIN_MARKETPLACE_PRICE + ' MMO');
+    console.log('⚔️ Арена: активна (WebSocket)');
 });
 
 const PORT = process.env.PORT || 3000;
-arenaServer.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log(`🚀 Сервер запущен на порту ${PORT}`);
     console.log(`📌 Режим: ${process.env.NODE_ENV || 'production'}`);
     console.log(`🌐 WebSocket: /socket.io/`);

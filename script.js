@@ -5,7 +5,7 @@
 // ============================================================
 // CONFIG
 // ============================================================
-const API_URL = 'https://serv-production-765e.up.railway.app';
+const API_URL = 'https://serv-production-dbf3.up.railway.app';
 
 // ============================================================
 // ЗАПРЕТ КОНТЕКСТНОГО МЕНЮ И ВЫДЕЛЕНИЯ
@@ -2635,6 +2635,16 @@ function switchTab(tab) {
     }
     if (tab === 'shop') renderMarketplaceBuy();
     if (tab === 'friends') renderFriendsList();
+    if (tab === 'arena') {
+        if (!window.arenaClient) {
+            window.arenaClient = new ArenaClient();
+        }
+        if (!window.arenaClient.isConnected()) {
+            window.arenaClient.connectSocket(state.token, API_URL);
+        }
+        setupArenaCallbacks();
+        switchArenaTab('fight');
+    }
 }
 
 // ============================================================
@@ -2742,456 +2752,257 @@ window.checkActiveRequests = checkActiveRequests;
 window.loadUserStats = loadUserStats;
 window.refreshUserProfile = refreshUserProfile;
 // ============================================================
-// ARENA — добавить в конец script.js перед window.exports
+// ARENA — весь клиентский код арены
 // ============================================================
 
-// ============================================================
-// ARENA GLOBALS
-// ============================================================
-let arenaClient = null;
+const RARITY_MULTIPLIERS = { common: 1, uncommon: 1.5, rare: 2.5, epic: 4, legendary: 7, mythic: 12 };
 let findingMatch = false;
 
-const RARITY_MULTIPLIERS = {
-    common: 1, uncommon: 1.5, rare: 2.5, epic: 4, legendary: 7, mythic: 12
-};
+// ── Инициализация колбэков ArenaClient ─────────────────────
+function setupArenaCallbacks() {
+    const ac = window.arenaClient;
+    if (!ac || ac._callbacksSet) return;
+    ac._callbacksSet = true;
 
-// ============================================================
-// ARENA CLIENT (WebSocket менеджер)
-// ============================================================
-class ArenaClientManager {
-    constructor() {
-        this.socket = null;
-        this.callbacks = {};
-        this.state = {
-            currentBattleId: null,
-            currentBattleIsPlayer1: false,
-            battleTimer: null,
-            _teamResetPending: false
-        };
-        this._selectedTeam = [];
-    }
-
-    getSelectedTeam() { return [...this._selectedTeam]; }
-    setSelectedTeam(team) { this._selectedTeam = [...team]; }
-    getBattleId() { return this.state.currentBattleId; }
-    isBattleActive() { return !!this.state.currentBattleId; }
-    getCurrentUserId() { return state.user?._id || state.user?.id; }
-
-    on(event, cb) { this.callbacks[event] = cb; }
-
-    connect() {
-        if (this.socket?.connected) return;
-        const socketUrl = API_URL;
-        this.socket = io(socketUrl, {
-            auth: { token: state.token },
-            transports: ['websocket', 'polling'],
-            reconnection: true,
-            reconnectionDelay: 1000,
-            reconnectionAttempts: 10,
-            path: '/socket.io/'
-        });
-
-        this.socket.on('connect', () => {
-            console.log('✅ Arena WebSocket connected');
-        });
-
-        this.socket.on('connected', () => {
-            console.log('✅ Arena server ack');
-        });
-
-        this.socket.on('match_found', (data) => {
-            console.log('🎮 match_found:', data);
-            this.state.currentBattleId = data.battleId;
-            this.state.currentBattleIsPlayer1 = data.isPlayer1;
-            if (this.callbacks.onMatchFound) this.callbacks.onMatchFound(data);
-        });
-
-        this.socket.on('confirmation_update', (data) => {
-            if (this.callbacks.onConfirmationUpdate) this.callbacks.onConfirmationUpdate(data);
-        });
-
-        this.socket.on('battle_start', (data) => {
-            console.log('⚔️ battle_start:', data);
-            this.state.currentBattleId = data.battleId;
-            this.state.currentBattleIsPlayer1 = data.isPlayer1;
-            if (this.callbacks.onBattleStart) this.callbacks.onBattleStart(data);
-        });
-
-        this.socket.on('move_update', (data) => {
-            if (this.callbacks.onBattleUpdate) {
-                this.callbacks.onBattleUpdate(data, this.state.currentBattleIsPlayer1);
-            }
-            if (data.timeLeft !== undefined) this.startBattleTimer(data.timeLeft);
-        });
-
-        this.socket.on('battle_end', (data) => {
-            const isWin = data.winnerId && data.winnerId === String(this.getCurrentUserId());
-            this.state.currentBattleId = null;
-            this.stopBattleTimer();
-            if (this.callbacks.onBattleEnd) this.callbacks.onBattleEnd(isWin, data.prizePool);
-        });
-
-        this.socket.on('match_rejected', (data) => {
-            findingMatch = false;
-            this.state.currentBattleId = null;
-            showToast(data.message || 'Соперник отклонил бой', '❌');
-            renderArenaFightTab();
-        });
-
-        this.socket.on('disconnect', (reason) => {
-            console.log('🔌 Arena WS disconnected:', reason);
-        });
-    }
-
-    startBattleTimer(seconds) {
-        this.stopBattleTimer();
-        let timeLeft = seconds;
-        const timerEl = document.getElementById('arenaBattleTimer');
-        if (timerEl) timerEl.textContent = `⏱ ${timeLeft}`;
-        this.state.battleTimer = setInterval(() => {
-            timeLeft--;
-            const el = document.getElementById('arenaBattleTimer');
-            if (el) el.textContent = `⏱ ${timeLeft}`;
-            if (timeLeft <= 0) {
-                this.stopBattleTimer();
-                renderArenaFightTab();
-            }
-        }, 1000);
-    }
-
-    stopBattleTimer() {
-        if (this.state.battleTimer) {
-            clearInterval(this.state.battleTimer);
-            this.state.battleTimer = null;
-        }
-    }
-
-    loadTeamFromStorage() {
-        // no-op, team loaded from server
-    }
-}
-
-// ============================================================
-// INIT ARENA CLIENT
-// ============================================================
-function initArenaClient() {
-    if (arenaClient) return;
-    arenaClient = new ArenaClientManager();
-    arenaClient.connect();
-
-    arenaClient.on('onMatchFound', (data) => {
+    ac.on('onMatchFound', (data) => {
         findingMatch = false;
         showMatchFoundModal(data);
     });
 
-    arenaClient.on('onBattleStart', (data) => {
+    ac.on('onBattleStartUI', (data) => {
         const modal = document.getElementById('matchFoundModal');
         if (modal) modal.remove();
+        // обновляем state клиента
+        ac.state.currentBattleId = data.battleId;
+        ac.state.currentBattleIsPlayer1 = data.isPlayer1;
+        ac.state.battleActive = true;
         renderBattleInterface(data);
+        if (data.timeLeft !== undefined) ac.startBattleTimer(data.timeLeft);
     });
 
-    arenaClient.on('onBattleUpdate', (data, isPlayer1) => {
-        if (data.skillResult) {
-            showSkillBanner(data.skillResult.skillName, data.skillResult.description);
-        }
+    ac.on('onBattleUpdate', (data, isPlayer1) => {
+        if (data.skillResult) showSkillBanner(data.skillResult.skillName, data.skillResult.description);
         updateBattleUIFromClient(data, isPlayer1);
-        if (data.lastMove && data.lastMove.targetIndex !== undefined) {
+        if (data.lastMove?.targetIndex !== undefined) {
             showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit, true);
         }
-        if (data.timeLeft !== undefined) arenaClient.startBattleTimer(data.timeLeft);
     });
 
-    arenaClient.on('onBattleEnd', (isWin, prizePool) => {
-        arenaClient.stopBattleTimer();
+    ac.on('onTimerTick', (timeLeft) => {
+        const el = document.getElementById('arenaBattleTimer');
+        if (el) el.textContent = `⏱ ${timeLeft}`;
+        if (timeLeft <= 0) renderArenaFightTab();
+    });
+
+    ac.on('onBattleEnd', (isWin, prizePool) => {
         showNativeBattleResult(isWin, prizePool || 0);
+        renderArenaFightTab();
+    });
+
+    ac.on('onMatchRejected', () => {
+        findingMatch = false;
+        showToast('Соперник отклонил бой. Ставка возвращена.', '❌');
         renderArenaFightTab();
     });
 }
 
-// ============================================================
-// ARENA TAB SWITCHING
-// ============================================================
+// ── Переключение вкладок арены ──────────────────────────────
 function switchArenaTab(tab) {
     document.querySelectorAll('.arena-subtab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.arena-subtab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.arena-tab-btn').forEach(b => b.classList.remove('active'));
     const tabEl = document.getElementById(`arena-${tab}-tab`);
-    const btnEl = document.getElementById(`arena-tab-${tab}`);
+    const btnEl = document.querySelector(`.arena-tab-btn[data-arena-tab="${tab}"]`);
     if (tabEl) tabEl.classList.add('active');
     if (btnEl) btnEl.classList.add('active');
-
     if (tab === 'team') renderArenaTeamInventory();
     if (tab === 'fight') renderArenaFightTab();
     if (tab === 'ranks') renderArenaLeaderboard();
     if (tab === 'history') renderArenaHistory();
 }
 
-// ============================================================
-// TEAM INVENTORY
-// ============================================================
+// ── Команда ─────────────────────────────────────────────────
 async function renderArenaTeamInventory() {
     const container = document.getElementById('arenaTeamInventory');
     if (!container) return;
-
-    const selectedTeam = arenaClient?.getSelectedTeam() || [];
-    if (selectedTeam.length === 0 && !arenaClient?.state._teamResetPending) {
+    const ac = window.arenaClient;
+    const selectedTeam = ac?.getSelectedTeam() || [];
+    if (selectedTeam.length === 0 && !ac?.state?._teamResetPending) {
         const teamRes = await apiRequest('GET', '/api/arena/team');
-        if (teamRes?.success && teamRes.teamIds) {
-            arenaClient.setSelectedTeam(teamRes.teamIds);
-        }
+        if (teamRes?.success && teamRes.teamIds) ac?.setSelectedTeam(teamRes.teamIds);
     }
-    if (arenaClient?.state._teamResetPending) {
-        arenaClient.state._teamResetPending = false;
-    }
-
-    const currentSelected = arenaClient?.getSelectedTeam() || [];
+    if (ac?.state) ac.state._teamResetPending = false;
+    const currentSelected = ac?.getSelectedTeam() || [];
     const level = state.user?.level || 1;
-
     container.innerHTML = state.inventory.map(item => {
         const c = getCreature(item.creatureId);
         if (!c) return '';
         const isSelected = currentSelected.includes(c.id);
         const isDisabled = !isSelected && currentSelected.length >= 3;
         const skill = window.ARENA_SKILLS_MAP?.[c.id] || null;
-        const multiplier = RARITY_MULTIPLIERS[c.rarity] || 1;
-        const hp  = Math.ceil((50 + (c.incomeBase * 2) + (level * 5)) * multiplier);
-        const atk = Math.ceil((10 + (c.incomeBase / 2) + (level * 2)) * multiplier);
-        const def = Math.ceil((5  + (c.incomeBase / 3) + (level * 1)) * multiplier);
-        const selectedNum = isSelected ? currentSelected.indexOf(c.id) + 1 : 0;
-
-        return `
-        <div class="arena-list-card ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}"
-             onclick="toggleArenaCreature('${c.id}')">
+        const mult = RARITY_MULTIPLIERS[c.rarity] || 1;
+        const hp  = Math.ceil((50 + c.incomeBase * 2 + level * 5) * mult);
+        const atk = Math.ceil((10 + c.incomeBase / 2 + level * 2) * mult);
+        const def = Math.ceil((5  + c.incomeBase / 3 + level * 1) * mult);
+        const num = isSelected ? currentSelected.indexOf(c.id) + 1 : 0;
+        return `<div class="arena-list-card ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}" onclick="toggleArenaCreature('${c.id}')">
             <div class="arena-list-left">
                 <div class="arena-list-icon">${getIconHtml(c)}</div>
-                ${isSelected ? `<div class="arena-list-num">${selectedNum}</div>` : ''}
+                ${isSelected ? `<div class="arena-list-num">${num}</div>` : ''}
             </div>
             <div class="arena-list-info">
-                <div class="arena-list-name">${escapeHtml(c.name)}
-                    <span class="arena-list-rarity rarity-${c.rarity}">${c.rarity}</span>
-                </div>
-                <div class="arena-list-stats">
-                    <span>❤️ ${hp}</span>
-                    <span>⚔️ ${atk}</span>
-                    <span>🛡️ ${def}</span>
-                </div>
-                ${skill ? `
-                <div class="arena-list-skill">
-                    <span class="arena-list-skill-name">${skill.name}</span>
-                    <span class="arena-list-skill-chance">${Math.round(skill.chance * 100)}%</span>
-                    <div class="arena-list-skill-desc">${skill.description}</div>
-                </div>` : ''}
+                <div class="arena-list-name">${escapeHtml(c.name)} <span class="arena-list-rarity rarity-${c.rarity}">${c.rarity}</span></div>
+                <div class="arena-list-stats"><span>❤️ ${hp}</span><span>⚔️ ${atk}</span><span>🛡️ ${def}</span></div>
+                ${skill ? `<div class="arena-list-skill"><span class="arena-list-skill-name">${skill.name}</span><span class="arena-list-skill-chance">${Math.round(skill.chance * 100)}%</span><div class="arena-list-skill-desc">${skill.description}</div></div>` : ''}
             </div>
-            <div class="arena-list-check">
-                ${isSelected ? '<i class="fa-solid fa-circle-check"></i>' : '<i class="fa-regular fa-circle"></i>'}
-            </div>
+            <div class="arena-list-check">${isSelected ? '<i class="fa-solid fa-circle-check"></i>' : '<i class="fa-regular fa-circle"></i>'}</div>
         </div>`;
     }).join('');
 }
 
 function toggleArenaCreature(creatureId) {
-    const team = arenaClient?.getSelectedTeam() || [];
-    const index = team.indexOf(creatureId);
-    if (index !== -1) team.splice(index, 1);
+    const ac = window.arenaClient;
+    const team = ac?.getSelectedTeam() || [];
+    const idx = team.indexOf(creatureId);
+    if (idx !== -1) team.splice(idx, 1);
     else if (team.length < 3) team.push(creatureId);
     else { showToast('Нельзя выбрать больше 3 питомцев', '⚠️'); return; }
-    arenaClient.setSelectedTeam(team);
+    ac?.setSelectedTeam(team);
     renderArenaTeamInventory();
 }
 
 async function saveArenaTeam() {
-    const team = arenaClient?.getSelectedTeam() || [];
+    const team = window.arenaClient?.getSelectedTeam() || [];
     if (team.length !== 3) { showToast('Нужно выбрать ровно 3 питомца', '⚠️'); return; }
     const res = await apiRequest('POST', '/api/arena/team', { team });
     if (res?.success) showToast('Команда сохранена!', '✅');
-    else showToast(res?.message || 'Ошибка сохранения', '❌');
+    else showToast(res?.message || 'Ошибка', '❌');
 }
 
 function resetArenaTeam() {
-    if (arenaClient) {
-        arenaClient.setSelectedTeam([]);
-        arenaClient.state._teamResetPending = true;
+    const ac = window.arenaClient;
+    if (ac) {
+        ac.setSelectedTeam([]);
+        if (ac.state) ac.state._teamResetPending = true;
         renderArenaTeamInventory();
         showToast('Команда сброшена', '🗑️');
     }
 }
 
-function renderSelectedTeam() {
-    // no-op — убрана, логика в renderArenaTeamInventory
-}
-
-// ============================================================
-// FIGHT TAB
-// ============================================================
+// ── Вкладка Бой ─────────────────────────────────────────────
 async function renderArenaFightTab() {
-    const container = document.getElementById('arenaBattleContainer');
     const statusEl = document.getElementById('arenaFightStatus');
+    const container = document.getElementById('arenaBattleContainer');
+    const ac = window.arenaClient;
 
-    if (!arenaClient?.state.currentBattleId) {
-        // Проверяем есть ли бой на сервере
-        const battleStatus = await apiRequest('GET', '/api/arena/battle/status');
-        if (battleStatus?.hasBattle && battleStatus.status === 'active') {
-            arenaClient.state.currentBattleId = battleStatus.battleId;
-            arenaClient.state.currentBattleIsPlayer1 = battleStatus.isPlayer1;
-            renderBattleInterface(battleStatus);
-            return;
-        } else if (battleStatus?.hasBattle && battleStatus.status === 'pending_confirmation') {
-            if (!document.getElementById('matchFoundModal')) {
-                showMatchFoundModal({
-                    battleId: battleStatus.battleId,
-                    isPlayer1: battleStatus.isPlayer1,
-                    prizePool: battleStatus.prizePool,
-                    entryFee: battleStatus.entryFee,
-                    myTeam: battleStatus.myTeam,
-                    opponentTeam: battleStatus.opponentTeam
-                });
-            }
-            return;
-        }
-
-        // Нет боя — показываем поиск
-        if (statusEl) statusEl.style.display = 'block';
-        if (container) container.innerHTML = '';
-
-        // Подгружаем статистику лиги
-        try {
-            const statsRes = await apiRequest('GET', '/api/arena/leaderboard');
-            if (statsRes?.success && statsRes.myStats) {
-                const leagueEl = document.getElementById('arenaLeague');
-                const feeEl = document.getElementById('arenaEntryFee');
-                const prizeEl = document.getElementById('arenaPrizePool');
-                const LEAGUE_FEES = { bronze: 500, silver: 1000, gold: 2000, platinum: 5000, diamond: 10000 };
-                const league = statsRes.myStats.league || 'bronze';
-                const fee = LEAGUE_FEES[league] || 500;
-                if (leagueEl) leagueEl.textContent = league.charAt(0).toUpperCase() + league.slice(1);
-                if (feeEl) feeEl.textContent = fee;
-                if (prizeEl) prizeEl.textContent = Math.floor(fee * 1.6);
-            }
-        } catch(e) {}
-
-        findingMatch = false;
-        const findBtn = document.getElementById('arenaFindBtn');
-        if (findBtn) {
-            findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти соперника';
-            findBtn.disabled = false;
-        }
+    if (ac?.state?.battleActive && ac?.state?.currentBattleId) {
+        if (statusEl) statusEl.style.display = 'none';
         return;
     }
 
-    // Есть активный бой
-    if (statusEl) statusEl.style.display = 'none';
+    const battleStatus = await apiRequest('GET', '/api/arena/battle/status');
+    if (battleStatus?.hasBattle && battleStatus.status === 'active') {
+        if (ac) {
+            ac.state.currentBattleId = battleStatus.battleId;
+            ac.state.currentBattleIsPlayer1 = battleStatus.isPlayer1;
+            ac.state.battleActive = true;
+        }
+        renderBattleInterface(battleStatus);
+        if (battleStatus.timeLeft !== undefined && ac) ac.startBattleTimer(battleStatus.timeLeft);
+        return;
+    }
+    if (battleStatus?.hasBattle && battleStatus.status === 'pending_confirmation') {
+        if (!document.getElementById('matchFoundModal')) showMatchFoundModal(battleStatus);
+        return;
+    }
+
+    if (statusEl) statusEl.style.display = 'block';
+    if (container) container.innerHTML = '';
+    findingMatch = false;
+    const btn = document.getElementById('arenaFindBtn');
+    if (btn) { btn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти соперника'; btn.disabled = false; }
+
+    try {
+        const statsRes = await apiRequest('GET', '/api/arena/leaderboard');
+        if (statsRes?.success && statsRes.myStats) {
+            const FEES = { bronze: 200, silver: 500, gold: 1000, platinum: 2000, diamond: 5000 };
+            const league = statsRes.myStats.league || 'bronze';
+            const fee = FEES[league] || 200;
+            const leagueEl = document.getElementById('arenaLeague');
+            const feeEl = document.getElementById('arenaEntryFee');
+            const prizeEl = document.getElementById('arenaPrizePool');
+            if (leagueEl) leagueEl.textContent = league.charAt(0).toUpperCase() + league.slice(1);
+            if (feeEl) feeEl.textContent = fee;
+            if (prizeEl) prizeEl.textContent = Math.floor(fee * 1.75);
+        }
+    } catch(e) {}
 }
 
-// ============================================================
-// FIND MATCH
-// ============================================================
 async function findMatch() {
     if (findingMatch) { showToast('Поиск уже запущен...', '⏳'); return; }
-
-    const team = arenaClient?.getSelectedTeam() || [];
-    if (team.length !== 3) {
-        showToast('Сначала выберите и сохраните команду из 3 питомцев', '⚠️');
-        switchArenaTab('team');
-        return;
-    }
-
+    const team = window.arenaClient?.getSelectedTeam() || [];
+    if (team.length !== 3) { showToast('Выберите и сохраните команду из 3 питомцев', '⚠️'); switchArenaTab('team'); return; }
     findingMatch = true;
     const btn = document.getElementById('arenaFindBtn');
-    if (btn) {
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Поиск...';
-        btn.disabled = true;
-    }
-
+    if (btn) { btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Поиск...'; btn.disabled = true; }
     const res = await apiRequest('POST', '/api/arena/find-match');
     if (!res?.success) {
         findingMatch = false;
         showToast(res?.message || 'Ошибка поиска', '❌');
         if (btn) { btn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти соперника'; btn.disabled = false; }
-        return;
-    }
-
-    if (res.isNew) {
+    } else {
         showToast('Поиск соперника...', '🔍');
     }
 }
 
-async function cancelArenaSearch() {
-    findingMatch = false;
-    await apiRequest('POST', '/api/arena/cancel-search');
-    renderArenaFightTab();
-    showToast('Поиск отменён', '❌');
-}
-
-// ============================================================
-// MATCH FOUND MODAL
-// ============================================================
+// ── Модалка матча ────────────────────────────────────────────
 function showMatchFoundModal(data) {
     const existing = document.getElementById('matchFoundModal');
     if (existing) existing.remove();
-
     const modal = document.createElement('div');
     modal.id = 'matchFoundModal';
     modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px;';
-    modal.innerHTML = `
-        <div style="background:#0d1120;border:1px solid #a855f7;border-radius:20px;padding:24px;max-width:340px;width:100%;text-align:center;">
-            <div style="font-size:32px;margin-bottom:12px">⚔️</div>
-            <div style="font-family:'Orbitron',monospace;font-size:18px;font-weight:700;color:#a855f7;margin-bottom:8px">СОПЕРНИК НАЙДЕН!</div>
-            <div style="font-size:13px;color:#94a3b8;margin-bottom:20px">Приз: <span style="color:#f59e0b;font-weight:700">${data.prizePool || '?'} MMO</span></div>
-            <div style="display:flex;gap:12px;">
-                <button onclick="acceptBattleFromModal('${data.battleId}')" 
-                    style="flex:1;padding:14px;background:linear-gradient(135deg,#7c3aed,#a855f7);border:none;border-radius:12px;color:#fff;font-weight:700;font-size:14px;cursor:pointer;">
-                    ✅ ПРИНЯТЬ
-                </button>
-                <button onclick="rejectBattleFromModal('${data.battleId}')"
-                    style="flex:1;padding:14px;background:#1a2540;border:none;border-radius:12px;color:#94a3b8;font-weight:700;font-size:14px;cursor:pointer;">
-                    ❌ ОТКЛОНИТЬ
-                </button>
-            </div>
+    modal.innerHTML = `<div style="background:#0d1120;border:1px solid #a855f7;border-radius:20px;padding:24px;max-width:340px;width:100%;text-align:center;">
+        <div style="font-size:32px;margin-bottom:12px">⚔️</div>
+        <div style="font-family:'Orbitron',monospace;font-size:18px;font-weight:700;color:#a855f7;margin-bottom:8px">СОПЕРНИК НАЙДЕН!</div>
+        <div style="font-size:13px;color:#94a3b8;margin-bottom:20px">Приз: <span style="color:#f59e0b;font-weight:700">${data.prizePool || '?'} MMO</span></div>
+        <div style="display:flex;gap:12px;">
+            <button onclick="acceptBattleFromModal('${data.battleId}')" style="flex:1;padding:14px;background:linear-gradient(135deg,#7c3aed,#a855f7);border:none;border-radius:12px;color:#fff;font-weight:700;font-size:14px;cursor:pointer;">✅ ПРИНЯТЬ</button>
+            <button onclick="rejectBattleFromModal('${data.battleId}')" style="flex:1;padding:14px;background:#1a2540;border:none;border-radius:12px;color:#94a3b8;font-weight:700;font-size:14px;cursor:pointer;">❌ ОТКЛОНИТЬ</button>
         </div>
-    `;
+    </div>`;
     document.body.appendChild(modal);
-
-    // Автоотклонение через 30 секунд
-    setTimeout(() => {
-        const m = document.getElementById('matchFoundModal');
-        if (m) { m.remove(); renderArenaFightTab(); }
-    }, 30000);
+    setTimeout(() => { const m = document.getElementById('matchFoundModal'); if (m) { m.remove(); renderArenaFightTab(); } }, 30000);
 }
 
 async function acceptBattleFromModal(battleId) {
     const modal = document.getElementById('matchFoundModal');
     if (modal) modal.remove();
-
     const res = await apiRequest('POST', '/api/arena/accept-match', { battleId });
-    if (!res?.success) {
-        showToast(res?.message || 'Ошибка подтверждения', '❌');
-        renderArenaFightTab();
-    }
+    if (!res?.success) { showToast(res?.message || 'Ошибка подтверждения', '❌'); renderArenaFightTab(); }
 }
 
 async function rejectBattleFromModal(battleId) {
     const modal = document.getElementById('matchFoundModal');
     if (modal) modal.remove();
-
     await apiRequest('POST', '/api/arena/reject-match', { battleId });
-    arenaClient.state.currentBattleId = null;
+    const ac = window.arenaClient;
+    if (ac) { ac.state.battleActive = false; ac.state.currentBattleId = null; }
     findingMatch = false;
     renderArenaFightTab();
     showToast('Бой отклонён', '❌');
 }
 
-// ============================================================
-// BATTLE INTERFACE
-// ============================================================
+// ── Интерфейс боя ────────────────────────────────────────────
 function renderBattleInterface(battleData) {
     const statusEl = document.getElementById('arenaFightStatus');
     if (statusEl) statusEl.style.display = 'none';
-
     const container = document.getElementById('arenaBattleContainer');
     if (!container) return;
 
-    const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
-    const actualMyTeam = isPlayer1 ? (battleData.player1Team || battleData.myTeam) : (battleData.player2Team || battleData.myTeam);
-    const actualEnemyTeam = isPlayer1 ? (battleData.player2Team || battleData.opponentTeam) : (battleData.player1Team || battleData.opponentTeam);
+    const ac = window.arenaClient;
+    const isPlayer1 = ac?.state?.currentBattleIsPlayer1 ?? battleData.isPlayer1;
+    const myTeam    = isPlayer1 ? (battleData.player1Team || battleData.myTeam)       : (battleData.player2Team || battleData.myTeam);
+    const enemyTeam = isPlayer1 ? (battleData.player2Team || battleData.opponentTeam) : (battleData.player1Team || battleData.opponentTeam);
     const currentTurn = battleData.currentTurn;
     const isMyTurn = (currentTurn === 'player1' && isPlayer1) || (currentTurn === 'player2' && !isPlayer1);
 
@@ -3200,106 +3011,88 @@ function renderBattleInterface(battleData) {
             <div class="arena-team-side">
                 <div class="arena-side-title">⚔️ ВАША КОМАНДА</div>
                 <div class="arena-creatures-row" id="arenaMyCreatures">
-                    ${(actualMyTeam || []).map((creature, idx) => `
-                        <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-creature-index="${idx}">
-                            <div class="creature-icon">${getIconHtml(creature)}</div>
-                            <div class="creature-name">${escapeHtml(creature.name)}</div>
-                            <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
-                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
-                            ${creature.skill ? `<div class="creature-skill-badge" title="${creature.skill.description}">${creature.skill.name}</div>` : ''}
-                        </div>
-                    `).join('')}
+                    ${(myTeam || []).map((c, i) => `
+                    <div class="arena-battle-creature ${!c.isAlive ? 'dead' : ''}" data-creature-index="${i}">
+                        <div class="creature-icon">${getIconHtml(c)}</div>
+                        <div class="creature-name">${escapeHtml(c.name)}</div>
+                        <div class="creature-hp">❤️ ${c.currentHp}/${c.maxHp}</div>
+                        <div class="arena-hp-bar"><div class="arena-hp-fill" style="width:${Math.max(0,(c.currentHp/c.maxHp)*100)}%"></div></div>
+                        ${c.skill ? `<div class="creature-skill-badge">${c.skill.name}</div>` : ''}
+                    </div>`).join('')}
                 </div>
             </div>
             <div class="arena-battle-vs">VS</div>
             <div class="arena-team-side">
                 <div class="arena-side-title">🛡️ КОМАНДА СОПЕРНИКА</div>
                 <div class="arena-creatures-row" id="arenaEnemyCreatures">
-                    ${(actualEnemyTeam || []).map((creature, idx) => `
-                        <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-enemy-index="${idx}">
-                            <div class="creature-icon">${getIconHtml(creature)}</div>
-                            <div class="creature-name">${escapeHtml(creature.name)}</div>
-                            <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
-                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
-                            ${creature.skill ? `<div class="creature-skill-badge" title="${creature.skill.description}">${creature.skill.name}</div>` : ''}
-                            ${isMyTurn && creature.isAlive ? `<button class="arena-attack-btn" data-enemy-idx="${idx}" onclick="makeAttack(${idx})">⚔️ Атаковать</button>` : ''}
-                        </div>
-                    `).join('')}
+                    ${(enemyTeam || []).map((c, i) => `
+                    <div class="arena-battle-creature ${!c.isAlive ? 'dead' : ''}" data-enemy-index="${i}">
+                        <div class="creature-icon">${getIconHtml(c)}</div>
+                        <div class="creature-name">${escapeHtml(c.name)}</div>
+                        <div class="creature-hp">❤️ ${c.currentHp}/${c.maxHp}</div>
+                        <div class="arena-hp-bar"><div class="arena-hp-fill" style="width:${Math.max(0,(c.currentHp/c.maxHp)*100)}%"></div></div>
+                        ${c.skill ? `<div class="creature-skill-badge">${c.skill.name}</div>` : ''}
+                        ${isMyTurn && c.isAlive ? `<button class="arena-attack-btn" onclick="makeAttack(${i})">⚔️ Атаковать</button>` : ''}
+                    </div>`).join('')}
                 </div>
             </div>
             <div class="arena-battle-log" id="arenaBattleLog">
-                ${battleData.battleLog && battleData.battleLog.length ?
-                    battleData.battleLog.slice(-10).map(log => `<div class="arena-log-entry ${log.isCrit ? 'crit' : ''}">Ход ${log.turn}: ${log.attackerName || 'Питомец'} → ${log.targetName || 'Враг'}: ${log.damage} урона ${log.isCrit ? '💥 КРИТ!' : ''}</div>`).join('') :
-                    '<div class="arena-log-entry">Бой начинается...</div>'}
+                ${(battleData.battleLog || []).slice(-10).map(l => `<div class="arena-log-entry ${l.isCrit ? 'crit' : ''}">Ход ${l.turn}: ${l.attackerName||'?'} → ${l.targetName||'?'}: ${l.damage} урона${l.isCrit ? ' 💥' : ''}</div>`).join('') || '<div class="arena-log-entry">Бой начинается...</div>'}
             </div>
-            <div class="arena-battle-timer" id="arenaBattleTimer">⏱ ${battleData.timeLeft !== undefined ? battleData.timeLeft : 30}</div>
+            <div class="arena-battle-timer" id="arenaBattleTimer">⏱ ${battleData.timeLeft || 30}</div>
             <button class="arena-surrender-btn" onclick="surrenderBattle()"><i class="fa-solid fa-flag"></i> Сдаться</button>
-        </div>
-    `;
+        </div>`;
 }
 
-// ============================================================
-// UPDATE BATTLE UI
-// ============================================================
 function updateBattleUIFromClient(data, isPlayer1) {
-    const myTeam = isPlayer1 ? (data.player1Team) : (data.player2Team);
-    const enemyTeam = isPlayer1 ? (data.player2Team) : (data.player1Team);
-    const currentTurn = data.currentTurn;
-    const isMyTurn = (currentTurn === 'player1' && isPlayer1) || (currentTurn === 'player2' && !isPlayer1);
-
+    const myTeam    = isPlayer1 ? data.player1Team : data.player2Team;
+    const enemyTeam = isPlayer1 ? data.player2Team : data.player1Team;
+    const isMyTurn  = (data.currentTurn === 'player1' && isPlayer1) || (data.currentTurn === 'player2' && !isPlayer1);
     if (!myTeam || !enemyTeam) return;
 
-    // Обновляем HP своей команды
-    myTeam.forEach((creature, i) => {
-        const el = document.querySelector(`#arenaMyCreatures .arena-battle-creature[data-creature-index="${i}"]`);
+    myTeam.forEach((c, i) => {
+        const el = document.querySelector(`#arenaMyCreatures [data-creature-index="${i}"]`);
         if (!el) return;
         const hpEl = el.querySelector('.creature-hp');
         const barEl = el.querySelector('.arena-hp-fill');
-        if (hpEl) hpEl.textContent = `❤️ ${creature.currentHp}/${creature.maxHp}`;
-        if (barEl) barEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
-        if (!creature.isAlive) el.classList.add('dead');
+        if (hpEl) hpEl.textContent = `❤️ ${c.currentHp}/${c.maxHp}`;
+        if (barEl) barEl.style.width = `${Math.max(0,(c.currentHp/c.maxHp)*100)}%`;
+        if (!c.isAlive) el.classList.add('dead');
     });
 
-    // Обновляем HP врагов
-    enemyTeam.forEach((creature, i) => {
-        const el = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${i}"]`);
+    enemyTeam.forEach((c, i) => {
+        const el = document.querySelector(`#arenaEnemyCreatures [data-enemy-index="${i}"]`);
         if (!el) return;
         const hpEl = el.querySelector('.creature-hp');
         const barEl = el.querySelector('.arena-hp-fill');
-        if (hpEl) hpEl.textContent = `❤️ ${creature.currentHp}/${creature.maxHp}`;
-        if (barEl) barEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
-        if (!creature.isAlive) el.classList.add('dead');
-
-        // Обновляем кнопки атаки
+        if (hpEl) hpEl.textContent = `❤️ ${c.currentHp}/${c.maxHp}`;
+        if (barEl) barEl.style.width = `${Math.max(0,(c.currentHp/c.maxHp)*100)}%`;
+        if (!c.isAlive) el.classList.add('dead');
         const btn = el.querySelector('.arena-attack-btn');
-        if (isMyTurn && creature.isAlive && !btn) {
-            const newBtn = document.createElement('button');
-            newBtn.className = 'arena-attack-btn';
-            newBtn.dataset.enemyIdx = i;
-            newBtn.onclick = () => makeAttack(i);
-            newBtn.innerHTML = '⚔️ Атаковать';
-            el.appendChild(newBtn);
-        } else if (!isMyTurn && btn) {
+        if (isMyTurn && c.isAlive && !btn) {
+            const b = document.createElement('button');
+            b.className = 'arena-attack-btn';
+            b.onclick = () => makeAttack(i);
+            b.innerHTML = '⚔️ Атаковать';
+            el.appendChild(b);
+        } else if ((!isMyTurn || !c.isAlive) && btn) {
             btn.remove();
         }
     });
 
-    // Лог
     if (data.lastMove) {
         const logEl = document.getElementById('arenaBattleLog');
         if (logEl) {
             const entry = document.createElement('div');
             entry.className = `arena-log-entry ${data.lastMove.isCrit ? 'crit' : ''}`;
-            entry.textContent = `Атака: ${data.lastMove.damage} урона ${data.lastMove.isCrit ? '💥 КРИТ!' : ''}`;
+            entry.textContent = `Атака: ${data.lastMove.damage} урона${data.lastMove.isCrit ? ' 💥 КРИТ!' : ''}`;
             logEl.appendChild(entry);
             logEl.scrollTop = logEl.scrollHeight;
         }
     }
 }
 
-// ============================================================
-// MAKE ATTACK
-// ============================================================
+// ── Скилл баннер ─────────────────────────────────────────────
 function showSkillBanner(name, description) {
     const existing = document.getElementById('skillBanner');
     if (existing) existing.remove();
@@ -3311,251 +3104,167 @@ function showSkillBanner(name, description) {
     setTimeout(() => banner.remove(), 2500);
 }
 
+// ── Атака ─────────────────────────────────────────────────────
 async function makeAttack(targetIndex) {
-    const battleId = arenaClient?.getBattleId();
+    const ac = window.arenaClient;
+    const battleId = ac?.state?.currentBattleId;
     if (!battleId) return;
-
-    const attackBtn = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${targetIndex}"] .arena-attack-btn`);
-    if (attackBtn) { attackBtn.disabled = true; attackBtn.innerHTML = '⏳'; }
+    const btn = document.querySelector(`#arenaEnemyCreatures [data-enemy-index="${targetIndex}"] .arena-attack-btn`);
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳'; }
 
     const res = await apiRequest('POST', '/api/arena/move', { battleId, targetIndex });
-
     if (!res?.success) {
         showToast(res?.message || 'Ошибка атаки', '❌');
-        if (attackBtn) { attackBtn.disabled = false; attackBtn.innerHTML = '⚔️ Атаковать'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '⚔️ Атаковать'; }
         return;
     }
 
     if (res.stunSkipped) {
         showToast('😵 Питомец оглушён и пропускает ход!', '⚡');
-        const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
         updateBattleUIFromClient({
-            myTeam: res.myTeam,
-            opponentTeam: res.enemyTeam,
+            player1Team: ac?.state?.currentBattleIsPlayer1 ? res.myTeam : res.enemyTeam,
+            player2Team: ac?.state?.currentBattleIsPlayer1 ? res.enemyTeam : res.myTeam,
             currentTurn: res.currentTurn
-        }, isPlayer1);
+        }, ac?.state?.currentBattleIsPlayer1);
         return;
     }
 
     if (res.finished) {
-        if (res.winnerId) {
-            const isWin = res.winnerId === String(arenaClient?.getCurrentUserId());
-            showNativeBattleResult(isWin, res.prizePool || 0);
-            renderArenaFightTab();
-        }
+        const myId = String(state.user?._id || state.user?.id || '');
+        const isWin = res.winnerId === myId;
+        if (ac) { ac.state.battleActive = false; ac.state.currentBattleId = null; }
+        showNativeBattleResult(isWin, res.prizePool || 0);
+        renderArenaFightTab();
     } else {
-        const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
-        if (res.skillResult) {
-            showSkillBanner(res.skillResult.skillName, res.skillResult.description);
-        }
+        const isP1 = ac?.state?.currentBattleIsPlayer1;
+        if (res.skillResult) showSkillBanner(res.skillResult.skillName, res.skillResult.description);
         updateBattleUIFromClient({
-            myTeam: res.myTeam,
-            opponentTeam: res.enemyTeam,
-            lastMove: res.lastMove,
-            currentTurn: res.currentTurn,
-            turnCount: res.turnCount
-        }, isPlayer1);
-
-        if (res.lastMove && res.lastMove.targetIndex !== undefined) {
-            showDamageAnimation(res.lastMove.targetIndex, res.lastMove.damage, res.lastMove.isCrit, false);
-        }
+            player1Team: isP1 ? res.myTeam : res.enemyTeam,
+            player2Team: isP1 ? res.enemyTeam : res.myTeam,
+            lastMove: res.lastMove, currentTurn: res.currentTurn
+        }, isP1);
+        if (res.lastMove?.targetIndex !== undefined) showDamageAnimation(res.lastMove.targetIndex, res.lastMove.damage, res.lastMove.isCrit, false);
+        if (res.timeLeft !== undefined && ac) ac.startBattleTimer(res.timeLeft);
     }
 }
 
-// ============================================================
-// DAMAGE ANIMATION
-// ============================================================
+// ── Анимация урона ───────────────────────────────────────────
 function showDamageAnimation(targetIndex, damage, isCrit, isEnemy) {
     const selector = isEnemy
-        ? `#arenaMyCreatures .arena-battle-creature[data-creature-index="${targetIndex}"]`
-        : `#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${targetIndex}"]`;
+        ? `#arenaMyCreatures [data-creature-index="${targetIndex}"]`
+        : `#arenaEnemyCreatures [data-enemy-index="${targetIndex}"]`;
     const el = document.querySelector(selector);
     if (!el) return;
-
     el.classList.add('damage-flash');
     setTimeout(() => el.classList.remove('damage-flash'), 400);
-
     const dmgEl = document.createElement('div');
-    dmgEl.className = 'damage-number';
+    dmgEl.style.cssText = `position:absolute;top:-20px;left:50%;transform:translateX(-50%);color:${isCrit ? '#f59e0b' : '#ef4444'};font-weight:700;font-size:${isCrit ? '14px' : '12px'};animation:floatUp 0.8s ease forwards;pointer-events:none;z-index:10;`;
     dmgEl.textContent = `-${damage}${isCrit ? ' КРИТ!' : ''}`;
-    dmgEl.style.cssText = `position:absolute;top:-20px;left:50%;transform:translateX(-50%);color:${isCrit ? '#f59e0b' : '#ef4444'};font-weight:700;font-size:${isCrit ? '14px' : '12px'};animation:floatUp 0.8s ease forwards;pointer-events:none;`;
     el.style.position = 'relative';
     el.appendChild(dmgEl);
     setTimeout(() => dmgEl.remove(), 800);
 }
 
-// ============================================================
-// SURRENDER
-// ============================================================
+// ── Сдаться ──────────────────────────────────────────────────
 async function surrenderBattle() {
-    const battleId = arenaClient?.getBattleId();
+    const ac = window.arenaClient;
+    const battleId = ac?.state?.currentBattleId;
     if (!battleId) return;
-
-    if (window.Telegram?.WebApp) {
-        window.Telegram.WebApp.showPopup({
-            title: '⚠️ Сдаться?',
-            message: 'Вы потеряете MMO за вход в бой.',
-            buttons: [
-                { id: 'confirm', type: 'destructive', text: 'Сдаться' },
-                { id: 'cancel', type: 'cancel', text: 'Отмена' }
-            ]
-        }, async (buttonId) => {
-            if (buttonId === 'confirm') {
-                const res = await apiRequest('POST', '/api/arena/surrender', { battleId });
-                if (res?.success) { showToast('Вы сдались', '⚠️'); renderArenaFightTab(); }
-            }
-        });
-    } else {
-        if (!confirm('Сдаться? Вы потеряете MMO.')) return;
+    const doSurrender = async () => {
         const res = await apiRequest('POST', '/api/arena/surrender', { battleId });
-        if (res?.success) { showToast('Вы сдались', '⚠️'); renderArenaFightTab(); }
+        if (res?.success) {
+            showToast('Вы сдались', '⚠️');
+            if (ac) { ac.state.battleActive = false; ac.state.currentBattleId = null; }
+            renderArenaFightTab();
+        }
+    };
+    if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.showPopup({ title: '⚠️ Сдаться?', message: 'Вы потеряете MMO за вход в бой.', buttons: [{ id: 'yes', type: 'destructive', text: 'Сдаться' }, { id: 'no', type: 'cancel', text: 'Отмена' }] }, async (id) => { if (id === 'yes') await doSurrender(); });
+    } else {
+        if (!confirm('Сдаться?')) return;
+        await doSurrender();
     }
 }
 
-// ============================================================
-// BATTLE RESULT
-// ============================================================
+// ── Результат боя ─────────────────────────────────────────────
 function showNativeBattleResult(isWin, prizePool) {
-    arenaClient.state.currentBattleId = null;
-    arenaClient.stopBattleTimer();
-
-    const container = document.getElementById('arenaBattleContainer');
-    if (container) container.innerHTML = '';
-
-    const statusEl = document.getElementById('arenaFightStatus');
-    if (statusEl) statusEl.style.display = 'block';
-
     const popup = document.createElement('div');
     popup.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px;';
     popup.innerHTML = `<div style="background:#0d1120;border:1px solid ${isWin ? '#f59e0b' : '#ef4444'};border-radius:20px;padding:32px;max-width:320px;width:100%;text-align:center;">
         <div style="font-size:48px;margin-bottom:16px">${isWin ? '🏆' : '💀'}</div>
         <div style="font-family:'Orbitron',monospace;font-size:24px;font-weight:900;color:${isWin ? '#f59e0b' : '#ef4444'};margin-bottom:8px">${isWin ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}</div>
         <div style="font-size:14px;color:#94a3b8;margin-bottom:24px">${isWin ? `+${prizePool} MMO` : 'Удачи в следующий раз!'}</div>
-        <button onclick="this.closest('div[style]').remove();renderArenaFightTab();" 
-            style="padding:14px 32px;background:linear-gradient(135deg,#7c3aed,#a855f7);border:none;border-radius:12px;color:#fff;font-weight:700;font-size:14px;cursor:pointer;width:100%">
-            ЗАКРЫТЬ
-        </button>
+        <button onclick="this.closest('div[style*=fixed]').remove();renderArenaFightTab();" style="padding:14px 32px;background:linear-gradient(135deg,#7c3aed,#a855f7);border:none;border-radius:12px;color:#fff;font-weight:700;font-size:14px;cursor:pointer;width:100%">ЗАКРЫТЬ</button>
     </div>`;
     document.body.appendChild(popup);
-
     if (isWin) {
         spawnStars('legendary');
-        setTimeout(() => apiRequest('GET', '/api/user/profile').then(r => {
-            if (r?.success) {
-                state.user = r.user;
-                updateServerSnapshot(r.user.balance, r.incomePerHour, r.lastPassiveIncome);
-                updateHeader();
-            }
-        }), 1000);
+        apiRequest('GET', '/api/user/profile').then(r => {
+            if (r?.success) { state.user = r.user; updateServerSnapshot(r.user.balance, r.incomePerHour, r.lastPassiveIncome); updateHeader(); }
+        });
     }
 }
 
-// ============================================================
-// LEADERBOARD
-// ============================================================
+// ── Лидерборд арены ──────────────────────────────────────────
 async function renderArenaLeaderboard() {
     const container = document.getElementById('arenaLeaderboard');
     if (!container) return;
     container.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8">Загрузка...</div>';
-
     const res = await apiRequest('GET', '/api/arena/leaderboard');
-    if (!res?.success) {
-        container.innerHTML = '<div style="text-align:center;padding:20px;color:#4a5568">Ошибка загрузки</div>';
-        return;
-    }
-
+    if (!res?.success) { container.innerHTML = '<div style="text-align:center;padding:20px;color:#4a5568">Ошибка загрузки</div>'; return; }
     const my = res.myStats;
-    const LEAGUE_ICONS = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '💎', diamond: '👑' };
-
+    const ICONS = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '💎', diamond: '👑' };
     container.innerHTML = `
         <div style="background:#0d1120;border:1px solid #a855f744;border-radius:16px;padding:16px;margin-bottom:16px;">
             <div style="font-size:11px;color:#94a3b8;margin-bottom:8px">ВАШ РЕЙТИНГ</div>
             <div style="display:flex;align-items:center;gap:12px;">
-                <div style="font-size:32px">${LEAGUE_ICONS[my?.league || 'bronze']}</div>
+                <div style="font-size:32px">${ICONS[my?.league || 'bronze']}</div>
                 <div>
                     <div style="font-size:18px;font-weight:700;color:#a855f7">${my?.rating || 1000}</div>
                     <div style="font-size:12px;color:#94a3b8">${(my?.league || 'bronze').toUpperCase()} · #${res.myRank}</div>
-                    <div style="font-size:11px;color:#22c55e">${my?.wins || 0}W / ${my?.losses || 0}L</div>
+                    <div style="font-size:11px;color:#22c55e">${my?.wins || 0}W / ${my?.losses || 0}L · 🔥${my?.streak || 0}</div>
                 </div>
             </div>
         </div>
         <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">ТОП ИГРОКОВ</div>
         ${(res.leaders || []).map((l, i) => `
-            <div style="background:#0d1120;border:1px solid #1e2d4a;border-radius:12px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:12px;${l.isMe ? 'border-color:#a855f7;' : ''}">
-                <div style="font-size:18px;min-width:30px;text-align:center">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</div>
-                <div style="flex:1">
-                    <div style="font-size:13px;font-weight:600;color:#e2e8f0">${escapeHtml(l.username || 'Player')}</div>
-                    <div style="font-size:10px;color:#94a3b8">${(l.league || 'bronze').toUpperCase()}</div>
-                </div>
-                <div style="text-align:right">
-                    <div style="font-size:14px;font-weight:700;color:#a855f7">${l.rating}</div>
-                    <div style="font-size:10px;color:#22c55e">${l.wins}W / ${l.losses}L</div>
-                </div>
-            </div>
-        `).join('')}
-    `;
+        <div style="background:#0d1120;border:1px solid ${l.isMe ? '#a855f7' : '#1e2d4a'};border-radius:12px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:12px;">
+            <div style="font-size:18px;min-width:28px;text-align:center">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</div>
+            <div style="flex:1"><div style="font-size:13px;font-weight:600;color:#e2e8f0">${escapeHtml(l.name || 'Player')}</div><div style="font-size:10px;color:#94a3b8">${(l.league || 'bronze').toUpperCase()}</div></div>
+            <div style="text-align:right"><div style="font-size:14px;font-weight:700;color:#a855f7">${l.rating}</div><div style="font-size:10px;color:#22c55e">${l.wins}W/${l.losses}L</div></div>
+        </div>`).join('')}`;
 }
 
-// ============================================================
-// HISTORY
-// ============================================================
+// ── История боёв ─────────────────────────────────────────────
 async function renderArenaHistory() {
     const container = document.getElementById('arenaHistory');
     if (!container) return;
     container.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8">Загрузка...</div>';
-
     const res = await apiRequest('GET', '/api/arena/history');
-    if (!res?.success || !res.history?.length) {
-        container.innerHTML = '<div style="text-align:center;padding:30px;color:#4a5568">Нет боёв в истории</div>';
-        return;
-    }
-
+    if (!res?.success || !res.history?.length) { container.innerHTML = '<div style="text-align:center;padding:30px;color:#4a5568">Нет боёв в истории</div>'; return; }
     container.innerHTML = res.history.map(h => {
         const date = new Date(h.createdAt).toLocaleDateString();
         return `<div style="background:#0d1120;border:1px solid ${h.isWin ? '#22c55e44' : '#ef444444'};border-radius:12px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:12px;">
             <div style="font-size:24px">${h.isWin ? '🏆' : '💀'}</div>
-            <div style="flex:1">
-                <div style="font-size:13px;font-weight:600;color:#e2e8f0">vs ${escapeHtml(h.opponent || 'Игрок')}</div>
-                <div style="font-size:10px;color:#94a3b8">${h.league?.toUpperCase() || 'BRONZE'} · ${date}</div>
-            </div>
-            <div style="text-align:right">
-                <div style="font-size:14px;font-weight:700;color:${h.isWin ? '#22c55e' : '#ef4444'}">${h.isWin ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ'}</div>
-                <div style="font-size:11px;color:#f59e0b">${h.isWin ? '+' : ''}${h.prizePool || 0} MMO</div>
-            </div>
+            <div style="flex:1"><div style="font-size:13px;font-weight:600;color:#e2e8f0">vs ${escapeHtml(h.opponent || 'Игрок')}</div><div style="font-size:10px;color:#94a3b8">${(h.league||'bronze').toUpperCase()} · ${date}</div></div>
+            <div style="text-align:right"><div style="font-size:14px;font-weight:700;color:${h.isWin ? '#22c55e' : '#ef4444'}">${h.isWin ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ'}</div><div style="font-size:11px;color:#f59e0b">${h.isWin ? '+' : ''}${h.prizePool || 0} MMO</div></div>
         </div>`;
     }).join('');
 }
 
-// ============================================================
-// ДОБАВИТЬ В switchTab
-// ============================================================
-const _origSwitchTab = window.switchTab;
-window.switchTab = function(tab) {
-    _origSwitchTab(tab);
-    if (tab === 'pvp') {
-        if (!arenaClient) initArenaClient();
-        switchArenaTab('fight');
-    }
-};
-
-// ============================================================
-// ARENA EXPORTS
-// ============================================================
-window.arenaClient = arenaClient;
-window.switchArenaTab = switchArenaTab;
+// ── Экспорт ───────────────────────────────────────────────────
+window.switchArenaTab        = switchArenaTab;
 window.renderArenaTeamInventory = renderArenaTeamInventory;
-window.renderArenaFightTab = renderArenaFightTab;
-window.toggleArenaCreature = toggleArenaCreature;
-window.saveArenaTeam = saveArenaTeam;
-window.resetArenaTeam = resetArenaTeam;
-window.renderSelectedTeam = renderSelectedTeam;
-window.findMatch = findMatch;
-window.cancelArenaSearch = cancelArenaSearch;
+window.renderArenaFightTab   = renderArenaFightTab;
+window.renderArenaLeaderboard = renderArenaLeaderboard;
+window.renderArenaHistory    = renderArenaHistory;
+window.toggleArenaCreature   = toggleArenaCreature;
+window.saveArenaTeam         = saveArenaTeam;
+window.resetArenaTeam        = resetArenaTeam;
+window.findMatch             = findMatch;
 window.acceptBattleFromModal = acceptBattleFromModal;
 window.rejectBattleFromModal = rejectBattleFromModal;
-window.makeAttack = makeAttack;
-window.surrenderBattle = surrenderBattle;
-window.renderArenaLeaderboard = renderArenaLeaderboard;
-window.renderArenaHistory = renderArenaHistory;
+window.makeAttack            = makeAttack;
+window.surrenderBattle       = surrenderBattle;
+window.showSkillBanner       = showSkillBanner;
 window.updateBattleUIFromClient = updateBattleUIFromClient;
-window.showSkillBanner = showSkillBanner;
