@@ -243,9 +243,12 @@
 <!-- Вкладка Команда -->
     <div class="arena-subtab active" id="arena-team-tab">
         <div id="arenaTeamInventory"></div>
-        <div style="padding: 12px 16px 24px;">
-            <button class="arena-save-btn" onclick="saveArenaTeam()" id="saveTeamBtn" style="width:100%;">
-                <i class="fa-solid fa-save"></i> <span>Сохранить команду</span>
+        <div style="padding: 12px 16px 24px; display:flex; gap:10px;">
+            <button class="arena-save-btn" onclick="saveArenaTeam()" id="saveTeamBtn" style="flex:1;">
+                <i class="fa-solid fa-save"></i> <span>Сохранить</span>
+            </button>
+            <button class="arena-save-btn" onclick="resetArenaTeam()" id="resetTeamBtn" style="flex:0 0 auto; background:linear-gradient(135deg,#7f1d1d,#ef4444); padding: 0 16px;">
+                <i class="fa-solid fa-trash"></i>
             </button>
         </div>
     </div>
