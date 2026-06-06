@@ -196,9 +196,14 @@ class ArenaClient {
             }
         }
         
-        // Обновляем таймер, если сервер прислал время
-        if (data.timeLeft !== undefined && this.callbacks.onTimerTick) {
-            this.callbacks.onTimerTick(data.timeLeft);
+        // Обновляем таймер с компенсацией сетевой задержки
+        if (data.timeLeft !== undefined) {
+            let correctedTimeLeft = data.timeLeft;
+            if (data.serverTimestamp) {
+                const elapsed = (Date.now() - data.serverTimestamp) / 1000;
+                correctedTimeLeft = Math.max(0, Math.floor(data.timeLeft - elapsed));
+            }
+            this.startBattleTimer(correctedTimeLeft);
         }
         
         if (this.callbacks.onBattleUpdate) {
@@ -228,9 +233,7 @@ class ArenaClient {
         }, 3000);
     }
     
-    // В файле arena-client.js, найдите функцию startBattleTimer и ЗАМЕНИТЕ:
-
-startBattleTimer(initialTimeLeft = 30) {
+    startBattleTimer(initialTimeLeft = 30) {
     // ИСПРАВЛЕНО: очищаем предыдущий таймер, чтобы избежать утечки
     if (this.timers.battleTimer) {
         clearInterval(this.timers.battleTimer);
@@ -370,9 +373,7 @@ startBattleTimer(initialTimeLeft = 30) {
                 this.endBattle(data.winnerId, data.prizePool);
             });
             
-      // В файле arena-client.js, найдите блок socket.on('confirmation_update') и ЗАМЕНИТЕ на:
-
-socket.on('confirmation_update', (data) => {
+            socket.on('confirmation_update', (data) => {
     console.log('📡 Получено confirmation_update:', data);
     
     // Обновляем состояние в клиенте
@@ -489,8 +490,8 @@ socket.on('confirmation_update', (data) => {
     
     getCurrentUserId() {
         if (window.state && window.state.user) {
-            if (window.state.user._id) return window.state.user._id.toString();
             if (window.state.user.id) return window.state.user.id.toString();
+            if (window.state.user._id) return window.state.user._id.toString();
             if (window.state.user.telegramId) return window.state.user.telegramId.toString();
         }
         if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {

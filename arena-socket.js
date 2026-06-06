@@ -132,7 +132,10 @@ class ArenaSocketManager {
         if (!socketId) return false;
         
         const socket = this.io.sockets.sockets.get(socketId);
-        if (!socket) return false;
+        if (!socket) {
+            this.connectedUsers.delete(userId.toString());
+            return false;
+        }
         
         socket.emit(event, data);
         return true;
@@ -156,8 +159,8 @@ class ArenaBattleManager {
         this.getCreature = getCreatureFn;
         this.sendNotification = sendNotificationFn;
         this.socketManager = arenaSocketManager;
-        this.activeBattles = new Map();
-        this.searchQueue = [];
+        this.activeBattles = new Map(); // резерв
+        this.searchQueue = []; // резерв
     }
 
     async createBattle(player1Id, teamIds, userLevel, league) {
@@ -285,8 +288,8 @@ class ArenaBattleManager {
             return { success: false, message: 'Бой не найден' };
         }
         
-        if (!['active', 'pending_confirmation'].includes(battle.status)) {
-            return { success: false, message: 'Бой уже не активен' };
+        if (battle.status !== 'pending_confirmation') {
+            return { success: false, message: 'Можно отклонить только бой в ожидании подтверждения' };
         }
         
         const isPlayer1 = battle.player1Id.toString() === userId.toString();
@@ -436,12 +439,13 @@ class ArenaBattleManager {
     
     battle.currentTurn = battle.currentTurn === 'player1' ? 'player2' : 'player1';
     battle.turnCount++;
-    battle.lastMoveAt = new Date();
+    const moveTimestamp = Date.now();
+    battle.lastMoveAt = new Date(moveTimestamp);
     
     if (isPlayer1) {
-        battle.player1LastMoveAt = new Date();
+        battle.player1LastMoveAt = new Date(moveTimestamp);
     } else {
-        battle.player2LastMoveAt = new Date();
+        battle.player2LastMoveAt = new Date(moveTimestamp);
     }
     
     if (isPlayer1) {
@@ -454,9 +458,7 @@ class ArenaBattleManager {
     
     await battle.save();
     
-    // РАССЧИТЫВАЕМ ОСТАВШЕЕСЯ ВРЕМЯ ХОДА
-    const timeSinceLastMove = (Date.now() - battle.lastMoveAt.getTime()) / 1000;
-    const timeLeft = Math.max(0, 30 - Math.floor(timeSinceLastMove));
+    const timeLeft = 30;
     
     return {
         success: true,
@@ -485,7 +487,8 @@ class ArenaBattleManager {
         myTeam: myTeam,
         enemyTeam: enemyTeam,
         battleLog: battle.battleLog.slice(-1),
-        timeLeft: timeLeft
+        timeLeft: timeLeft,
+        serverTimestamp: moveTimestamp
     };
 }
     async finishBattle(battle) {
@@ -577,6 +580,7 @@ class ArenaBattleManager {
             loserStats.losses += 1;
             loserStats.streak = 0;
             loserStats.totalBattles += 1;
+            loserStats.totalLost = (loserStats.totalLost || 0) + battle.entryFee;
             loserStats.lastBattleAt = new Date();
             
             await winnerStats.save();

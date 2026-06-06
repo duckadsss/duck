@@ -2129,14 +2129,16 @@ async function renderArenaTeamInventory() {
     if (!container) return;
 
     const selectedTeam = arenaClient?.getSelectedTeam() || [];
-    if (selectedTeam.length === 0 && !arenaClient?.state._teamResetPending) {
+    if (selectedTeam.length === 0 && !arenaClient?.state._teamLoaded && !arenaClient?.state._teamResetPending) {
         const teamRes = await apiRequest('GET', '/api/arena/team');
         if (teamRes?.success && teamRes.teamIds) {
             arenaClient.setSelectedTeam(teamRes.teamIds);
         }
+        if (arenaClient) arenaClient.state._teamLoaded = true;
     }
     if (arenaClient?.state._teamResetPending) {
         arenaClient.state._teamResetPending = false;
+        if (arenaClient) arenaClient.state._teamLoaded = false;
     }
 
     const currentSelected = arenaClient?.getSelectedTeam() || [];
@@ -2988,7 +2990,7 @@ async function renderArenaHistory() {
                     <div class="history-meta">${icon} ${date}</div>
                 </div>
                 <div class="history-prize ${b.isWin ? 'prize-win' : 'prize-loss'}">
-                    ${b.isWin ? '+' : '-'}${b.isWin ? b.prizePool : b.entryFee || '?'} MMO
+                    ${b.isWin ? '+' : '-'}${b.isWin ? b.prizePool : (b.entryFee ?? b.prizePool ?? '?')} MMO
                 </div>
             </div>`;
         }).join('');
@@ -3149,26 +3151,17 @@ async function initTelegramApp() {
             }
             if (document.getElementById('overlay')?.classList.contains('show')) closeOverlay(); 
             renderBattleInterface(data);
-            if (data.timeLeft !== undefined) {
-                arenaClient.startBattleTimer(data.timeLeft);
-            }
         });
         arenaClient.on('onBattleUpdate', (data, isPlayer1) => {
-    if (data.skillResult) {
-        showSkillBanner(data.skillResult.skillName, data.skillResult.description);
-    }
-    updateBattleUIFromClient(data, isPlayer1);
+            if (data.skillResult) {
+                showSkillBanner(data.skillResult.skillName, data.skillResult.description);
+            }
+            updateBattleUIFromClient(data, isPlayer1);
             if (data.lastMove && data.lastMove.targetIndex !== undefined) {
                 showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit, true);
             }
-            if (data.timeLeft !== undefined) {
-                arenaClient.startBattleTimer(data.timeLeft);
-            }
         });
-        // В файле script.js, в функции initTelegramApp, найдите блок arenaClient.on('onBattleEnd')
-// и ЗАМЕНИТЕ на этот:
-
-arenaClient.on('onBattleEnd', (isWin, prizePool) => { 
+        arenaClient.on('onBattleEnd', (isWin, prizePool) => { 
     console.log('🏆 Бой завершён, победа:', isWin);
     showNativeBattleResult(isWin, prizePool); 
     // ИСПРАВЛЕНО: обновляем профиль и интерфейс арены
