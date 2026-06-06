@@ -85,7 +85,7 @@
                 <img src="1.png" alt="DNA Capsule" style="object-fit:contain">
             </div>
             <div class="capsule-name" data-i18n="game.dnaCapsule">DNA CAPSULE</div>
-            <div class="capsule-cost"><i class="fa-solid fa-dna" style="font-size:10px"></i> 500 MMO</div>
+            <div class="capsule-cost"><i class="fa-solid fa-dna" style="font-size:10px"></i> 1000 MMO</div>
             <button class="capsule-btn" onclick="event.stopPropagation();showCapsuleModal('basic')" data-i18n="game.open">OPEN</button>
         </div>
         <div class="capsule-card premium" id="premiumCapsuleCard" onclick="showCapsuleModal('premium')">
@@ -93,7 +93,7 @@
                 <img src="2.png" alt="Premium DNA Capsule" style="object-fit:contain">
             </div>
             <div class="capsule-name" data-i18n="game.premiumCapsule">PREMIUM DNA</div>
-            <div class="capsule-cost gold"><i class="fa-solid fa-gem" style="font-size:10px"></i> 2000 MMO</div>
+            <div class="capsule-cost gold"><i class="fa-solid fa-gem" style="font-size:10px"></i> 6000 MMO</div>
             <button class="capsule-btn gold-btn" onclick="event.stopPropagation();showCapsuleModal('premium')" data-i18n="game.open">OPEN</button>
         </div>
     </div>
@@ -454,7 +454,7 @@
     </div>
 </div>
 
-<!-- Вкладка Wallet - замена TON на MMO -->
+<!-- Вкладка Wallet -->
 <div class="tab-content" id="tab-wallet">
     <div class="wallet-hero">
         <div class="wallet-label" data-i18n="wallet.totalBalance">Total Balance</div>
@@ -520,10 +520,10 @@
         <i class="fa-solid fa-star"></i>
         <span data-i18n="nav.special">Special</span>
     </div>
-<div class="nav-item" onclick="switchTab('arena')" id="nav-arena">
-    <i class="fa-solid fa-shield-halved"></i>
-    <span>Арена</span>
-</div>
+    <div class="nav-item" onclick="switchTab('arena')" id="nav-arena">
+        <i class="fa-solid fa-shield-halved"></i>
+        <span>Арена</span>
+    </div>
     <div class="nav-item" onclick="switchTab('wallet')" id="nav-wallet">
         <i class="fa-solid fa-wallet"></i>
         <span data-i18n="nav.wallet">Wallet</span>
