@@ -98,6 +98,7 @@ function rateLimiter(req, res, next) {
     next();
 }
 
+app.set('trust proxy', 1); // FIX #8: Railway/Heroku передают реальный IP через X-Forwarded-For
 app.use(rateLimiter);
 
 // ============================================
@@ -457,6 +458,10 @@ app.post('/api/admin/login', async (req, res) => {
         res.json({ success: true, token: token });
     } catch (e) {
         res.status(500).json({ success: false, message: e.message });
+    }
+    // FIX #4: очищаем просроченные admin-сессии (иначе Map растёт вечно)
+    for (const [token, session] of adminSessions.entries()) {
+        if (session.expiresAt < now) adminSessions.delete(token);
     }
 });
 
@@ -1985,8 +1990,11 @@ app.post('/api/wallet/get-payment-details', authMiddleware, async (req, res) => 
         const { amount } = req.body;
         const user = req.user;
         
-        if (!amount || amount < MIN_TRANSACTION_AMOUNT) {
-            return res.status(400).json({ success: false, message: `Минимальная сумма ${MIN_TRANSACTION_AMOUNT} MMO` });
+        const amt = Number(amount);
+        if (!Number.isFinite(amt) || !Number.isInteger(amt) || amt < MIN_TRANSACTION_AMOUNT || amt <= 0) {
+            return res.status(400).json({ success: false, message: `Некорректная сумма. Минимум ${MIN_TRANSACTION_AMOUNT} MMO, только целые числа` });
+        }
+        const amount = amt; // переопределяем как валидированное число
         }
         
         const memo = `DEPOSIT_${user.telegramId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -2082,8 +2090,10 @@ app.post('/api/wallet/withdraw-request', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: `Минимальная сумма ${MIN_TRANSACTION_AMOUNT} MMO` });
         }
         
-        if (!wallet || wallet.length < 20) {
-            return res.status(400).json({ success: false, message: 'Неверный адрес кошелька' });
+        const tonAddrRx = /^[UE][Qq][A-Za-z0-9_-]{46}$/;
+        if (!wallet || !tonAddrRx.test(wallet.trim())) {
+            return res.status(400).json({ success: false, message: 'Неверный формат TON-адреса. Ожидается формат UQ.../EQ... (48 символов)' });
+        }
         }
         
         if (user.balance < amount) {
@@ -3380,6 +3390,9 @@ app.post('/api/arena/accept-match', authMiddleware, async (req, res) => {
 
 app.post('/api/arena/reject-match', authMiddleware, async (req, res) => {
     try {
+        if (!arenaManager || !arenaSocketManager) {
+            return res.status(503).json({ success: false, message: 'Сервер ещё инициализируется' });
+        }
         const { battleId } = req.body;
         const battleBefore = await ArenaBattle.findById(battleId);
         const result = await arenaManager.rejectMatch(battleId, req.user._id);

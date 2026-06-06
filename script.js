@@ -130,11 +130,19 @@ function getVisualBalance() {
     return (state.serverBalance || 0) + earned;
 }
 
-function updateServerSnapshot(newBalance, newIncomePerHour, newLastPassiveIncome) {
-    console.log('📊 updateServerSnapshot:', { newBalance, newIncomePerHour, newLastPassiveIncome });
+// isInit=true при первой загрузке — lastServerSync = сейчас (тикаем с нуля)
+// isInit=false после collect-income — lastServerSync = lastPassiveIncome
+// Это предотвращает "прыжок" баланса вниз при обновлении страницы
+function updateServerSnapshot(newBalance, newIncomePerHour, newLastPassiveIncome, isInit = false) {
     state.serverBalance = newBalance !== undefined ? newBalance : state.serverBalance;
     state.incomePerHour = newIncomePerHour !== undefined ? newIncomePerHour : state.incomePerHour;
-    state.lastServerSync = newLastPassiveIncome ? new Date(newLastPassiveIncome).getTime() : Date.now();
+    if (isInit) {
+        // При загрузке: баланс в БД уже актуальный, тикаем с текущего момента
+        state.lastServerSync = Date.now();
+    } else {
+        // После collect-income: тикаем с момента когда сервер зафиксировал доход
+        state.lastServerSync = newLastPassiveIncome ? new Date(newLastPassiveIncome).getTime() : Date.now();
+    }
     if (state.user) state.user.balance = state.serverBalance;
 }
 
@@ -380,7 +388,7 @@ async function refreshUserProfile() {
         state.inventory = res.inventory || [];
         state.incomePerHour = res.incomePerHour || 0;
         
-        updateServerSnapshot(state.user.balance, state.incomePerHour, res.lastPassiveIncome);
+        updateServerSnapshot(state.user.balance, state.incomePerHour, res.lastPassiveIncome, true);
         
         updateHeader();
         renderCards();
