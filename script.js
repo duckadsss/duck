@@ -41,6 +41,11 @@ let state = {
     visualTicker: null
 };
 
+let findingMatch = false;
+const RARITY_MULTIPLIERS = {
+    common: 1.0, uncommon: 1.05, rare: 1.10, epic: 1.15, legendary: 1.25, mythic: 1.40
+};
+
 let arenaClient = null;
 
 let intervals = {
@@ -535,6 +540,7 @@ if (arenaClient) {
     arenaClient.on('onConnected', () => console.log('✅ WebSocket connected'));
     arenaClient.on('onDisconnected', (reason) => console.log('❌ WebSocket disconnected:', reason));
 }
+initArenaWebhooks();
 
     await loadGameConfig();
     await loadCreaturesFromServer();
@@ -2641,6 +2647,850 @@ function copyToClipboard(text) {
 }
 
 // ============================================================
+// ARENA - ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ============================================================
+
+function getLeagueName(league) {
+    const leagueNames = {
+        bronze: 'Бронзовой',
+        silver: 'Серебряной',
+        gold: 'Золотой',
+        platinum: 'Платиновой',
+        diamond: 'Алмазной'
+    };
+    return leagueNames[league] || 'Бронзовой';
+}
+
+function showNativeBattleResult(isWin, prizePool) {
+    if (!window.Telegram?.WebApp) {
+        const overlay = document.getElementById('overlay');
+        const popup = document.getElementById('popup');
+        popup.innerHTML = `<div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div><div class="popup-icon">${isWin ? '🏆' : '💀'}</div><div class="popup-title" style="color:${isWin ? 'var(--legendary)' : 'var(--mythic)'}">${isWin ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}</div><div class="popup-subtitle">${isWin ? `Вы выиграли ${prizePool} MMO!` : 'В следующий раз повезёт!'}</div><button class="popup-btn" onclick="closeOverlay(); renderArenaFightTab();">Закрыть</button></div>`;
+        overlay.classList.add('show');
+        return;
+    }
+    const tg = window.Telegram.WebApp;
+    const title = isWin ? '🏆 ПОБЕДА!' : '💀 ПОРАЖЕНИЕ';
+    const message = isWin ? `Вы выиграли ${prizePool} MMO! 🎉\nВаш рейтинг повышается!` : `Вы проиграли бой.\nВ следующий раз повезёт!`;
+    tg.showPopup({ title, message, buttons: [{ id: 'ok', type: 'default', text: 'ОК' }] });
+}
+
+function initArenaWebhooks() {
+    if (!window.Telegram?.WebApp) return;
+    const tg = window.Telegram.WebApp;
+    tg.onEvent('popupClosed', (event) => {
+        if (event.button_id === 'accept') acceptBattleWebhook();
+        else if (event.button_id === 'reject') rejectBattleWebhook();
+    });
+}
+
+// ============================================================
+// ARENA - МОДАЛКА ПОДТВЕРЖДЕНИЯ БОЯ
+// ============================================================
+
+function showNativeBattleConfirmation(battleData) {
+    const existingModal = document.getElementById('matchFoundModal');
+    if (existingModal) {
+        updateConfirmationModal({
+            player1Confirmed: battleData.player1Confirmed,
+            player2Confirmed: battleData.player2Confirmed
+        });
+        return;
+    }
+    showBattleConfirmationModal(battleData);
+}
+
+function showBattleConfirmationModal(battleData) {
+    const existingModal = document.getElementById('matchFoundModal');
+    if (existingModal) existingModal.remove();
+    
+    const modal = document.createElement('div');
+    modal.id = 'matchFoundModal';
+    modal.className = 'match-found-modal';
+    
+    const opponentName = battleData.opponent?.name || 'Игрок';
+    const opponentLevel = battleData.opponent?.level || '?';
+    const firstLetter = opponentName.charAt(0).toUpperCase();
+    const leagueIcons = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '💎', diamond: '🏆' };
+    const opponentLeagueIcon = leagueIcons[battleData.opponentLeague] || '⚔️';
+
+    const isPlayer1 = battleData.isPlayer1;
+    const myConfirmed = isPlayer1 ? battleData.player1Confirmed : battleData.player2Confirmed;
+    const opponentConfirmed = isPlayer1 ? battleData.player2Confirmed : battleData.player1Confirmed;
+    
+    modal.innerHTML = `
+        <div class="match-found-card">
+            <div class="match-found-header">
+                <div class="match-found-icon">⚔️</div>
+                <div class="match-found-title">БОЙ НАЙДЕН!</div>
+            </div>
+            <div class="match-found-content">
+                <div class="opponent-info">
+                    <div class="opponent-avatar">${firstLetter}</div>
+                    <div class="opponent-details">
+                        <div class="opponent-name">${escapeHtml(opponentName)}</div>
+                        <div class="opponent-level">
+                            <span>Уровень ${opponentLevel}</span>
+                            <span>${opponentLeagueIcon} ${getLeagueName(battleData.opponentLeague)} лига</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="confirmation-status" id="confirmationStatus">
+                    <div class="confirm-row">
+                        <span>Вы:</span>
+                        <span id="myConfirmStatus" class="${myConfirmed ? 'confirm-yes' : 'confirm-wait'}">${myConfirmed ? '✅ Принял' : '⏳ Ожидание'}</span>
+                    </div>
+                    <div class="confirm-row">
+                        <span>${escapeHtml(opponentName)}:</span>
+                        <span id="opponentConfirmStatus" class="${opponentConfirmed ? 'confirm-yes' : 'confirm-wait'}">${opponentConfirmed ? '✅ Принял' : '⏳ Ожидание'}</span>
+                    </div>
+                </div>
+                <div class="prize-info">
+                    <div class="prize-label"><i class="fa-solid fa-gift"></i> Призовой фонд</div>
+                    <div class="prize-value">${battleData.prizePool.toLocaleString()} <small>MMO</small></div>
+                </div>
+                <div class="prize-info" style="border-color: rgba(124,58,237,0.3);">
+                    <div class="prize-label"><i class="fa-solid fa-coins"></i> Ваша ставка</div>
+                    <div class="prize-value" style="color: var(--accent3);">${battleData.entryFee.toLocaleString()} <small>MMO</small></div>
+                </div>
+                <div class="timer-badge">
+                    <span><i class="fa-regular fa-clock"></i> Принять за 15 секунд</span>
+                    <div class="timer-progress"><div class="timer-progress-fill"></div></div>
+                </div>
+                <div class="match-buttons" id="matchBtns">
+                    <button class="match-btn-accept" onclick="acceptBattleFromModal('${battleData.battleId}')">
+                        <i class="fa-solid fa-check"></i> ПРИНЯТЬ
+                    </button>
+                    <button class="match-btn-reject" onclick="rejectBattleFromModal('${battleData.battleId}')">
+                        <i class="fa-solid fa-times"></i> ОТКЛОНИТЬ
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    modal.timeoutId = setTimeout(() => {
+        if (document.getElementById('matchFoundModal')) {
+            rejectBattleFromModal(battleData.battleId);
+        }
+    }, 15000);
+}
+
+function updateConfirmationModal(data) {
+    const modal = document.getElementById('matchFoundModal');
+    if (!modal) return;
+    
+    const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
+    const myConfirmed = isPlayer1 ? data.player1Confirmed : data.player2Confirmed;
+    const opponentConfirmed = isPlayer1 ? data.player2Confirmed : data.player1Confirmed;
+    
+    const myEl = document.getElementById('myConfirmStatus');
+    const oppEl = document.getElementById('opponentConfirmStatus');
+    
+    if (myEl) {
+        myEl.textContent = myConfirmed ? '✅ Принял' : '⏳ Ожидание';
+        myEl.className = myConfirmed ? 'confirm-yes' : 'confirm-wait';
+    }
+    if (oppEl) {
+        oppEl.textContent = opponentConfirmed ? '✅ Принял' : '⏳ Ожидание';
+        oppEl.className = opponentConfirmed ? 'confirm-yes' : 'confirm-wait';
+    }
+    
+    if (myConfirmed && !opponentConfirmed) {
+        const btns = document.getElementById('matchBtns');
+        if (btns) {
+            btns.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:8px;">⏳ Ожидаем соперника...</div>';
+        }
+    }
+    
+    if (myConfirmed && opponentConfirmed) {
+        if (modal.timeoutId) clearTimeout(modal.timeoutId);
+        modal.style.transition = 'opacity 0.3s ease';
+        modal.style.opacity = '0';
+        setTimeout(() => { if (modal && modal.remove) modal.remove(); }, 500);
+    }
+}
+
+async function acceptBattleFromModal(battleId) {
+    const res = await apiRequest('POST', '/api/arena/accept-match', { battleId });
+    if (res?.success) {
+        const statusRes = await apiRequest('GET', '/api/arena/battle/status');
+        if (statusRes?.success && statusRes.hasBattle) {
+            updateConfirmationModal({
+                player1Confirmed: statusRes.player1Confirmed,
+                player2Confirmed: statusRes.player2Confirmed
+            });
+        }
+        if (res.bothConfirmed) {
+            const modal = document.getElementById('matchFoundModal');
+            if (modal) modal.remove();
+            if (arenaClient && statusRes?.timeLeft !== undefined) {
+                arenaClient.startBattleTimer(statusRes.timeLeft);
+            }
+        }
+    } else {
+        showToast(res?.message || 'Ошибка при принятии боя', '❌');
+    }
+}
+
+async function rejectBattleFromModal(battleId) {
+    const modal = document.getElementById('matchFoundModal');
+    if (modal) {
+        if (modal.timeoutId) clearTimeout(modal.timeoutId);
+        modal.remove();
+    }
+    const res = await apiRequest('POST', '/api/arena/reject-match', { battleId });
+    if (res?.success) {
+        arenaClient?.stopSearch();
+        showToast('Бой отклонён', '⚠️');
+        renderArenaFightTab();
+    } else {
+        showToast(res?.message || 'Ошибка', '❌');
+    }
+}
+
+// ============================================================
+// ARENA - UI ФУНКЦИИ
+// ============================================================
+
+function switchArenaTab(tab) {
+    document.querySelectorAll('.arena-subtab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.arena-tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`arena-${tab}-tab`).classList.add('active');
+    document.querySelector(`.arena-tab-btn[data-arena-tab="${tab}"]`).classList.add('active');
+    
+    if (tab === 'team') renderArenaTeamInventory();
+    if (tab === 'fight') renderArenaFightTab();
+    if (tab === 'ranks') updateArenaRanksInfo();
+    if (tab === 'history') renderArenaHistory();
+}
+
+async function renderArenaTeamInventory() {
+    const container = document.getElementById('arenaTeamInventory');
+    if (!container) return;
+
+    const selectedTeam = arenaClient?.getSelectedTeam() || [];
+    if (selectedTeam.length === 0 && !arenaClient?.state._teamResetPending) {
+        const teamRes = await apiRequest('GET', '/api/arena/team');
+        if (teamRes?.success && teamRes.teamIds) {
+            arenaClient.setSelectedTeam(teamRes.teamIds);
+        }
+    }
+    if (arenaClient?.state._teamResetPending) {
+        arenaClient.state._teamResetPending = false;
+    }
+
+    const currentSelected = arenaClient?.getSelectedTeam() || [];
+    const level = state.user?.level || 1;
+
+    container.innerHTML = state.inventory.map(item => {
+        const c = getCreature(item.creatureId);
+        if (!c) return '';
+
+        const isSelected = currentSelected.includes(c.id);
+        const isDisabled = !isSelected && currentSelected.length >= 3;
+        const skill = window.ARENA_SKILLS_MAP?.[c.id] || null;
+        const multiplier = RARITY_MULTIPLIERS[c.rarity] || 1;
+        const hp = Math.ceil((50 + (c.incomeBase * 2) + (level * 5)) * multiplier);
+        const atk = Math.ceil((10 + (c.incomeBase / 2) + (level * 2)) * multiplier);
+        const def = Math.ceil((5 + (c.incomeBase / 3) + (level * 1)) * multiplier);
+        const selectedNum = isSelected ? currentSelected.indexOf(c.id) + 1 : 0;
+
+        return `
+        <div class="arena-list-card ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}"
+             onclick="toggleArenaCreature('${c.id}')">
+            <div class="arena-list-left">
+                <div class="arena-list-icon">${getIconHtml(c)}</div>
+                ${isSelected ? `<div class="arena-list-num">${selectedNum}</div>` : ''}
+            </div>
+            <div class="arena-list-info">
+                <div class="arena-list-name">${escapeHtml(c.name)}
+                    <span class="arena-list-rarity rarity-${c.rarity}">${c.rarity}</span>
+                </div>
+                <div class="arena-list-stats">
+                    <span>❤️ ${hp}</span>
+                    <span>⚔️ ${atk}</span>
+                    <span>🛡️ ${def}</span>
+                </div>
+                ${skill ? `
+                <div class="arena-list-skill">
+                    <span class="arena-list-skill-name">${skill.name}</span>
+                    <span class="arena-list-skill-chance">${Math.round(skill.chance * 100)}%</span>
+                    <div class="arena-list-skill-desc">${skill.description}</div>
+                </div>` : ''}
+            </div>
+            <div class="arena-list-check">
+                ${isSelected ? '<i class="fa-solid fa-circle-check"></i>' : '<i class="fa-regular fa-circle"></i>'}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function toggleArenaCreature(creatureId) {
+    const team = arenaClient?.getSelectedTeam() || [];
+    const index = team.indexOf(creatureId);
+    if (index !== -1) team.splice(index, 1);
+    else if (team.length < 3) team.push(creatureId);
+    else { showToast('Нельзя выбрать больше 3 питомцев', '⚠️'); return; }
+    arenaClient.setSelectedTeam(team);
+    renderArenaTeamInventory();
+}
+
+async function saveArenaTeam() {
+    const team = arenaClient?.getSelectedTeam() || [];
+    if (team.length !== 3) { showToast('Нужно выбрать ровно 3 питомца', '⚠️'); return; }
+    const res = await apiRequest('POST', '/api/arena/team', { team });
+    if (res?.success) showToast('Команда сохранена!', '✅');
+    else showToast(res?.message || 'Ошибка сохранения', '❌');
+}
+
+function resetArenaTeam() {
+    if (arenaClient) {
+        arenaClient.setSelectedTeam([]);
+        arenaClient.state._teamResetPending = true;
+        renderArenaTeamInventory();
+        showToast('Команда сброшена', '🗑️');
+    }
+}
+
+async function findMatch() {
+    if (findingMatch) { showToast('Поиск уже запущен...', '⏳'); return; }
+    if (arenaClient?.isSearching()) { showToast('Поиск уже идёт...', '⏳'); return; }
+    
+    const teamRes = await apiRequest('GET', '/api/arena/team');
+    if (!teamRes?.success || teamRes.teamIds?.length !== 3) { 
+        showToast('Сначала сохраните команду из 3 питомцев', '⚠️'); 
+        return; 
+    }
+    
+    findingMatch = true;
+    try {
+        arenaClient?.startSearch();
+        const findBtn = document.getElementById('findMatchBtn');
+        const searchStatus = document.getElementById('arenaSearchStatus');
+        if (findBtn) { findBtn.disabled = true; findBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Поиск...'; }
+        if (searchStatus) searchStatus.innerHTML = '🔍 Поиск соперника...';
+        
+        const res = await apiRequest('POST', '/api/arena/find-match');
+        if (!res?.success) {
+            arenaClient?.stopSearch();
+            showToast(res?.message || 'Ошибка поиска', '❌');
+            if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; }
+            if (searchStatus) searchStatus.innerHTML = '';
+        } else if (res.isNew && searchStatus) {
+            searchStatus.innerHTML = '⏳ В очереди поиска... <button onclick="cancelBattleSearch()" style="margin-left:8px;background:#ef4444;color:#fff;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px;">✕ Отменить</button>';
+        }
+    } finally {
+        findingMatch = false;
+    }
+}
+
+function cancelBattleSearch() {
+    arenaClient?.stopSearch();
+    const findBtn = document.getElementById('findMatchBtn');
+    const searchStatus = document.getElementById('arenaSearchStatus');
+    if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; }
+    if (searchStatus) searchStatus.innerHTML = '';
+    showToast('Поиск отменён', '⚠️');
+}
+
+async function acceptBattleWebhook() {
+    const battleId = arenaClient?.getBattleId();
+    if (!battleId) return;
+    const res = await apiRequest('POST', '/api/arena/accept-match', { battleId });
+    if (res?.success) {
+        closeOverlay();
+        arenaClient?.setConfirmationShown(false);
+        const modal = document.getElementById('matchFoundModal');
+        if (modal) {
+            if (modal.timeoutId) clearTimeout(modal.timeoutId);
+            modal.remove();
+        }
+    }
+}
+
+async function rejectBattleWebhook() {
+    const battleId = arenaClient?.getBattleId();
+    if (!battleId) return;
+    const modal = document.getElementById('matchFoundModal');
+    if (modal) {
+        if (modal.timeoutId) clearTimeout(modal.timeoutId);
+        modal.remove();
+    }
+    const res = await apiRequest('POST', '/api/arena/reject-match', { battleId });
+    if (res?.success) {
+        arenaClient?.stopSearch();
+        arenaClient?.setConfirmationShown(false);
+        showToast(res.message || 'Бой отклонён, ставка возвращена', '⚠️');
+        renderArenaFightTab();
+    } else {
+        showToast(res?.message || 'Ошибка при отклонении боя', '❌');
+    }
+}
+
+function showSkillBanner(name, description) {
+    const existing = document.getElementById('skillBanner');
+    if (existing) existing.remove();
+    const banner = document.createElement('div');
+    banner.id = 'skillBanner';
+    banner.style.cssText = 'position:fixed;top:30%;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;padding:12px 24px;border-radius:16px;font-weight:700;font-size:15px;z-index:9999;text-align:center;box-shadow:0 4px 20px rgba(124,58,237,0.5);animation:fadeInOut 2.5s ease forwards;pointer-events:none;';
+    banner.innerHTML = `<div>${name}</div><div style="font-size:11px;opacity:0.85;margin-top:4px;">${description}</div>`;
+    document.body.appendChild(banner);
+    setTimeout(() => banner.remove(), 2500);
+}
+
+async function makeAttack(targetIndex) {
+    if (!arenaClient?.isBattleActive()) { showToast('Бой не активен', '⚠️'); return; }
+    const battleId = arenaClient?.getBattleId();
+    if (!battleId) { showToast('ID боя не найден', '⚠️'); return; }
+    
+    const attackBtn = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${targetIndex}"] .arena-attack-btn`);
+    if (attackBtn) {
+        attackBtn.disabled = true;
+        attackBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    }
+    
+    const res = await apiRequest('POST', '/api/arena/move', { battleId, targetIndex });
+    if (!res?.success) {
+        showToast(res?.message || 'Ошибка атаки', '❌');
+        if (attackBtn) {
+            attackBtn.disabled = false;
+            attackBtn.innerHTML = '⚔️ Атаковать';
+        }
+        return;
+    }
+
+    if (res.stunSkipped) {
+        showToast('😵 Питомец оглушён и пропускает ход!', '⚡');
+        const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
+        updateBattleUIFromClient({
+            myTeam: res.myTeam,
+            opponentTeam: res.enemyTeam,
+            currentTurn: res.currentTurn
+        }, isPlayer1);
+        return;
+    }
+
+    if (res.finished) {
+        if (res.winnerId) {
+            const isWin = res.winnerId === arenaClient?.getCurrentUserId();
+            showNativeBattleResult(isWin, res.prizePool || 0);
+            renderArenaFightTab();
+        }
+    } else {
+        const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
+        if (res.skillResult) {
+            showSkillBanner(res.skillResult.skillName, res.skillResult.description);
+        }
+        updateBattleUIFromClient({
+            myTeam: res.myTeam,
+            opponentTeam: res.enemyTeam,
+            lastMove: res.lastMove,
+            currentTurn: res.currentTurn,
+            turnCount: res.turnCount
+        }, isPlayer1);
+        
+        if (res.lastMove && res.lastMove.targetIndex !== undefined) {
+            showDamageAnimation(res.lastMove.targetIndex, res.lastMove.damage, res.lastMove.isCrit, false);
+        }
+    }
+}
+
+async function surrenderBattle() {
+    const battleId = arenaClient?.getBattleId();
+    if (!battleId) return;
+    
+    if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.showPopup({
+            title: '⚠️ Сдаться?',
+            message: 'Вы потеряете MMO за вход в бой.',
+            buttons: [
+                { id: 'confirm', type: 'destructive', text: 'Сдаться' },
+                { id: 'cancel', type: 'cancel', text: 'Отмена' }
+            ]
+        }, async (buttonId) => {
+            if (buttonId !== 'confirm') return;
+            const res = await apiRequest('POST', '/api/arena/surrender', { battleId });
+            if (res?.success) { showToast('Вы сдались', '⚠️'); renderArenaFightTab(); }
+        });
+    } else {
+        if (!confirm('Вы уверены, что хотите сдаться? Вы потеряете MMO за вход.')) return;
+        const res = await apiRequest('POST', '/api/arena/surrender', { battleId });
+        if (res?.success) { showToast('Вы сдались', '⚠️'); renderArenaFightTab(); }
+    }
+}
+
+async function renderArenaFightTab() {
+    const statusContainer = document.getElementById('arenaFightStatus');
+    const battleContainer = document.getElementById('arenaBattleContainer');
+    
+    if (arenaClient && state.token && !arenaClient.isConnected()) {
+        arenaClient.connectSocket(state.token, API_URL);
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    if (arenaClient?.isBattleActive()) {
+        if (battleContainer) battleContainer.style.display = 'block';
+        if (statusContainer) statusContainer.style.display = 'none';
+        return;
+    }
+    
+    try {
+        const battleRes = await apiRequest('GET', '/api/arena/battle/status');
+        if (!battleRes) {
+            if (statusContainer) statusContainer.style.display = 'block';
+            if (battleContainer) battleContainer.style.display = 'none';
+            return;
+        }
+        
+        if (battleRes.hasBattle === true && battleRes.status !== 'finished' && battleRes.status !== 'expired') {
+            if (statusContainer) statusContainer.style.display = 'none';
+            if (battleContainer) battleContainer.style.display = 'block';
+            
+            if (battleRes.status === 'waiting') {
+                if (statusContainer) statusContainer.style.display = 'block';
+                if (battleContainer) battleContainer.style.display = 'none';
+                const findBtn = document.getElementById('findMatchBtn');
+                if (findBtn) { findBtn.disabled = true; findBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Поиск...'; }
+                const searchStatus = document.getElementById('arenaSearchStatus');
+                if (searchStatus) searchStatus.innerHTML = '⏳ В очереди поиска... <button onclick="cancelBattleSearch()" style="margin-left:8px;background:#ef4444;color:#fff;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px;">✕ Отменить</button>';
+            } else if (battleRes.status === 'active') {
+                const justEnded = arenaClient?.state.battleEndedAt && (Date.now() - arenaClient.state.battleEndedAt < 8000);
+                if (!arenaClient?.isBattleActive() && !justEnded) {
+                    arenaClient?.startBattle(battleRes.battleId, battleRes.isPlayer1, battleRes.myTeam, battleRes.opponentTeam);
+                    renderBattleInterface(battleRes);
+                }
+            } else if (battleRes.status === 'pending_confirmation') {
+                const myConfirmed = battleRes.isPlayer1 ? battleRes.player1Confirmed : battleRes.player2Confirmed;
+                const modalAlreadyOpen = !!document.getElementById('matchFoundModal');
+                if (!myConfirmed && !modalAlreadyOpen) {
+                    arenaClient?.setConfirmationShown(true);
+                    showNativeBattleConfirmation(battleRes);
+                }
+            }
+        } else {
+            if (statusContainer) statusContainer.style.display = 'block';
+            if (battleContainer) battleContainer.style.display = 'none';
+            arenaClient?.stopSearch();
+            const findBtn = document.getElementById('findMatchBtn');
+            if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; }
+            const searchStatus = document.getElementById('arenaSearchStatus');
+            if (searchStatus) searchStatus.innerHTML = '';
+            
+            const teamRes = await apiRequest('GET', '/api/arena/team');
+            if (teamRes?.success && teamRes.team) {
+                const teamContainer = document.getElementById('arenaCurrentTeam');
+                if (teamContainer) {
+                    teamContainer.innerHTML = teamRes.team.map(creature => `
+                        <div class="arena-current-creature">
+                            <div class="arena-current-icon">${getIconHtml(creature)}</div>
+                            <div class="arena-current-name">${escapeHtml(creature.name)}</div>
+                        </div>
+                    `).join('');
+                }
+                if (teamRes.teamIds && teamRes.teamIds.length === 3) {
+                    arenaClient?.setSelectedTeam(teamRes.teamIds);
+                }
+            }
+        }
+    } catch (err) {
+        if (statusContainer) statusContainer.style.display = 'block';
+        if (battleContainer) battleContainer.style.display = 'none';
+    }
+}
+
+function renderBattleInterface(battleData) {
+    const container = document.getElementById('arenaBattleContainer');
+    if (!container) return;
+    
+    const statusContainer = document.getElementById('arenaFightStatus');
+    if (statusContainer) statusContainer.style.display = 'none';
+    container.style.display = 'block';
+    
+    const isPlayer1 = battleData.isPlayer1;
+    const actualMyTeam = battleData.myTeam || (isPlayer1 ? battleData.player1Team : battleData.player2Team);
+    const actualEnemyTeam = battleData.opponentTeam || (isPlayer1 ? battleData.player2Team : battleData.player1Team);
+    
+    if (!actualMyTeam || !actualEnemyTeam) {
+        container.innerHTML = '<div class="arena-battle-container" style="text-align:center;padding:40px;color:red;">Ошибка загрузки боя</div>';
+        return;
+    }
+    
+    const isMyTurn = (battleData.currentTurn === 'player1' && isPlayer1) || (battleData.currentTurn === 'player2' && !isPlayer1);
+    
+    container.innerHTML = `
+        <div class="arena-battle-container">
+            <div class="arena-team-side">
+                <div class="arena-side-title">⚔️ ВАША КОМАНДА</div>
+                <div class="arena-creatures-row" id="arenaMyCreatures">
+                    ${actualMyTeam.map((creature, idx) => `
+                        <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-creature-index="${idx}">
+                            <div class="creature-icon">${getIconHtml(creature)}</div>
+                            <div class="creature-name">${escapeHtml(creature.name)}</div>
+                            <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
+                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
+                            ${creature.skill ? `<div class="creature-skill-badge" title="${creature.skill.description}">${creature.skill.name}</div>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="arena-battle-vs">VS</div>
+            <div class="arena-team-side">
+                <div class="arena-side-title">🛡️ КОМАНДА СОПЕРНИКА</div>
+                <div class="arena-creatures-row" id="arenaEnemyCreatures">
+                    ${actualEnemyTeam.map((creature, idx) => `
+                        <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-enemy-index="${idx}">
+                            <div class="creature-icon">${getIconHtml(creature)}</div>
+                            <div class="creature-name">${escapeHtml(creature.name)}</div>
+                            <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
+                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
+                            ${creature.skill ? `<div class="creature-skill-badge" title="${creature.skill.description}">${creature.skill.name}</div>` : ''}
+                            ${isMyTurn && creature.isAlive ? `<button class="arena-attack-btn" data-enemy-idx="${idx}" onclick="makeAttack(${idx})">⚔️ Атаковать</button>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="arena-battle-log" id="arenaBattleLog">
+                ${battleData.battleLog && battleData.battleLog.length ? 
+                    battleData.battleLog.slice(-10).map(log => `<div class="arena-log-entry ${log.isCrit ? 'crit' : ''}">Ход ${log.turn}: ${log.attackerName || 'Питомец'} → ${log.targetName || 'Враг'}: ${log.damage} урона ${log.isCrit ? '💥 КРИТ!' : ''}</div>`).join('') : 
+                    '<div class="arena-log-entry">Бой начинается...</div>'}
+            </div>
+            <div class="arena-battle-timer" id="arenaBattleTimer">⏱ ${battleData.timeLeft !== undefined ? battleData.timeLeft : 30}</div>
+            <button class="arena-surrender-btn" onclick="surrenderBattle()"><i class="fa-solid fa-flag"></i> Сдаться</button>
+        </div>
+    `;
+}
+
+function updateBattleUIFromClient(data, isPlayer1) {
+    if (!data) return;
+    
+    let myTeam, enemyTeam;
+    if (data.player1Team && data.player2Team) {
+        myTeam = isPlayer1 ? data.player1Team : data.player2Team;
+        enemyTeam = isPlayer1 ? data.player2Team : data.player1Team;
+    } else if (data.myTeam && data.opponentTeam) {
+        myTeam = data.myTeam;
+        enemyTeam = data.opponentTeam;
+    } else { return; }
+    if (!myTeam || !enemyTeam) return;
+    
+    for (let i = 0; i < myTeam.length; i++) {
+        const creature = myTeam[i];
+        const creatureEl = document.querySelector(`#arenaMyCreatures .arena-battle-creature[data-creature-index="${i}"]`);
+        if (creatureEl && creature) {
+            const hpEl = creatureEl.querySelector('.creature-hp');
+            const fillEl = creatureEl.querySelector('.arena-hp-fill');
+            if (hpEl) hpEl.textContent = `❤️ ${Math.max(0, creature.currentHp)}/${creature.maxHp}`;
+            if (fillEl) fillEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
+            if (!creature.isAlive) creatureEl.classList.add('dead');
+            else creatureEl.classList.remove('dead');
+        }
+    }
+    
+    const isMyTurn = data.currentTurn && ((data.currentTurn === 'player1' && isPlayer1) || (data.currentTurn === 'player2' && !isPlayer1));
+    
+    for (let i = 0; i < enemyTeam.length; i++) {
+        const creature = enemyTeam[i];
+        const creatureEl = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${i}"]`);
+        if (!creatureEl || !creature) continue;
+        
+        const hpEl = creatureEl.querySelector('.creature-hp');
+        const fillEl = creatureEl.querySelector('.arena-hp-fill');
+        if (hpEl) hpEl.textContent = `❤️ ${Math.max(0, creature.currentHp)}/${creature.maxHp}`;
+        if (fillEl) fillEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
+        if (!creature.isAlive) creatureEl.classList.add('dead');
+        else creatureEl.classList.remove('dead');
+        
+        const existingBtn = creatureEl.querySelector('.arena-attack-btn');
+        const canAttack = isMyTurn && creature.isAlive && arenaClient?.isBattleActive();
+        
+        if (canAttack && !existingBtn) {
+            const btn = document.createElement('button');
+            btn.className = 'arena-attack-btn';
+            btn.setAttribute('data-enemy-idx', i);
+            btn.innerHTML = '⚔️ Атаковать';
+            btn.onclick = (function(index) { return function() { makeAttack(index); }; })(i);
+            creatureEl.appendChild(btn);
+        } else if (!canAttack && existingBtn) {
+            existingBtn.remove();
+        } else if (canAttack && existingBtn) {
+            existingBtn.disabled = false;
+            existingBtn.style.opacity = '1';
+            existingBtn.innerHTML = '⚔️ Атаковать';
+        }
+    }
+    
+    if (data.lastMove) {
+        const logContainer = document.getElementById('arenaBattleLog');
+        if (logContainer) {
+            const logEntry = document.createElement('div');
+            logEntry.className = `arena-log-entry ${data.lastMove.isCrit ? 'crit' : ''}`;
+            logEntry.innerHTML = `Ход ${data.turnCount || '?'}: Нанесено ${data.lastMove.damage} урона ${data.lastMove.isCrit ? '💥 КРИТ!' : ''}`;
+            logContainer.insertBefore(logEntry, logContainer.firstChild);
+            if (logContainer.children.length > 10) logContainer.removeChild(logContainer.lastChild);
+        }
+    }
+}
+
+function showDamageAnimation(targetIndex, damage, isCrit, hitMy = false) {
+    let el;
+    if (hitMy) {
+        el = document.querySelector(`#arenaMyCreatures .arena-battle-creature[data-creature-index="${targetIndex}"]`);
+    } else {
+        el = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${targetIndex}"]`);
+    }
+    if (!el) return;
+    
+    const damageDiv = document.createElement('div');
+    damageDiv.className = `arena-damage-number ${isCrit ? 'crit' : ''}`;
+    damageDiv.textContent = `-${damage}`;
+    el.style.position = 'relative';
+    el.appendChild(damageDiv);
+    if (isCrit) {
+        el.style.animation = 'damageShake 0.3s ease';
+        setTimeout(() => { el.style.animation = ''; }, 300);
+    }
+    setTimeout(() => { if (damageDiv && damageDiv.remove) damageDiv.remove(); }, 1000);
+    el.style.transition = 'background 0.1s ease';
+    el.style.background = 'rgba(239, 68, 68, 0.3)';
+    setTimeout(() => { if (el) el.style.background = ''; }, 150);
+}
+
+async function renderArenaRanking() {
+    try {
+        const res = await apiRequest('GET', '/api/arena/leaderboard');
+        if (!res?.success) return;
+        
+        const container = document.getElementById('arenaLeaderboardList');
+        if (container && res.leaders) {
+            const leagueDisplay = {
+                bronze: { name: '🥉 Бронза', class: 'league-badge-bronze' },
+                silver: { name: '🥈 Серебро', class: 'league-badge-silver' },
+                gold: { name: '🥇 Золото', class: 'league-badge-gold' },
+                platinum: { name: '💎 Платина', class: 'league-badge-platinum' },
+                diamond: { name: '🏆 Алмаз', class: 'league-badge-diamond' }
+            };
+            
+            container.innerHTML = res.leaders.map((player, idx) => {
+                const rank = idx + 1;
+                const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
+                const rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+                const isMe = player.rating === res.myStats?.rating && player.name === (state.user?.username || state.user?.firstName);
+                const league = player.league || 'bronze';
+                const leagueInfo = leagueDisplay[league] || leagueDisplay.bronze;
+                
+                return `<div class="lb-item ${isMe ? 'me' : ''}">
+                    <div class="lb-rank ${rankClass}">${rankIcon}</div>
+                    <div class="lb-avatar" style="background: linear-gradient(135deg, var(--accent), var(--accent3));">
+                        ${(player.name || '?')[0]?.toUpperCase() || '?'}
+                    </div>
+                    <div class="lb-info">
+                        <div class="lb-name">${escapeHtml(player.name)} ${isMe ? '<span style="font-size:9px;color:var(--accent3)">(Вы)</span>' : ''}</div>
+                        <div class="lb-level">УР ${player.level} <span class="arena-league-badge-small ${leagueInfo.class}">${leagueInfo.name}</span></div>
+                    </div>
+                    <div class="lb-score"><span>${player.rating}</span><span style="font-size:9px;">${player.wins}/${player.losses}</span></div>
+                </div>`;
+            }).join('');
+        }
+    } catch (err) {}
+}
+
+async function renderArenaHistory() {
+    const container = document.getElementById('arenaHistoryList');
+    if (!container) return;
+    container.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;">⏳ Загрузка...</div>';
+    try {
+        const res = await apiRequest('GET', '/api/arena/history');
+        if (!res?.success || !res.history?.length) {
+            container.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;">📭 Нет завершённых боёв</div>';
+            return;
+        }
+        const leagueIcons = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '💎', diamond: '🏆' };
+        container.innerHTML = res.history.map(b => {
+            const date = new Date(b.createdAt).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            const icon = leagueIcons[b.league] || '⚔️';
+            return `<div class="arena-history-item ${b.isWin ? 'win' : 'loss'}">
+                <div class="history-result">${b.isWin ? '🏆' : '💀'}</div>
+                <div class="history-info">
+                    <div class="history-opponent">vs ${escapeHtml(b.opponent)}</div>
+                    <div class="history-meta">${icon} ${date}</div>
+                </div>
+                <div class="history-prize ${b.isWin ? 'prize-win' : 'prize-loss'}">
+                    ${b.isWin ? '+' : '-'}${b.isWin ? b.prizePool : b.entryFee || '?'} MMO
+                </div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        container.innerHTML = `<div style="text-align:center;padding:20px;color:#ef4444;">Ошибка: ${e.message}</div>`;
+    }
+}
+
+async function updateArenaRanksInfo() {
+    try {
+        const res = await apiRequest('GET', '/api/arena/leaderboard');
+        if (!res?.success) return;
+        const myStats = res.myStats;
+        const myRating = myStats?.rating || 1000;
+        const myLeague = myStats?.league || 'bronze';
+        const leagueIcons = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '💎', diamond: '🏆' };
+        const leagueNames = { bronze: 'Бронзовая лига', silver: 'Серебряная лига', gold: 'Золотая лига', platinum: 'Платиновая лига', diamond: 'Алмазная лига' };
+        
+        const iconEl = document.getElementById('arenaCurrentRankIcon');
+        const nameEl = document.getElementById('arenaCurrentRankName');
+        const ratingEl = document.getElementById('arenaCurrentRankRating');
+        if (iconEl) iconEl.textContent = leagueIcons[myLeague] || '🥉';
+        if (nameEl) nameEl.textContent = leagueNames[myLeague] || 'Бронзовая лига';
+        if (ratingEl) ratingEl.textContent = myRating;
+    } catch (err) {}
+}
+
+async function toggleRankDetailsCompact(rankId) {
+    const details = document.getElementById(`rankCompactDetails-${rankId}`);
+    const item = details?.closest('.rank-item-compact');
+    if (details) {
+        if (details.style.display === 'none') {
+            details.style.display = 'block';
+            item?.classList.add('expanded');
+            await loadCompactRankPlayers(rankId);
+        } else {
+            details.style.display = 'none';
+            item?.classList.remove('expanded');
+        }
+    }
+}
+
+async function loadCompactRankPlayers(league) {
+    const container = document.getElementById(`${league}CompactList`);
+    if (!container) return;
+    container.innerHTML = '<div style="padding:8px;text-align:center;color:var(--text3);font-size:10px;">Загрузка...</div>';
+    try {
+        const res = await apiRequest('GET', '/api/arena/leaderboard');
+        if (res?.success && res.leaders) {
+            const leaguePlayers = res.leaders.filter(p => (p.league || 'bronze') === league);
+            if (leaguePlayers.length === 0) {
+                container.innerHTML = '<div style="padding:8px;text-align:center;color:var(--text3);font-size:10px;">Нет игроков</div>';
+                return;
+            }
+            container.innerHTML = leaguePlayers.slice(0, 5).map(player => `
+                <div class="compact-player-item">
+                    <div class="compact-player-name">
+                        <div class="compact-player-avatar">${(player.name || '?')[0].toUpperCase()}</div>
+                        <span>${escapeHtml(player.name)}</span>
+                    </div>
+                    <div class="compact-player-rating">${player.rating}</div>
+                </div>
+            `).join('');
+        } else {
+            container.innerHTML = '<div style="padding:8px;text-align:center;color:var(--text3);font-size:10px;">Ошибка</div>';
+        }
+    } catch (err) {
+        container.innerHTML = '<div style="padding:8px;text-align:center;color:var(--text3);font-size:10px;">Ошибка</div>';
+    }
+}
+
+// ============================================================
 // NAVIGATION
 // ============================================================
 function switchTab(tab) {
@@ -2784,3 +3634,24 @@ window.copyToClipboard = copyToClipboard;
 window.checkActiveRequests = checkActiveRequests;
 window.loadUserStats = loadUserStats;
 window.refreshUserProfile = refreshUserProfile;
+window.switchArenaTab = switchArenaTab;
+window.toggleArenaCreature = toggleArenaCreature;
+window.saveArenaTeam = saveArenaTeam;
+window.findMatch = findMatch;
+window.acceptBattleWebhook = acceptBattleWebhook;
+window.rejectBattleWebhook = rejectBattleWebhook;
+window.makeAttack = makeAttack;
+window.surrenderBattle = surrenderBattle;
+window.cancelBattleSearch = cancelBattleSearch;
+window.renderBattleInterface = renderBattleInterface;
+window.updateBattleUIFromClient = updateBattleUIFromClient;
+window.showDamageAnimation = showDamageAnimation;
+window.renderArenaRanking = renderArenaRanking;
+window.renderArenaHistory = renderArenaHistory;
+window.updateArenaRanksInfo = updateArenaRanksInfo;
+window.toggleRankDetailsCompact = toggleRankDetailsCompact;
+window.loadCompactRankPlayers = loadCompactRankPlayers;
+window.acceptBattleFromModal = acceptBattleFromModal;
+window.rejectBattleFromModal = rejectBattleFromModal;
+window.resetArenaTeam = resetArenaTeam;
+window.renderArenaFightTab = renderArenaFightTab;
