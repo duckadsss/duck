@@ -3552,6 +3552,129 @@ app.post('/api/admin/give-to-all', adminAuthMiddleware, async (req, res) => {
     }
 });
 
+
+// ============================================
+// АДМИН: АРЕНА — МОНИТОРИНГ
+// ============================================
+
+app.get('/api/admin/arena/battles', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { status = 'all', limit = 50 } = req.query;
+
+        const [activeCount, waitingCount, pendingCount, finishedCount, totalRated] = await Promise.all([
+            ArenaBattle.countDocuments({ status: 'active' }),
+            ArenaBattle.countDocuments({ status: 'waiting' }),
+            ArenaBattle.countDocuments({ status: 'pending_confirmation' }),
+            ArenaBattle.countDocuments({ status: 'finished' }),
+            ArenaStats.countDocuments()
+        ]);
+
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayCount = await ArenaBattle.countDocuments({ createdAt: { $gte: todayStart } });
+
+        const paidAgg = await ArenaBattle.aggregate([
+            { $match: { status: 'finished' } },
+            { $group: { _id: null, total: { $sum: '$prizePool' }, avgTurns: { $avg: '$turnCount' } } }
+        ]);
+        const totalPaid = paidAgg[0]?.total || 0;
+        const avgTurns = Math.round(paidAgg[0]?.avgTurns || 0);
+
+        const query = (status !== 'all') ? { status } : {};
+        const battles = await ArenaBattle.find(query)
+            .sort({ createdAt: -1 })
+            .limit(parseInt(limit))
+            .populate('player1Id', 'username firstName telegramId level')
+            .populate('player2Id', 'username firstName telegramId level')
+            .populate('winnerId', 'username firstName telegramId')
+            .lean();
+
+        const formatted = battles.map(b => ({
+            _id: b._id,
+            status: b.status,
+            league: b.league,
+            entryFee: b.entryFee,
+            prizePool: b.prizePool,
+            turnCount: b.turnCount || 0,
+            currentTurn: b.currentTurn,
+            createdAt: b.createdAt,
+            lastMoveAt: b.lastMoveAt,
+            player1Id: b.player1Id?._id?.toString(),
+            player2Id: b.player2Id?._id?.toString(),
+            winnerId: b.winnerId?._id?.toString(),
+            player1: b.player1Id ? {
+                telegramId: b.player1Id.telegramId,
+                username: b.player1Id.username,
+                firstName: b.player1Id.firstName,
+                level: b.player1Id.level
+            } : null,
+            player2: b.player2Id ? {
+                telegramId: b.player2Id.telegramId,
+                username: b.player2Id.username,
+                firstName: b.player2Id.firstName,
+                level: b.player2Id.level
+            } : null,
+            winner: b.winnerId ? {
+                telegramId: b.winnerId.telegramId,
+                username: b.winnerId.username,
+                firstName: b.winnerId.firstName
+            } : null,
+            player1Team: (b.player1Team || []).map(p => ({
+                name: p.name, icon: p.icon, rarity: p.rarity,
+                currentHp: p.currentHp, maxHp: p.maxHp, isAlive: p.isAlive
+            })),
+            player2Team: (b.player2Team || []).map(p => ({
+                name: p.name, icon: p.icon, rarity: p.rarity,
+                currentHp: p.currentHp, maxHp: p.maxHp, isAlive: p.isAlive
+            }))
+        }));
+
+        res.json({
+            success: true,
+            stats: { active: activeCount, waiting: waitingCount, pending: pendingCount,
+                     finished: finishedCount, today: todayCount, totalRated, totalPaid, avgTurns },
+            battles: formatted
+        });
+    } catch (e) {
+        console.error('admin arena battles error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/admin/arena/leaderboard', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { limit = 100 } = req.query;
+        const leaders = await ArenaStats.find()
+            .sort({ rating: -1 })
+            .limit(parseInt(limit))
+            .populate('userId', 'username firstName telegramId level')
+            .lean();
+
+        const leaderboard = leaders.map((s, i) => ({
+            rank: i + 1,
+            name: s.userId?.username || s.userId?.firstName || 'Unknown',
+            telegramId: s.userId?.telegramId,
+            level: s.userId?.level || 1,
+            rating: s.rating,
+            league: s.league || 'bronze',
+            peakRating: s.peakRating || s.rating,
+            wins: s.wins || 0,
+            losses: s.losses || 0,
+            streak: s.streak || 0,
+            bestStreak: s.bestStreak || 0,
+            totalBattles: s.totalBattles || 0,
+            totalEarned: s.totalEarned || 0,
+            totalLost: s.totalLost || 0,
+            lastBattleAt: s.lastBattleAt
+        }));
+
+        res.json({ success: true, leaderboard });
+    } catch (e) {
+        console.error('admin arena leaderboard error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
 app.post('/api/admin/refresh-cache', adminAuthMiddleware, async (req, res) => {
     try {
         await invalidateConfigCache();
@@ -3560,6 +3683,153 @@ app.post('/api/admin/refresh-cache', adminAuthMiddleware, async (req, res) => {
         userIncomeCache.clear();
         cachedAdminStats = { data: null, expiresAt: 0 };
         res.json({ success: true, message: 'Кэш обновлён' });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ============================================
+// АДМИН: АРЕНА
+// ============================================
+app.get('/api/admin/arena/stats', adminAuthMiddleware, async (req, res) => {
+    try {
+        const [
+            totalBattles,
+            activeBattles,
+            waitingBattles,
+            finishedToday,
+            totalPlayers
+        ] = await Promise.all([
+            ArenaBattle.countDocuments(),
+            ArenaBattle.countDocuments({ status: 'active' }),
+            ArenaBattle.countDocuments({ status: 'waiting' }),
+            ArenaBattle.countDocuments({
+                status: 'finished',
+                updatedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+            }),
+            ArenaStats.countDocuments()
+        ]);
+
+        const leagueBreakdown = await ArenaStats.aggregate([
+            { $group: { _id: '$league', count: { $sum: 1 }, avgRating: { $avg: '$rating' } } },
+            { $sort: { avgRating: -1 } }
+        ]);
+
+        const topPlayers = await ArenaStats.find()
+            .sort({ rating: -1 })
+            .limit(5)
+            .populate('userId', 'username firstName telegramId')
+            .lean();
+
+        res.json({
+            success: true,
+            stats: { totalBattles, activeBattles, waitingBattles, finishedToday, totalPlayers },
+            leagueBreakdown,
+            topPlayers: topPlayers.map(p => ({
+                name: p.userId?.username || p.userId?.firstName || '?',
+                telegramId: p.userId?.telegramId,
+                rating: p.rating,
+                league: p.league,
+                wins: p.wins,
+                losses: p.losses,
+                streak: p.streak
+            }))
+        });
+    } catch (e) {
+        console.error('admin arena stats error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/admin/arena/battles', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { status = 'all', limit = 50, skip = 0 } = req.query;
+        const query = status !== 'all' ? { status } : {};
+
+        const [battles, total] = await Promise.all([
+            ArenaBattle.find(query)
+                .sort({ createdAt: -1 })
+                .skip(parseInt(skip))
+                .limit(parseInt(limit))
+                .populate('player1Id', 'username firstName telegramId')
+                .populate('player2Id', 'username firstName telegramId')
+                .populate('winnerId', 'username firstName telegramId')
+                .lean(),
+            ArenaBattle.countDocuments(query)
+        ]);
+
+        const result = battles.map(b => ({
+            id: b._id,
+            status: b.status,
+            league: b.league,
+            entryFee: b.entryFee,
+            prizePool: b.prizePool,
+            turnCount: b.turnCount,
+            player1: b.player1Id?.username || b.player1Id?.firstName || b.player1Id?.telegramId || '?',
+            player1Id: b.player1Id?.telegramId,
+            player2: b.player2Id?.username || b.player2Id?.firstName || b.player2Id?.telegramId || '—',
+            player2Id: b.player2Id?.telegramId,
+            winner: b.winnerId?.username || b.winnerId?.firstName || b.winnerId?.telegramId || null,
+            player1Confirmed: b.player1Confirmed,
+            player2Confirmed: b.player2Confirmed,
+            createdAt: b.createdAt,
+            lastMoveAt: b.lastMoveAt
+        }));
+
+        res.json({ success: true, battles: result, total });
+    } catch (e) {
+        console.error('admin arena battles error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/admin/arena/leaderboard', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { limit = 100 } = req.query;
+        const leaders = await ArenaStats.find()
+            .sort({ rating: -1 })
+            .limit(parseInt(limit))
+            .populate('userId', 'username firstName telegramId level')
+            .lean();
+
+        res.json({
+            success: true,
+            leaders: leaders.map((s, i) => ({
+                rank: i + 1,
+                name: s.userId?.username || s.userId?.firstName || '?',
+                telegramId: s.userId?.telegramId,
+                level: s.userId?.level || 1,
+                rating: s.rating,
+                league: s.league,
+                wins: s.wins,
+                losses: s.losses,
+                draws: s.draws,
+                streak: s.streak,
+                bestStreak: s.bestStreak,
+                totalEarned: s.totalEarned,
+                totalLost: s.totalLost,
+                peakRating: s.peakRating,
+                lastBattleAt: s.lastBattleAt
+            }))
+        });
+    } catch (e) {
+        console.error('admin arena leaderboard error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// Сброс рейтинга игрока
+app.post('/api/admin/arena/reset-player/:telegramId', adminAuthMiddleware, async (req, res) => {
+    try {
+        const user = await User.findOne({ telegramId: req.params.telegramId });
+        if (!user) return res.status(404).json({ success: false, message: 'Пользователь не найден' });
+
+        await ArenaStats.findOneAndUpdate(
+            { userId: user._id },
+            { $set: { rating: 1000, league: 'bronze', wins: 0, losses: 0, streak: 0, totalEarned: 0, totalLost: 0 } }
+        );
+
+        res.json({ success: true, message: `Рейтинг ${user.username || user.firstName} сброшен` });
     } catch (e) {
         res.status(500).json({ success: false, message: e.message });
     }
@@ -3770,8 +4040,127 @@ app.get('/api/admin/broadcast/status/:id', adminAuthMiddleware, async (req, res)
 });
 
 // ============================================
-// ФОНОВЫЕ ПРОЦЕССЫ
+// АДМИН: АРЕНА — бои
 // ============================================
+app.get('/api/admin/arena/battles', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { limit = 100, status } = req.query;
+        const query = status && status !== 'all' ? { status } : {};
+
+        const battles = await ArenaBattle.find(query)
+            .sort({ createdAt: -1 })
+            .limit(parseInt(limit))
+            .lean();
+
+        // Собираем все уникальные userId из боёв
+        const userIds = new Set();
+        battles.forEach(b => {
+            if (b.player1Id) userIds.add(b.player1Id.toString());
+            if (b.player2Id) userIds.add(b.player2Id.toString());
+            if (b.winnerId)  userIds.add(b.winnerId.toString());
+        });
+
+        const users = await User.find({ _id: { $in: [...userIds] } })
+            .select('_id username firstName')
+            .lean();
+
+        const userMap = new Map(users.map(u => [
+            u._id.toString(),
+            u.username || u.firstName || `User${u._id.toString().slice(-4)}`
+        ]));
+
+        const enriched = battles.map(b => ({
+            ...b,
+            player1Name: b.player1Id ? userMap.get(b.player1Id.toString()) : null,
+            player2Name: b.player2Id ? userMap.get(b.player2Id.toString()) : null,
+            winnerName:  b.winnerId  ? userMap.get(b.winnerId.toString())  : null,
+        }));
+
+        res.json({ success: true, battles: enriched });
+    } catch (e) {
+        console.error('admin arena/battles error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ============================================
+// АДМИН: АРЕНА — рейтинг
+// ============================================
+app.get('/api/admin/arena/leaderboard', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { limit = 50 } = req.query;
+
+        const stats = await ArenaStats.find()
+            .sort({ rating: -1 })
+            .limit(parseInt(limit))
+            .populate('userId', 'username firstName level')
+            .lean();
+
+        const enriched = stats.map((s, i) => ({
+            rank: i + 1,
+            name: s.userId?.username || s.userId?.firstName || 'Unknown',
+            level: s.userId?.level || 1,
+            rating: s.rating,
+            league: s.league,
+            wins: s.wins,
+            losses: s.losses,
+            draws: s.draws,
+            streak: s.streak,
+            bestStreak: s.bestStreak,
+            totalBattles: s.totalBattles,
+            totalEarned: s.totalEarned,
+            totalLost: s.totalLost,
+            peakRating: s.peakRating,
+            lastBattleAt: s.lastBattleAt,
+        }));
+
+        res.json({ success: true, stats: enriched });
+    } catch (e) {
+        console.error('admin arena/leaderboard error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ============================================
+// АДМИН: АРЕНА — принудительное завершение зависших боёв
+// ============================================
+app.post('/api/admin/arena/force-expire', adminAuthMiddleware, async (req, res) => {
+    try {
+        let expiredCount = 0;
+
+        // Бои active, в которых нет хода > 5 минут
+        const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
+        const staleBattles = await ArenaBattle.find({
+            status: 'active',
+            lastMoveAt: { $lt: staleThreshold }
+        });
+
+        for (const battle of staleBattles) {
+            // Победитель — тот кто ходил последним (противоположный currentTurn)
+            battle.winnerId = battle.currentTurn === 'player1' ? battle.player2Id : battle.player1Id;
+            battle.status = 'finished';
+            if (arenaManager) {
+                await arenaManager.finishBattle(battle);
+            } else {
+                await battle.save();
+            }
+            expiredCount++;
+        }
+
+        // Также истёкшие waiting/pending
+        if (arenaManager) {
+            const extra = await arenaManager.expireOldBattles();
+            expiredCount += extra;
+        }
+
+        res.json({ success: true, expiredCount });
+    } catch (e) {
+        console.error('admin arena/force-expire error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+
 setInterval(async () => {
     try {
         const now = Date.now();
