@@ -259,16 +259,7 @@ startBattleTimer(initialTimeLeft = 30) {
     // ============================================================
     
     connectSocket(token, apiUrl) {
-        // FIX: если уже подключены — не рвём соединение
-        if (this.state.socket && this.state.socket.connected) {
-            console.log("✅ WebSocket уже подключён, пропускаем");
-            return;
-        }
-        // Если есть старый отключённый сокет — чистим его
-        if (this.state.socket) {
-            this.state.socket.disconnect();
-            this.state.socket = null;
-        }
+        this.disconnectSocket();
         
         if (!token) {
             console.error('No token for WebSocket');
@@ -489,11 +480,7 @@ socket.on('confirmation_update', (data) => {
     // ============================================================
     
     on(event, callback) {
-        // Поддерживаем оба формата: 'battleStart' и 'onBattleStart'
-        const key = event.startsWith('on')
-            ? event
-            : 'on' + event.charAt(0).toUpperCase() + event.slice(1);
-        this.callbacks[key] = callback;
+        this.callbacks[event] = callback;
     }
     
     // ============================================================
@@ -501,13 +488,11 @@ socket.on('confirmation_update', (data) => {
     // ============================================================
     
     getCurrentUserId() {
-        // FIX #11: всегда возвращаем MongoDB _id, так как winnerId на сервере — это _id
         if (window.state && window.state.user) {
             if (window.state.user._id) return window.state.user._id.toString();
             if (window.state.user.id) return window.state.user.id.toString();
+            if (window.state.user.telegramId) return window.state.user.telegramId.toString();
         }
-        // Telegram user.id — это telegramId, не _id MongoDB.
-        // Используем только как крайний запасной вариант — сравнение может быть ложным.
         if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
             return window.Telegram.WebApp.initDataUnsafe.user.id.toString();
         }
