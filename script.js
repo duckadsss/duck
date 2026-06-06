@@ -520,10 +520,16 @@ if (arenaClient) {
     arenaClient.loadTeamFromStorage();
     arenaClient.connectSocket(state.token, API_URL);
     
-    arenaClient.on('onMatchFound', (data) => showNativeBattleConfirmation(data));
-    arenaClient.on('onBattleStartUI', (data) => renderBattleInterface(data));
-    arenaClient.on('onBattleUpdate', (data, isPlayer1) => updateBattleUIFromClient(data, isPlayer1));
-    arenaClient.on('onBattleEnd', (isWin, prizePool) => { 
+    arenaClient.on('battleStart', (battleId, isPlayer1, myTeam, opponentTeam) => {
+        console.log('⚔️ Battle start from callback');
+        renderBattleInterface({ battleId, isPlayer1, myTeam, opponentTeam });
+    });
+    
+    arenaClient.on('battleUpdate', (data, isPlayer1) => {
+        updateBattleUIFromClient(data, isPlayer1);
+    });
+    
+    arenaClient.on('battleEnd', (isWin, prizePool) => {
         showNativeBattleResult(isWin, prizePool);
         refreshUserProfile();
         setTimeout(() => {
@@ -532,13 +538,48 @@ if (arenaClient) {
             renderArenaHistory();
         }, 1000);
     });
-    arenaClient.on('onTimerTick', (timeLeft) => { 
-        const timerEl = document.getElementById('arenaBattleTimer'); 
+    
+    arenaClient.on('matchFound', (data) => {
+        showNativeBattleConfirmation(data);
+    });
+    
+    arenaClient.on('timerTick', (timeLeft) => {
+        const timerEl = document.getElementById('arenaBattleTimer');
         if (timerEl) timerEl.textContent = `⏱ ${timeLeft}`;
     });
-    arenaClient.on('onConfirmationUpdate', (data) => updateConfirmationModal(data));
-    arenaClient.on('onConnected', () => console.log('✅ WebSocket connected'));
-    arenaClient.on('onDisconnected', (reason) => console.log('❌ WebSocket disconnected:', reason));
+    
+    arenaClient.on('confirmationUpdate', (data) => {
+        updateConfirmationModal(data);
+    });
+    
+    arenaClient.on('searchTimeout', () => {
+        showToast('Поиск соперника превысил 60 секунд. Попробуйте снова.', '⏰');
+        const findBtn = document.getElementById('findMatchBtn');
+        if (findBtn) {
+            findBtn.disabled = false;
+            findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой';
+        }
+        const searchStatus = document.getElementById('arenaSearchStatus');
+        if (searchStatus) searchStatus.innerHTML = '';
+    });
+    
+    arenaClient.on('searchTick', (secondsLeft) => {
+        const searchStatus = document.getElementById('arenaSearchStatus');
+        if (searchStatus && secondsLeft > 0) {
+            searchStatus.innerHTML = `🔍 Поиск... ${secondsLeft}с <button onclick="cancelBattleSearch()" style="margin-left:8px;background:#ef4444;color:#fff;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px;">✕ Отменить</button>`;
+        } else if (searchStatus && secondsLeft <= 0) {
+            searchStatus.innerHTML = '';
+        }
+    });
+    
+    arenaClient.on('connected', () => {
+        console.log('✅ WebSocket connected');
+    });
+    
+    arenaClient.on('disconnected', (reason) => {
+        console.log('❌ WebSocket disconnected:', reason);
+        showToast('Соединение с ареной разорвано. Бой может быть прерван.', '⚠️');
+    });
 }
 initArenaWebhooks();
 
