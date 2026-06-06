@@ -259,7 +259,16 @@ startBattleTimer(initialTimeLeft = 30) {
     // ============================================================
     
     connectSocket(token, apiUrl) {
-        this.disconnectSocket();
+        // FIX: если уже подключены — не рвём соединение
+        if (this.state.socket && this.state.socket.connected) {
+            console.log("✅ WebSocket уже подключён, пропускаем");
+            return;
+        }
+        // Если есть старый отключённый сокет — чистим его
+        if (this.state.socket) {
+            this.state.socket.disconnect();
+            this.state.socket = null;
+        }
         
         if (!token) {
             console.error('No token for WebSocket');

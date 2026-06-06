@@ -130,19 +130,11 @@ function getVisualBalance() {
     return (state.serverBalance || 0) + earned;
 }
 
-// isInit=true при первой загрузке — lastServerSync = сейчас (тикаем с нуля)
-// isInit=false после collect-income — lastServerSync = lastPassiveIncome
-// Это предотвращает "прыжок" баланса вниз при обновлении страницы
-function updateServerSnapshot(newBalance, newIncomePerHour, newLastPassiveIncome, isInit = false) {
+function updateServerSnapshot(newBalance, newIncomePerHour, newLastPassiveIncome) {
+    console.log('📊 updateServerSnapshot:', { newBalance, newIncomePerHour, newLastPassiveIncome });
     state.serverBalance = newBalance !== undefined ? newBalance : state.serverBalance;
     state.incomePerHour = newIncomePerHour !== undefined ? newIncomePerHour : state.incomePerHour;
-    if (isInit) {
-        // При загрузке: баланс в БД уже актуальный, тикаем с текущего момента
-        state.lastServerSync = Date.now();
-    } else {
-        // После collect-income: тикаем с момента когда сервер зафиксировал доход
-        state.lastServerSync = newLastPassiveIncome ? new Date(newLastPassiveIncome).getTime() : Date.now();
-    }
+    state.lastServerSync = newLastPassiveIncome ? new Date(newLastPassiveIncome).getTime() : Date.now();
     if (state.user) state.user.balance = state.serverBalance;
 }
 
@@ -388,7 +380,7 @@ async function refreshUserProfile() {
         state.inventory = res.inventory || [];
         state.incomePerHour = res.incomePerHour || 0;
         
-        updateServerSnapshot(state.user.balance, state.incomePerHour, res.lastPassiveIncome, true);
+        updateServerSnapshot(state.user.balance, state.incomePerHour, res.lastPassiveIncome);
         
         updateHeader();
         renderCards();
@@ -3172,10 +3164,7 @@ async function renderArenaFightTab() {
     const statusContainer = document.getElementById('arenaFightStatus');
     const battleContainer = document.getElementById('arenaBattleContainer');
     
-    if (arenaClient && state.token && !arenaClient.isConnected()) {
-        arenaClient.connectSocket(state.token, API_URL);
-        await new Promise(resolve => setTimeout(resolve, 500));
-    }
+    // WebSocket подключается один раз при старте — здесь не трогаем
     
     if (arenaClient?.isBattleActive()) {
         if (battleContainer) battleContainer.style.display = 'block';
@@ -3563,9 +3552,7 @@ function switchTab(tab) {
     
     // ========== ДОБАВЬТЕ ЭТОТ БЛОК ==========
     if (tab === 'arena') {
-        if (arenaClient && state.token && !arenaClient.isConnected()) {
-            arenaClient.connectSocket(state.token, API_URL);
-        }
+        // WebSocket уже подключён при старте
         renderArenaTeamInventory();
         renderArenaFightTab();
         renderArenaRanking();

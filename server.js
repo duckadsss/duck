@@ -3764,17 +3764,13 @@ io.on('connection', (socket) => {
         }
     });
     
-    const pingInterval = setInterval(() => {
-        if (socket.connected) {
-            socket.emit('ping');
-        }
-    }, 20000);
+    // Кастомный пинг убран — Socket.IO делает это сам (pingInterval: 25000)
     
-    socket.on('pong', () => {});
+    // pong handler удалён — Socket.IO обрабатывает pong сам
     
     socket.on('disconnect', (reason) => {
         console.log(`🔌 WebSocket отключён: ${user.telegramId}, причина: ${reason}`);
-        clearInterval(pingInterval);
+        // pingInterval удалён — Socket.IO управляет пингом сам
         if (arenaSocketManager) {
             arenaSocketManager.remove(user._id);
         }
