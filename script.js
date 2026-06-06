@@ -127,10 +127,14 @@ function getVisualBalance() {
     return (state.serverBalance || 0) + earned;
 }
 
-function updateServerSnapshot(newBalance, newIncomePerHour, newLastPassiveIncome) {
+function updateServerSnapshot(newBalance, newIncomePerHour) {
     state.serverBalance = newBalance !== undefined ? newBalance : state.serverBalance;
     state.incomePerHour = newIncomePerHour !== undefined ? newIncomePerHour : state.incomePerHour;
-    state.lastServerSync = newLastPassiveIncome ? new Date(newLastPassiveIncome).getTime() : Date.now();
+    // lastServerSync = текущий момент: сервер уже вернул актуальный баланс,
+    // тикер должен добавлять доход начиная с этого момента, а не с lastPassiveIncome.
+    // Старая логика (lastPassiveIncome) приводила к тому что тикер добавлял
+    // "уже начисленный" доход поверх актуального баланса → откат при следующем sync.
+    state.lastServerSync = Date.now();
     if (state.user) state.user.balance = state.serverBalance;
 }
 
@@ -195,8 +199,11 @@ async function startCollectIncomeLoop() {
         try {
             const res = await apiRequest('POST', '/api/game/collect-income');
             if (res && res.success) {
-                updateServerSnapshot(res.balance, res.incomePerHour, res.lastPassiveIncome);
-                if (state.user) state.user.balance = res.balance;
+                const serverBal = res.balance;
+                const visualBal = getVisualBalance();
+                const effectiveBal = Math.max(serverBal, Math.floor(visualBal));
+                updateServerSnapshot(effectiveBal, res.incomePerHour, null);
+                if (state.user) state.user.balance = effectiveBal;
             }
         } catch (e) {}
     }, 5 * 60 * 1000);
@@ -283,8 +290,13 @@ function handleVisibilityChange() {
     } else {
         apiRequest('POST', '/api/game/collect-income').then(res => {
             if (res && res.success) {
-                updateServerSnapshot(res.balance, res.incomePerHour, res.lastPassiveIncome);
-                if (state.user) { state.user.balance = res.balance; updateHeader(); }
+                // Берём максимум из серверного и текущего визуального баланса —
+                // чтобы тикер не прыгал назад если 60-секундный порог ещё не прошёл
+                const serverBal = res.balance;
+                const visualBal = getVisualBalance();
+                const effectiveBal = Math.max(serverBal, Math.floor(visualBal));
+                updateServerSnapshot(effectiveBal, res.incomePerHour, null);
+                if (state.user) { state.user.balance = effectiveBal; updateHeader(); }
                 if (res.earned > 1) showToast(`+${formatNum(res.earned)} MMO получено`, '💰');
             }
         }).catch(err => console.warn('collect-income error:', err));
@@ -307,8 +319,11 @@ async function refreshUserProfile() {
     if (res && res.success) {
         state.user = res.user;
         state.inventory = res.inventory || [];
-        state.incomePerHour = res.incomePerHour || 0;
-        updateServerSnapshot(state.user.balance, state.incomePerHour, res.lastPassiveIncome);
+        // Берём max чтобы баланс не прыгал назад (тикер мог уже добавить часть дохода)
+        const serverBal = res.user.balance;
+        const visualBal = getVisualBalance();
+        const effectiveBal = Math.max(serverBal, Math.floor(visualBal));
+        updateServerSnapshot(effectiveBal, res.incomePerHour || 0, null);
         updateHeader();
         renderCards();
         updateFriendRewardButtons();
@@ -584,7 +599,7 @@ async function openCapsule(type) {
     state.inventory = res.inventory;
     state.incomePerHour = res.incomePerHour;
     
-    updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
+    updateServerSnapshot(state.user.balance, state.incomePerHour, null);
     updateHeader();
     renderCards();
     await loadUserStats();
@@ -697,7 +712,7 @@ async function executeMerge(creatureId) {
     state.inventory = res.inventory;
     state.incomePerHour = res.incomePerHour;
     
-    updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
+    updateServerSnapshot(state.user.balance, state.incomePerHour, null);
     updateHeader();
     renderCards();
     await loadUserStats();
@@ -749,7 +764,7 @@ async function upgradeInventory() {
     if (!res.success) { showToast(res.message || 'Error', '❌'); return; }
 
     state.user = res.user;
-    updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
+    updateServerSnapshot(state.user.balance, state.incomePerHour, null);
     updateHeader();
     renderCards();
     showToast(`+1 slot! Now ${state.user.inventorySlots} total`, '📦');
@@ -840,7 +855,7 @@ async function watchAd() {
         state.adsCooldown = res.cooldownSeconds || AD_COOLDOWN;
         state.adsAvailable = res.adsAvailable;
         
-        updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
+        updateServerSnapshot(state.user.balance, state.incomePerHour, null);
         updateHeader();
         await loadUserStats();
         
@@ -1159,7 +1174,7 @@ async function buyFromMarketplace(listingId, price, creatureId) {
     state.inventory = res.inventory;
     state.incomePerHour = res.incomePerHour;
     
-    updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
+    updateServerSnapshot(state.user.balance, state.incomePerHour, null);
 
     const c = getCreature(creatureId);
     updateHeader();
@@ -1315,7 +1330,7 @@ async function claimFriendReward(requiredFriends, creatureId, creatureName, crea
     state.inventory = res.inventory;
     state.incomePerHour = res.incomePerHour;
     
-    updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
+    updateServerSnapshot(state.user.balance, state.incomePerHour, null);
     updateHeader();
     renderCards();
     await loadUserStats();
@@ -1575,7 +1590,7 @@ async function claimSpecialQuest(questId) {
     if (!res.success) { showToast(res.message || 'Ошибка', '❌'); return; }
     
     state.user = res.user;
-    updateServerSnapshot(state.user.balance, state.incomePerHour, state.user.lastPassiveIncome || null);
+    updateServerSnapshot(state.user.balance, state.incomePerHour, null);
     updateHeader();
     await loadUserStats();
     
@@ -3067,9 +3082,10 @@ async function initTelegramApp() {
     if (profileRes && profileRes.success) {
         state.user = profileRes.user;
         state.inventory = profileRes.inventory || [];
-        state.incomePerHour = profileRes.incomePerHour || 0;
-        state.serverBalance = state.user.balance;
-        state.lastServerSync = Date.now();
+        updateServerSnapshot(state.user.balance, profileRes.incomePerHour || 0, null);
+        if (profileRes.offlineEarned > 10) {
+            setTimeout(() => showToast(`+${formatNum(profileRes.offlineEarned)} MMO offline!`, '💤'), 1000);
+        }
     }
 
     await loadGameConfig();
