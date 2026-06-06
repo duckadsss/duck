@@ -1987,15 +1987,14 @@ app.get('/api/user/leaderboard', authMiddleware, async (req, res) => {
 // ============================================
 app.post('/api/wallet/get-payment-details', authMiddleware, async (req, res) => {
     try {
-        const { amount } = req.body;
+        const { amount: rawAmount } = req.body;
         const user = req.user;
         
-        const amt = Number(amount);
+        const amt = Number(rawAmount);
         if (!Number.isFinite(amt) || !Number.isInteger(amt) || amt < MIN_TRANSACTION_AMOUNT || amt <= 0) {
             return res.status(400).json({ success: false, message: `Некорректная сумма. Минимум ${MIN_TRANSACTION_AMOUNT} MMO, только целые числа` });
         }
-        const amount = amt; // переопределяем как валидированное число
-        }
+        const amount = amt;
         
         const memo = `DEPOSIT_${user.telegramId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         
@@ -2083,17 +2082,18 @@ app.post('/api/wallet/create-deposit-request', authMiddleware, async (req, res) 
 
 app.post('/api/wallet/withdraw-request', authMiddleware, async (req, res) => {
     try {
-        const { amount, wallet } = req.body;
+        const { amount: rawAmount, wallet } = req.body;
         const user = req.user;
         
-        if (!amount || amount < MIN_TRANSACTION_AMOUNT) {
-            return res.status(400).json({ success: false, message: `Минимальная сумма ${MIN_TRANSACTION_AMOUNT} MMO` });
+        const amt = Number(rawAmount);
+        if (!Number.isFinite(amt) || !Number.isInteger(amt) || amt < MIN_TRANSACTION_AMOUNT || amt <= 0) {
+            return res.status(400).json({ success: false, message: `Некорректная сумма. Минимум ${MIN_TRANSACTION_AMOUNT} MMO, только целые числа` });
         }
+        const amount = amt;
         
         const tonAddrRx = /^[UE][Qq][A-Za-z0-9_-]{46}$/;
         if (!wallet || !tonAddrRx.test(wallet.trim())) {
             return res.status(400).json({ success: false, message: 'Неверный формат TON-адреса. Ожидается формат UQ.../EQ... (48 символов)' });
-        }
         }
         
         if (user.balance < amount) {
