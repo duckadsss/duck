@@ -2795,7 +2795,7 @@ function showBattleConfirmationModal(battleData) {
                     <div class="prize-value" style="color: var(--accent3);">${battleData.entryFee.toLocaleString()} <small>MMO</small></div>
                 </div>
                 <div class="timer-badge">
-                    <span><i class="fa-regular fa-clock"></i> Принять за 15 секунд</span>
+                    <span><i class="fa-regular fa-clock"></i> Принять за 60 секунд</span>
                     <div class="timer-progress"><div class="timer-progress-fill"></div></div>
                 </div>
                 <div class="match-buttons" id="matchBtns">
@@ -2816,7 +2816,7 @@ function showBattleConfirmationModal(battleData) {
         if (document.getElementById('matchFoundModal')) {
             rejectBattleFromModal(battleData.battleId);
         }
-    }, 15000);
+    }, 60000); // FIX #9: 60 секунд — соответствует expiresAt на сервере
 }
 
 function updateConfirmationModal(data) {
@@ -2857,19 +2857,14 @@ function updateConfirmationModal(data) {
 async function acceptBattleFromModal(battleId) {
     const res = await apiRequest('POST', '/api/arena/accept-match', { battleId });
     if (res?.success) {
-        const statusRes = await apiRequest('GET', '/api/arena/battle/status');
-        if (statusRes?.success && statusRes.hasBattle) {
-            updateConfirmationModal({
-                player1Confirmed: statusRes.player1Confirmed,
-                player2Confirmed: statusRes.player2Confirmed
-            });
-        }
+        // FIX #8: данные подтверждения уже есть в ответе, не нужен лишний GET
+        updateConfirmationModal({
+            player1Confirmed: res.battle?.player1Confirmed ?? true,
+            player2Confirmed: res.battle?.player2Confirmed ?? false
+        });
         if (res.bothConfirmed) {
             const modal = document.getElementById('matchFoundModal');
-            if (modal) modal.remove();
-            if (arenaClient && statusRes?.timeLeft !== undefined) {
-                arenaClient.startBattleTimer(statusRes.timeLeft);
-            }
+            if (modal) { if (modal.timeoutId) clearTimeout(modal.timeoutId); modal.remove(); }
         }
     } else {
         showToast(res?.message || 'Ошибка при принятии боя', '❌');
@@ -3028,12 +3023,14 @@ async function findMatch() {
     }
 }
 
-function cancelBattleSearch() {
+async function cancelBattleSearch() {
     arenaClient?.stopSearch();
     const findBtn = document.getElementById('findMatchBtn');
     const searchStatus = document.getElementById('arenaSearchStatus');
     if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; }
     if (searchStatus) searchStatus.innerHTML = '';
+    // Отменяем на сервере — возвращает взнос если бой был в статусе waiting
+    try { await apiRequest('POST', '/api/arena/cancel-search'); } catch(e) {}
     showToast('Поиск отменён', '⚠️');
 }
 

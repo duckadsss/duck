@@ -107,6 +107,10 @@ async function buildTeamFromIds(teamIds, userLevel, userId, getCreatureFn) {
             });
         }
     }
+    // FIX #13: если команда оказалась пустой — бросаем ошибку, не начинаем бой с 0 существ
+    if (teamData.length === 0) {
+        throw new Error('Не удалось загрузить ни одного питомца из команды');
+    }
     return teamData;
 }
 
@@ -537,29 +541,28 @@ class ArenaBattleManager {
             }
             
             // Защита от падения для проигравшего
-            if (newLoserLeague !== oldLoserLeague && !loserStats.promotionProtection) {
-                const shouldDemote = newLoserRating < (LEAGUE_CONFIG[oldLoserLeague].minRating - 100);
-                if (shouldDemote) {
-                    demotionMessage = `⚠️ ПОНИЖЕНИЕ! Вы вылетели в ${LEAGUE_CONFIG[newLoserLeague].name} лигу. Вернитесь, побеждая сильных!`;
-                    loserStats.demotions += 1;
-                    
-                    if (this.sendNotification) {
-                        const user = await this.User.findById(loserId);
-                        if (user) await this.sendNotification(user.telegramId, demotionMessage);
-                    }
-                } else {
+            if (newLoserLeague !== oldLoserLeague) {
+                if (loserStats.promotionProtection) {
+                    // Защита активна — не даём упасть ниже минимума лиги
+                    newLoserRating = Math.max(newLoserRating, LEAGUE_CONFIG[oldLoserLeague].minRating);
                     newLoserLeague = oldLoserLeague;
-                    newLoserRating = LEAGUE_CONFIG[oldLoserLeague].minRating - 50;
+                    loserStats.promotionProtection = false; // защита использована
+                } else {
+                    const shouldDemote = newLoserRating < (LEAGUE_CONFIG[oldLoserLeague].minRating - 100);
+                    if (shouldDemote) {
+                        demotionMessage = `⚠️ ПОНИЖЕНИЕ! Вы вылетели в ${LEAGUE_CONFIG[newLoserLeague].name} лигу. Вернитесь, побеждая сильных!`;
+                        loserStats.demotions += 1;
+                        
+                        if (this.sendNotification) {
+                            const user = await this.User.findById(loserId);
+                            if (user) await this.sendNotification(user.telegramId, demotionMessage);
+                        }
+                    } else {
+                        // Не хватает просадки для понижения — фиксируем у нижней границы
+                        newLoserLeague = oldLoserLeague;
+                        newLoserRating = LEAGUE_CONFIG[oldLoserLeague].minRating - 50;
+                    }
                 }
-            } else if (loserStats.promotionProtection && newLoserRating < LEAGUE_CONFIG[oldLoserLeague].minRating) {
-                // Защита от падения активна - не даём упасть ниже порога лиги
-                newLoserRating = LEAGUE_CONFIG[oldLoserLeague].minRating;
-                loserStats.promotionProtection = false;
-            }
-            
-            // Сбрасываем promotionProtection проигравшего (защита использована)
-            if (loserStats.promotionProtection && !(newLoserRating >= LEAGUE_CONFIG[oldLoserLeague].minRating)) {
-                loserStats.promotionProtection = false;
             }
             
             winnerStats.rating = newWinnerRating;

@@ -134,6 +134,12 @@ async function createIndexes() {
         await User.collection.createIndex({ level: -1, xp: -1, balance: -1 });
         await ArenaBattle.collection.createIndex({ status: 1, league: 1, expiresAt: 1 });
         await ArenaBattle.collection.createIndex({ player1Id: 1, player2Id: 1 });
+        await ArenaBattle.collection.createIndex({ player1Id: 1, status: 1 });
+        await ArenaBattle.collection.createIndex({ player2Id: 1, status: 1 });
+        // FIX #10: индексы для ArenaStats (были пропущены)
+        await ArenaStats.collection.createIndex({ userId: 1 }, { unique: true });
+        await ArenaStats.collection.createIndex({ rating: -1 });
+        await ArenaStats.collection.createIndex({ league: 1, rating: -1 });
         console.log('✅ Индексы созданы');
     } catch (e) {
         console.warn('⚠️ Индексы:', e.message);
@@ -3187,6 +3193,9 @@ app.post('/api/arena/cancel-search', authMiddleware, async (req, res) => {
 
 app.post('/api/arena/find-match', authMiddleware, async (req, res) => {
     try {
+        if (!arenaManager || !arenaSocketManager) {
+            return res.status(503).json({ success: false, message: 'Сервер ещё инициализируется, попробуйте через несколько секунд' });
+        }
         const user = req.user;
         
         const arenaTeam = user.arenaTeam || [];
@@ -3309,6 +3318,9 @@ app.get('/api/arena/battle/status', authMiddleware, async (req, res) => {
 
 app.post('/api/arena/accept-match', authMiddleware, async (req, res) => {
     try {
+        if (!arenaManager || !arenaSocketManager) {
+            return res.status(503).json({ success: false, message: 'Сервер ещё инициализируется' });
+        }
         const { battleId } = req.body;
         const result = await arenaManager.acceptMatch(battleId, req.user._id);
         
@@ -3398,6 +3410,9 @@ app.post('/api/arena/reject-match', authMiddleware, async (req, res) => {
 
 app.post('/api/arena/move', authMiddleware, async (req, res) => {
     try {
+        if (!arenaManager || !arenaSocketManager) {
+            return res.status(503).json({ success: false, message: 'Сервер ещё инициализируется' });
+        }
         const { battleId, targetIndex } = req.body;
         const result = await arenaManager.processMove(battleId, req.user._id, targetIndex);
         
@@ -3416,10 +3431,12 @@ app.post('/api/arena/move', authMiddleware, async (req, res) => {
                 });
             }
         } else {
+            // FIX #6: один findById вместо двух; данные teams берём из result
+            const isPlayer1Move = result.currentTurn !== 'player1'; // ход уже переключён, значит ходил обратный
             const battle = await ArenaBattle.findById(battleId);
             if (battle) {
-                const isPlayer1Move = battle.player1Id.toString() === req.user._id.toString();
-                const opponentId = isPlayer1Move ? battle.player2Id : battle.player1Id;
+                const moverIsPlayer1 = battle.player1Id.toString() === req.user._id.toString();
+                const opponentId = moverIsPlayer1 ? battle.player2Id : battle.player1Id;
                 
                 arenaSocketManager.send(opponentId, 'move_update', {
                     battleId: battle._id,
@@ -3428,7 +3445,8 @@ app.post('/api/arena/move', authMiddleware, async (req, res) => {
                     turnCount: result.turnCount,
                     player1Team: battle.player1Team,
                     player2Team: battle.player2Team,
-                    skillResult: result.skillResult || null
+                    skillResult: result.skillResult || null,
+                    timeLeft: 30  // FIX #4: новый ход всегда 30 секунд
                 });
             }
         }
@@ -3442,6 +3460,9 @@ app.post('/api/arena/move', authMiddleware, async (req, res) => {
 
 app.post('/api/arena/surrender', authMiddleware, async (req, res) => {
     try {
+        if (!arenaManager || !arenaSocketManager) {
+            return res.status(503).json({ success: false, message: 'Сервер ещё инициализируется' });
+        }
         const { battleId } = req.body;
         const result = await arenaManager.surrenderBattle(battleId, req.user._id);
         
@@ -3451,7 +3472,8 @@ app.post('/api/arena/surrender', authMiddleware, async (req, res) => {
                 arenaSocketManager.sendBoth(battle, 'battle_end', {
                     battleId: battle._id,
                     winnerId: battle.winnerId?.toString(),
-                    surrendered: true
+                    surrendered: true,
+                    prizePool: battle.prizePool  // FIX #5: победитель должен видеть выигрыш
                 });
             }
         }
@@ -3465,6 +3487,9 @@ app.post('/api/arena/surrender', authMiddleware, async (req, res) => {
 
 app.get('/api/arena/leaderboard', authMiddleware, async (req, res) => {
     try {
+        if (!arenaManager) {
+            return res.status(503).json({ success: false, message: 'Сервер ещё инициализируется' });
+        }
         const leaders = await arenaManager.getLeaderboard();
         const myStats = await arenaManager.getUserStats(req.user._id);
         
@@ -3690,8 +3715,11 @@ io.on('connection', (socket) => {
     socket.on('check_battle_status', async (data) => {
         try {
             const battle = await ArenaBattle.findById(data.battleId);
-            if (battle && battle.status === 'active') {
-                const isPlayer1 = battle.player1Id.toString() === user._id.toString();
+            if (!battle) return;
+            
+            const isPlayer1 = battle.player1Id.toString() === user._id.toString();
+            
+            if (battle.status === 'active') {
                 socket.emit('battle_status', {
                     hasBattle: true,
                     battleId: battle._id,
@@ -3701,6 +3729,21 @@ io.on('connection', (socket) => {
                     myTeam: isPlayer1 ? battle.player1Team : battle.player2Team,
                     opponentTeam: isPlayer1 ? battle.player2Team : battle.player1Team,
                     battleLog: battle.battleLog.slice(-20)
+                });
+            } else if (battle.status === 'pending_confirmation') {
+                // FIX #14: восстанавливаем модалку подтверждения после реконнекта
+                socket.emit('battle_status', {
+                    hasBattle: true,
+                    battleId: battle._id,
+                    status: battle.status,
+                    isPlayer1: isPlayer1,
+                    player1Confirmed: battle.player1Confirmed,
+                    player2Confirmed: battle.player2Confirmed,
+                    myTeam: isPlayer1 ? battle.player1Team : battle.player2Team,
+                    opponentTeam: isPlayer1 ? battle.player2Team : battle.player1Team,
+                    prizePool: battle.prizePool,
+                    entryFee: battle.entryFee,
+                    league: battle.league
                 });
             }
         } catch (err) {
