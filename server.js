@@ -1140,7 +1140,7 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/user/profile', authMiddleware, async (req, res) => {
     try {
         const user = req.user;
-        const incomeResult = await calculateAndAddIncome(user, false);
+        const incomeResult = await calculateAndAddIncome(user, true);
         const incomePerHour = incomeResult.incomePerHour ?? await getUserIncome(user.telegramId);
         const freshUser = await User.findOne({ telegramId: user.telegramId });
         const inventoryWithIncome = await formatInventory(user.telegramId);
