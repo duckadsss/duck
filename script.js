@@ -127,14 +127,12 @@ function getVisualBalance() {
     return (state.serverBalance || 0) + earned;
 }
 
-function updateServerSnapshot(newBalance, newIncomePerHour) {
+function updateServerSnapshot(newBalance, newIncomePerHour, newLastPassiveIncome) {
+    console.log('📊 updateServerSnapshot:', { newBalance, newIncomePerHour, newLastPassiveIncome });
+    
     state.serverBalance = newBalance !== undefined ? newBalance : state.serverBalance;
     state.incomePerHour = newIncomePerHour !== undefined ? newIncomePerHour : state.incomePerHour;
-    // lastServerSync = текущий момент: сервер уже вернул актуальный баланс,
-    // тикер должен добавлять доход начиная с этого момента, а не с lastPassiveIncome.
-    // Старая логика (lastPassiveIncome) приводила к тому что тикер добавлял
-    // "уже начисленный" доход поверх актуального баланса → откат при следующем sync.
-    state.lastServerSync = Date.now();
+    state.lastServerSync = newLastPassiveIncome ? new Date(newLastPassiveIncome).getTime() : Date.now();
     if (state.user) state.user.balance = state.serverBalance;
 }
 
@@ -289,18 +287,16 @@ function handleVisibilityChange() {
         intervals.marketplace = null;
     } else {
         apiRequest('POST', '/api/game/collect-income').then(res => {
-            if (res && res.success) {
-                // Берём максимум из серверного и текущего визуального баланса —
-                // чтобы тикер не прыгал назад если 60-секундный порог ещё не прошёл
-                const serverBal = res.balance;
-                const visualBal = getVisualBalance();
-                const effectiveBal = Math.max(serverBal, Math.floor(visualBal));
-                updateServerSnapshot(effectiveBal, res.incomePerHour, null);
-                if (state.user) { state.user.balance = effectiveBal; updateHeader(); }
-                if (res.earned > 1) showToast(`+${formatNum(res.earned)} MMO получено`, '💰');
-            }
-        }).catch(err => console.warn('collect-income error:', err));
-        
+    if (res && res.success) {
+        updateServerSnapshot(res.balance, res.incomePerHour, res.lastPassiveIncome);
+        if (state.user) { 
+            state.user.balance = res.balance; 
+            updateHeader(); 
+        }
+        if (res.earned > 1) showToast(`+${formatNum(res.earned)} MMO получено`, '💰');
+    }
+}).catch(err => console.warn('collect-income error:', err));
+
         if (arenaClient && state.token && !arenaClient.isConnected()) {
             arenaClient.connectSocket(state.token, API_URL);
         }
@@ -317,18 +313,27 @@ function handleVisibilityChange() {
 async function refreshUserProfile() {
     const res = await apiRequest('GET', '/api/user/profile');
     if (res && res.success) {
+        const currentVisualBalance = getVisualBalance();
+        
         state.user = res.user;
         state.inventory = res.inventory || [];
-        // Берём max чтобы баланс не прыгал назад (тикер мог уже добавить часть дохода)
-        const serverBal = res.user.balance;
-        const visualBal = getVisualBalance();
-        const effectiveBal = Math.max(serverBal, Math.floor(visualBal));
-        updateServerSnapshot(effectiveBal, res.incomePerHour || 0, null);
+        state.incomePerHour = res.incomePerHour || 0;
+        
+        const serverBal = state.user.balance;
+        const effectiveBal = Math.max(serverBal, Math.floor(currentVisualBalance));
+        
+        state.serverBalance = effectiveBal;
+        state.lastServerSync = Date.now();
+        if (state.user) state.user.balance = effectiveBal;
+        
         updateHeader();
         renderCards();
         updateFriendRewardButtons();
         await loadUserStats();
-        if (res.offlineEarned > 10) setTimeout(() => showToast(`+${formatNum(res.offlineEarned)} MMO offline!`, '💤'), 1000);
+        
+        if (res.offlineEarned > 10) {
+            setTimeout(() => showToast(`+${formatNum(res.offlineEarned)} MMO offline!`, '💤'), 1000);
+        }
     }
 }
 
@@ -3072,24 +3077,27 @@ async function initTelegramApp() {
     if (!loginRes.success) { showLoadingScreen(false); showToast(loginRes.message || 'Ошибка авторизации', '❌'); return; }
 
     state.token = loginRes.token;
-    state.user = loginRes.user;
-    state.inventory = loginRes.inventory || [];
+state.user = loginRes.user;
+state.inventory = loginRes.inventory || [];
+state.incomePerHour = 0;
+
+console.log('📦 Логин успешен:');
+
+const profileRes = await apiRequest('GET', '/api/user/profile');
+if (profileRes && profileRes.success) {
+    state.user = profileRes.user;
+    state.inventory = profileRes.inventory || [];
+    state.incomePerHour = profileRes.incomePerHour || 0;
     state.serverBalance = state.user.balance;
     state.lastServerSync = Date.now();
-    state.incomePerHour = 0;
+    console.log('   - Баланс после профиля:', state.user.balance);
+} else {
+    state.serverBalance = state.user.balance;
+    state.lastServerSync = Date.now();
+}
 
-    const profileRes = await apiRequest('GET', '/api/user/profile');
-    if (profileRes && profileRes.success) {
-        state.user = profileRes.user;
-        state.inventory = profileRes.inventory || [];
-        updateServerSnapshot(state.user.balance, profileRes.incomePerHour || 0, null);
-        if (profileRes.offlineEarned > 10) {
-            setTimeout(() => showToast(`+${formatNum(profileRes.offlineEarned)} MMO offline!`, '💤'), 1000);
-        }
-    }
-
-    await loadGameConfig();
-    await loadCreaturesFromServer();
+await loadGameConfig();
+await loadCreaturesFromServer();
     loadQuestStatusesFromStorage();
     updatePlayerInfo();
     showLoadingScreen(false);
