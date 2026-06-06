@@ -310,9 +310,8 @@ function applySkill(skillId, attacker, target, myTeam, enemyTeam, baseDamage) {
             break;
 
         case 'mind_break':
-            // Снижает атаку врага на 30% для этого удара — пересчитываем урон
-            result.damage = Math.floor(attacker.attack * 0.7 - Math.max(0, target.defense - attacker.attack * 0.3));
-            result.damage = Math.max(1, result.damage);
+            // Снижает эффективную защиту цели на 30% для этого удара
+            result.damage = Math.max(1, Math.floor(attacker.attack - target.defense * 0.7));
             break;
 
         case 'divine_sight':

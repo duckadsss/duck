@@ -262,6 +262,11 @@ class ArenaClient {
     // ============================================================
     
     connectSocket(token, apiUrl) {
+        // Если сокет уже подключён к тому же серверу — не переподключаемся
+        if (this.state.socket && this.state.socket.connected) {
+            console.log('🔌 WebSocket уже подключён, пропускаем');
+            return;
+        }
         this.disconnectSocket();
         
         if (!token) {
@@ -460,6 +465,12 @@ class ArenaClient {
         
         this.timers.reconnectTimer = setTimeout(() => {
             this.timers.reconnectTimer = null;
+            // Не сбрасываем reconnectAttempts — disconnectSocket их обнуляет
+            // Поэтому вызываем connectSocket напрямую минуя проверку connected
+            if (this.state.socket) {
+                this.state.socket.disconnect();
+                this.state.socket = null;
+            }
             this.connectSocket(token, apiUrl);
         }, delay);
     }
@@ -489,13 +500,11 @@ class ArenaClient {
     // ============================================================
     
     getCurrentUserId() {
+        // winnerId от сервера — это MongoDB ObjectId (_id), поэтому используем только его
+        // telegramId не используем — это разные значения
         if (window.state && window.state.user) {
             if (window.state.user.id) return window.state.user.id.toString();
             if (window.state.user._id) return window.state.user._id.toString();
-            if (window.state.user.telegramId) return window.state.user.telegramId.toString();
-        }
-        if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
-            return window.Telegram.WebApp.initDataUnsafe.user.id.toString();
         }
         return null;
     }

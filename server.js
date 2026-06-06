@@ -15,6 +15,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 
 const app = express();
+app.set('trust proxy', 1); // Railway проксирует запросы — нужен реальный IP клиента
 
 // ============================================
 // ИМПОРТ МОДУЛЯ АРЕНЫ (WebSocket версия)
@@ -379,6 +380,16 @@ setInterval(() => {
     for (const [ip, data] of adminLoginAttempts.entries()) {
         if (now > data.resetAt) {
             adminLoginAttempts.delete(ip);
+        }
+    }
+}, 60 * 60 * 1000);
+
+// Очистка истёкших сессий админа
+setInterval(() => {
+    const now = Date.now();
+    for (const [token, session] of adminSessions.entries()) {
+        if (session.expiresAt < now) {
+            adminSessions.delete(token);
         }
     }
 }, 60 * 60 * 1000);
@@ -1088,7 +1099,10 @@ app.post('/api/auth/login', async (req, res) => {
         const isNewUser = !user;
 
         if (!user) {
-            user = new User({
+            // Используем findOneAndUpdate с upsert для защиты от race condition
+            // (одновременные логины одного пользователя не создадут дубликат)
+            const newReferralCode = 'REF' + String(userData.id) + Math.random().toString(36).slice(2, 7).toUpperCase();
+            const newUserData = {
                 telegramId: String(userData.id),
                 username: userData.username || '',
                 firstName: userData.first_name || '',
@@ -1097,24 +1111,36 @@ app.post('/api/auth/login', async (req, res) => {
                 balance: 4000,
                 adsAvailable: MAX_ADS_AVAILABLE,
                 adsLastRegen: new Date()
-            });
+            };
 
             let referrerInfo = null;
             if (referralCode) {
                 const referrer = await User.findOne({ referralCode });
                 if (referrer && referrer.telegramId !== String(userData.id)) {
-                    user.referredBy = referrer.telegramId;
-                    referrer.referralCount += 1;
-                    await referrer.save();
+                    newUserData.referredBy = referrer.telegramId;
+                    // Атомарно увеличиваем счётчик рефералов
+                    await User.findByIdAndUpdate(referrer._id, { $inc: { referralCount: 1 } });
                     referrerInfo = referrer;
                 }
             }
-            await user.save();
-            
-            const inviterName = referrerInfo 
+
+            // $setOnInsert выполняется только при создании новой записи
+            const upsertResult = await User.findOneAndUpdate(
+                { telegramId: String(userData.id) },
+                {
+                    $setOnInsert: {
+                        ...newUserData,
+                        referralCode: newReferralCode
+                    }
+                },
+                { upsert: true, new: true }
+            );
+            user = upsertResult;
+
+            const inviterName = referrerInfo
                 ? (referrerInfo.username || referrerInfo.firstName || referrerInfo.telegramId)
                 : (referralCode ? 'неизвестный код' : 'самостоятельно');
-            
+
             const notificationMessage = `🆕 <b>НОВЫЙ ИГРОК!</b>\n\n` +
                 `👤 ID: <code>${userData.id}</code>\n` +
                 `📛 Имя: ${userData.first_name || '?'} ${userData.last_name || ''}\n` +
@@ -1122,7 +1148,7 @@ app.post('/api/auth/login', async (req, res) => {
                 `🎁 Пригласил: ${inviterName}\n` +
                 `💰 Баланс: ${user.balance} MMO\n` +
                 `🕐 Время: ${new Date().toLocaleString()}`;
-            
+
             await notifyAdmins(notificationMessage);
         } else {
             user.username = userData.username || user.username;
@@ -1368,7 +1394,20 @@ app.post('/api/game/open-capsule', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Недостаточно MMO' });
         }
 
-        addXP(updatedUser, 10);
+        // Атомарный XP: вычисляем нужный increment с учётом level-up
+        {
+            const xpGain = 10;
+            const needed = updatedUser.level * 100;
+            const newXp = updatedUser.xp + xpGain;
+            if (newXp >= needed) {
+                await User.updateOne({ _id: updatedUser._id }, { $inc: { level: 1 }, $set: { xp: newXp - needed } });
+                updatedUser.level += 1;
+                updatedUser.xp = newXp - needed;
+            } else {
+                await User.updateOne({ _id: updatedUser._id }, { $inc: { xp: xpGain } });
+                updatedUser.xp = newXp;
+            }
+        }
 
         const weights = config.capsuleRarities[type];
         const roll = Math.random() * 100;
@@ -1395,9 +1434,10 @@ app.post('/api/game/open-capsule', authMiddleware, async (req, res) => {
 
         if (!updatedUser.discovered.includes(creature.id)) {
             updatedUser.discovered.push(creature.id);
+            await User.updateOne({ _id: updatedUser._id }, { $addToSet: { discovered: creature.id } });
         }
 
-        await updatedUser.save();
+        // Убираем небезопасный save() — все изменения уже атомарны выше
         
         invalidateInventoryCache(user.telegramId);
         
@@ -1488,10 +1528,32 @@ app.post('/api/game/merge', authMiddleware, async (req, res) => {
             user.discovered.push(resultCreature.id);
         }
 
-        user.mergeCount += 1;
-        addXP(user, 20);
-        addTransaction(user, `Merge → ${resultCreature.name} (${resultCreature.rarity})`, 0);
-        await user.save();
+        // Атомарно сохраняем mergeCount, discovered, транзакцию
+        const xpGain = 20;
+        const needed = user.level * 100;
+        const newXp = user.xp + xpGain;
+        const xpUpdate = newXp >= needed
+            ? { $inc: { level: 1 }, $set: { xp: newXp - needed } }
+            : { $inc: { xp: xpGain } };
+
+        const mergedUser = await User.findOneAndUpdate(
+            { _id: user._id },
+            {
+                $inc: { mergeCount: 1, ...xpUpdate.$inc },
+                $set: { ...(xpUpdate.$set || {}) },
+                $addToSet: { discovered: resultCreature.id },
+                $push: { transactions: { $each: [{ name: `Merge → ${resultCreature.name} (${resultCreature.rarity})`, amount: 0, time: new Date() }], $position: 0, $slice: 30 } }
+            },
+            { new: true }
+        );
+        // Синхронизируем in-memory для formatUser
+        if (mergedUser) {
+            user.mergeCount = mergedUser.mergeCount;
+            user.xp = mergedUser.xp;
+            user.level = mergedUser.level;
+            user.transactions = mergedUser.transactions;
+            user.discovered = mergedUser.discovered;
+        }
 
         invalidateInventoryCache(user.telegramId);
         
@@ -1543,7 +1605,20 @@ app.post('/api/game/upgrade-inventory', authMiddleware, async (req, res) => {
         }
 
         addXP(updatedUser, 25);
-        await updatedUser.save();
+        // Атомарный XP
+        {
+            const xpGain = 25;
+            const needed = updatedUser.level * 100;
+            const newXp = updatedUser.xp + xpGain;
+            if (newXp >= needed) {
+                await User.updateOne({ _id: updatedUser._id }, { $inc: { level: 1 }, $set: { xp: newXp - needed } });
+                updatedUser.level += 1;
+                updatedUser.xp = newXp - needed;
+            } else {
+                await User.updateOne({ _id: updatedUser._id }, { $inc: { xp: xpGain } });
+                updatedUser.xp = newXp;
+            }
+        }
         
         invalidateInventoryCache(user.telegramId);
 
@@ -1616,7 +1691,20 @@ app.post('/api/game/watch-ad', authMiddleware, async (req, res) => {
         }
         
         addXP(updatedUser, 15);
-        await updatedUser.save();
+        // Атомарный XP
+        {
+            const xpGain = 15;
+            const needed = updatedUser.level * 100;
+            const newXp = updatedUser.xp + xpGain;
+            if (newXp >= needed) {
+                await User.updateOne({ _id: updatedUser._id }, { $inc: { level: 1 }, $set: { xp: newXp - needed } });
+                updatedUser.level += 1;
+                updatedUser.xp = newXp - needed;
+            } else {
+                await User.updateOne({ _id: updatedUser._id }, { $inc: { xp: xpGain } });
+                updatedUser.xp = newXp;
+            }
+        }
         
         const lastRegen = new Date(updatedUser.adsLastRegen || updatedUser.createdAt).getTime();
         const nextRegenIn = ADS_REGEN_INTERVAL - (now.getTime() - lastRegen);
@@ -2491,12 +2579,17 @@ app.post('/api/arena/reject-match', authMiddleware, async (req, res) => {
             const otherId = battleBefore.player1Id.toString() === rejecterId
                 ? battleBefore.player2Id
                 : battleBefore.player1Id;
+            // Уведомляем обоих: соперника и самого реджектящего
             if (otherId) {
                 arenaSocketManager.send(otherId, 'match_rejected', {
                     battleId: battleId,
                     message: 'Соперник отклонил бой. Ставка возвращена.'
                 });
             }
+            arenaSocketManager.send(req.user._id, 'match_rejected', {
+                battleId: battleId,
+                message: 'Вы отклонили бой. Ставка возвращена.'
+            });
         }
         
         res.json(result);
@@ -2773,8 +2866,8 @@ app.post('/api/wallet/withdraw-request', authMiddleware, async (req, res) => {
         const { amount, wallet } = req.body;
         const user = req.user;
         
-        if (!amount || amount < MIN_TRANSACTION_AMOUNT) {
-            return res.status(400).json({ success: false, message: `Минимальная сумма ${MIN_TRANSACTION_AMOUNT} MMO` });
+        if (!amount || amount < MIN_TRANSACTION_AMOUNT || !Number.isInteger(amount)) {
+            return res.status(400).json({ success: false, message: `Минимальная сумма ${MIN_TRANSACTION_AMOUNT} MMO (целое число)` });
         }
         
         const WALLET_ADDR_RE = /^[UE]Q[A-Za-z0-9_-]{46}$/;
@@ -3544,6 +3637,25 @@ app.post('/api/admin/broadcast/create', adminAuthMiddleware, async (req, res) =>
         if (!message) {
             return res.status(400).json({ success: false, message: 'Введите текст сообщения' });
         }
+
+        // Валидация imageUrl: только публичные https URL
+        if (imageUrl) {
+            try {
+                const parsed = new URL(imageUrl);
+                if (parsed.protocol !== 'https:') {
+                    return res.status(400).json({ success: false, message: 'imageUrl должен быть https://' });
+                }
+                // Блокируем приватные диапазоны
+                const host = parsed.hostname.toLowerCase();
+                if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.') ||
+                    host.startsWith('10.') || host.startsWith('172.') || host.endsWith('.internal') ||
+                    host.endsWith('.local')) {
+                    return res.status(400).json({ success: false, message: 'Недопустимый imageUrl' });
+                }
+            } catch {
+                return res.status(400).json({ success: false, message: 'Неверный формат imageUrl' });
+            }
+        }
         
         let users;
         if (testMode) {
@@ -3715,8 +3827,8 @@ const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
         origin: '*',
-        methods: ['GET', 'POST'],
-        credentials: true
+        methods: ['GET', 'POST']
+        // credentials: true несовместим с origin: '*' по CORS-спецификации
     },
     allowEIO3: true,
     pingTimeout: 60000,

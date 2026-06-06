@@ -239,11 +239,9 @@ async function checkInactivePlayers() {
     try {
         const eightHoursAgo = new Date(Date.now() - 8 * 60 * 60 * 1000);
         
-        // FIX #11: не отправляем уведомления забаненным пользователям
         const inactiveUsers = await User.find({
             lastLogin: { $lt: eightHoursAgo },
-            notifiedLostIncome: { $ne: true },
-            isBanned: { $ne: true }
+            notifiedLostIncome: { $ne: true }
         }).select('telegramId firstName username lastLogin');
         
         for (const user of inactiveUsers) {
@@ -304,42 +302,37 @@ async function startBot() {
             const referralCode = match ? match[1] : null;
             
             try {
-                // FIX #2: атомарный upsert вместо findOne+save, исключает race condition
-                // при двойном /start — дублирования юзера и реферала не будет
-                const newReferralCode = 'REF' + telegramId + Math.random().toString(36).slice(2, 7).toUpperCase();
-                let isNew = false;
-                let referrerInfo = null;
-
-                let user = await User.findOneAndUpdate(
-                    { telegramId },
-                    { $setOnInsert: {
+                let user = await User.findOne({ telegramId });
+                
+                if (!user) {
+                    const newReferralCode = 'REF' + telegramId + Math.random().toString(36).slice(2, 7).toUpperCase();
+                    const newUserData = {
                         telegramId,
                         username,
                         firstName,
                         referralCode: newReferralCode,
                         balance: 4000
-                    }},
-                    { upsert: true, new: true, setDefaultsOnInsert: true }
-                );
-
-                // Определяем по createdAt — только что создан или уже существовал
-                isNew = (Date.now() - new Date(user.createdAt).getTime()) < 10000;
-
-                if (isNew) {
-                    if (referralCode && referralCode !== user.referralCode) {
+                    };
+                    
+                    let referrerInfo = null;
+                    
+                    if (referralCode && referralCode !== newReferralCode) {
                         const referrer = await User.findOne({ referralCode });
                         if (referrer && referrer.telegramId !== telegramId) {
-                            await User.updateOne({ _id: user._id }, { $set: { referredBy: referrer.telegramId } });
-                            user.referredBy = referrer.telegramId;
-                            // Атомарно инкрементируем referralCount реферера
-                            await User.findOneAndUpdate(
-                                { _id: referrer._id },
-                                { $inc: { referralCount: 1 } }
-                            );
+                            newUserData.referredBy = referrer.telegramId;
+                            // Атомарно увеличиваем счётчик рефералов
+                            await User.findByIdAndUpdate(referrer._id, { $inc: { referralCount: 1 } });
                             referrerInfo = referrer;
                             console.log(`✅ Реферал: ${firstName} приглашен ${referrer.username || referrer.firstName}`);
                         }
                     }
+                    
+                    // Используем upsert для защиты от race condition (двойной /start)
+                    user = await User.findOneAndUpdate(
+                        { telegramId },
+                        { $setOnInsert: newUserData },
+                        { upsert: true, new: true }
+                    );
                     
                     const inviterName = referrerInfo 
                         ? (referrerInfo.username || referrerInfo.firstName || referrerInfo.telegramId)
@@ -355,23 +348,12 @@ async function startBot() {
                     
                     await notifyAdmins(notificationMessage);
                 } else {
-                    // Существующий пользователь — обновляем только имя и lastLogin
-                    await User.updateOne(
-                        { telegramId },
-                        { $set: {
-                            username: username || user.username,
-                            firstName: firstName || user.firstName,
-                            lastLogin: new Date()
-                        }}
-                    );
+                    user.username = username || user.username;
+                    user.firstName = firstName || user.firstName;
+                    user.lastLogin = new Date();
+                    await user.save();
                 }
                 
-                // FIX #9: забаненный пользователь не должен получать приветствие
-                if (user.isBanned) {
-                    await bot.sendMessage(chatId, '🚫 Ваш аккаунт заблокирован. Обратитесь в поддержку.');
-                    return;
-                }
-
                 let webappUrl = WEBAPP_URL;
                 if (referralCode) {
                     webappUrl += `?startapp=${referralCode}`;

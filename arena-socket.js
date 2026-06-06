@@ -118,6 +118,14 @@ class ArenaSocketManager {
 
     add(userId, socketId) {
         const userIdStr = userId.toString();
+        const oldSocketId = this.connectedUsers.get(userIdStr);
+        // Закрываем старое соединение если оно отличается от нового
+        if (oldSocketId && oldSocketId !== socketId) {
+            const oldSocket = this.io.sockets.sockets.get(oldSocketId);
+            if (oldSocket) {
+                oldSocket.disconnect(true);
+            }
+        }
         this.connectedUsers.set(userIdStr, socketId);
         console.log(`🔌 WebSocket подключён: ${userIdStr} (всего: ${this.connectedUsers.size})`);
     }
@@ -223,8 +231,14 @@ class ArenaBattleManager {
             waitingBattle.markModified('player2Team');
             await waitingBattle.save();
             
+            // Атомарно устанавливаем currentBattleId для player2
             await this.User.updateOne(
                 { _id: user._id },
+                { $set: { currentBattleId: waitingBattle._id } }
+            );
+            // Также устанавливаем для player1 (он уже в waiting, но currentBattleId мог не сохраниться)
+            await this.User.updateOne(
+                { _id: waitingBattle.player1Id },
                 { $set: { currentBattleId: waitingBattle._id } }
             );
             
@@ -232,6 +246,7 @@ class ArenaBattleManager {
         } else {
             const newBattle = await this.createBattle(user._id, teamIds, userLevel, userLeague);
             
+            // Атомарно — если это упадёт, expireOldBattles вернёт средства по expiresAt
             await this.User.updateOne(
                 { _id: user._id },
                 { $set: { currentBattleId: newBattle._id } }
@@ -351,6 +366,8 @@ class ArenaBattleManager {
     if (!attacker) {
         battle.status = 'finished';
         battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
+        battle.markModified('player1Team');
+        battle.markModified('player2Team');
         await this.finishBattle(battle);
         return { success: true, finished: true, winnerId: battle.winnerId };
     }
@@ -427,6 +444,8 @@ class ArenaBattleManager {
         battle.status = 'finished';
         battle.winnerId = isPlayer1 ? battle.player1Id : battle.player2Id;
         battle.turnCount++;
+        battle.markModified('player1Team');
+        battle.markModified('player2Team');
         await this.finishBattle(battle);
         
         return {
