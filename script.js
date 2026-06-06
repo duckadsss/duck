@@ -2664,16 +2664,18 @@ function switchTab(tab) {
     }
     if (tab === 'shop') renderMarketplaceBuy();
     if (tab === 'friends') renderFriendsList();
-
-if (tab === 'arena') {
-    if (arenaClient && state.token && !arenaClient.isConnected()) {
-        arenaClient.connectSocket(state.token, API_URL);
+    
+    // ========== ДОБАВЬТЕ ЭТОТ БЛОК ==========
+    if (tab === 'arena') {
+        if (arenaClient && state.token && !arenaClient.isConnected()) {
+            arenaClient.connectSocket(state.token, API_URL);
+        }
+        renderArenaTeamInventory();
+        renderArenaFightTab();
+        renderArenaRanking();
     }
-    renderArenaTeamInventory();
-    renderArenaFightTab();
-    renderArenaRanking();
+    // ========================================
 }
-
 // ============================================================
 // OVERLAY
 // ============================================================
