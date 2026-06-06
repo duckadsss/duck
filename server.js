@@ -1604,7 +1604,7 @@ app.post('/api/game/upgrade-inventory', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Недостаточно MMO', required: cost });
         }
 
-        addXP(updatedUser, 25);
+        addXP(updatedUser, 25); // обновляем in-memory для formatUser (атомарный блок ниже записывает в БД)
         // Атомарный XP
         {
             const xpGain = 25;
@@ -1690,7 +1690,7 @@ app.post('/api/game/watch-ad', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Не удалось получить награду. Попробуйте ещё раз.' });
         }
         
-        addXP(updatedUser, 15);
+        addXP(updatedUser, 15); // обновляем in-memory для formatUser (атомарный блок ниже записывает в БД)
         // Атомарный XP
         {
             const xpGain = 15;
@@ -2001,8 +2001,20 @@ app.post('/api/game/complete-special-quest', authMiddleware, async (req, res) =>
             return res.status(400).json({ success: false, message: 'Вы уже получили награду за этот квест' });
         }
 
-        addXP(updatedUser, 20);
-        await updatedUser.save();
+        // Атомарный XP
+        {
+            const xpGain = 20;
+            const needed = updatedUser.level * 100;
+            const newXp = updatedUser.xp + xpGain;
+            if (newXp >= needed) {
+                await User.updateOne({ _id: updatedUser._id }, { $inc: { level: 1 }, $set: { xp: newXp - needed } });
+                updatedUser.level += 1;
+                updatedUser.xp = newXp - needed;
+            } else {
+                await User.updateOne({ _id: updatedUser._id }, { $inc: { xp: xpGain } });
+                updatedUser.xp = newXp;
+            }
+        }
         
         res.json({ success: true, reward: quest.reward, message: `Выполнено! +${quest.reward} MMO`, user: formatUser(updatedUser) });
     } catch (e) {
@@ -2162,11 +2174,27 @@ app.post('/api/marketplace/buy', authMiddleware, async (req, res) => {
 
         if (!updatedBuyer.discovered.includes(listing.creatureId)) {
             updatedBuyer.discovered.push(listing.creatureId);
-            await updatedBuyer.save();
         }
 
-        addXP(updatedBuyer, 5);
-        await updatedBuyer.save();
+        // Атомарно: XP + discovered за одну операцию
+        {
+            const xpGain = 5;
+            const needed = updatedBuyer.level * 100;
+            const newXp = updatedBuyer.xp + xpGain;
+            const xpUpdate = newXp >= needed
+                ? { $inc: { level: 1 }, $set: { xp: newXp - needed } }
+                : { $inc: { xp: xpGain } };
+            await User.findOneAndUpdate(
+                { _id: updatedBuyer._id },
+                {
+                    $addToSet: { discovered: listing.creatureId },
+                    $inc: { ...(xpUpdate.$inc || {}) },
+                    $set: { ...(xpUpdate.$set || {}) }
+                }
+            );
+            if (newXp >= needed) { updatedBuyer.level += 1; updatedBuyer.xp = newXp - needed; }
+            else { updatedBuyer.xp = newXp; }
+        }
 
         marketplaceListingsCache = { data: null, expiresAt: 0 };
         invalidateInventoryCache(buyer.telegramId);

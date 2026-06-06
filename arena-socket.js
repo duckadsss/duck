@@ -656,6 +656,8 @@ class ArenaBattleManager {
         
         battle.status = 'finished';
         battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
+        battle.markModified('player1Team');
+        battle.markModified('player2Team');
         await this.finishBattle(battle);
         
         return { success: true, message: 'Вы сдались' };

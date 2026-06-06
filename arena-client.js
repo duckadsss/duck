@@ -463,14 +463,17 @@ class ArenaClient {
         const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 30000);
         console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
         
+        const savedAttempts = this.reconnectAttempts;
         this.timers.reconnectTimer = setTimeout(() => {
             this.timers.reconnectTimer = null;
-            // Не сбрасываем reconnectAttempts — disconnectSocket их обнуляет
-            // Поэтому вызываем connectSocket напрямую минуя проверку connected
+            // Закрываем только сокет, не трогаем reconnectAttempts
             if (this.state.socket) {
+                this.state.socket.removeAllListeners();
                 this.state.socket.disconnect();
                 this.state.socket = null;
             }
+            // Восстанавливаем счётчик после того как disconnectSocket его обнулил бы
+            this.reconnectAttempts = savedAttempts;
             this.connectSocket(token, apiUrl);
         }, delay);
     }
