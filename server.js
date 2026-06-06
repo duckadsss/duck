@@ -1,4 +1,6 @@
-// ============================================// server.js - DNA MMO Backend (WebSocket + Арена) для Railway
+// ============================================
+// server.js - DNA MMO Backend (WebSocket + Арена) для Railway
+// Экономика, реклама, лимиты, админ-панель как в первой версии
 // ============================================
 
 require('dotenv').config();
@@ -33,7 +35,6 @@ app.use(cors({
 app.use(express.json());
 app.use(compression());
 
-// Обработка OPTIONS запросов для CORS
 app.options('*', (req, res) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -42,20 +43,21 @@ app.options('*', (req, res) => {
 });
 
 // ============================================
-// КОНСТАНТЫ
+// КОНСТАНТЫ (как в первой версии)
 // ============================================
 const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
 const ADMIN_IDS = process.env.ADMIN_IDS ? process.env.ADMIN_IDS.split(',').map(id => id.trim()) : [];
 const MAX_OFFLINE_HOURS = 8;
 const CLEANUP_INTERVAL = 60 * 60 * 1000;
 const RECORD_TTL = 60 * 60 * 1000;
-const MIN_TRANSACTION_AMOUNT = 10000; // ИЗМЕНЕНО: было 5000
+const MIN_TRANSACTION_AMOUNT = 10000;
 const MAX_ACTIVE_REQUESTS = 2;
 const MAX_ACTIVE_LISTINGS = 2;
-const MIN_MARKETPLACE_PRICE = 1100;   // ИЗМЕНЕНО: было 500
-const MAX_MARKETPLACE_PRICE_COMMON = 1500; // НОВАЯ КОНСТАНТА
+const MIN_MARKETPLACE_PRICE = 500;
+const MAX_COMMON_PRICE = 1100;
 const MAX_ADS_AVAILABLE = 10;
 const ADS_REGEN_INTERVAL = 60 * 60 * 1000;
+const REFERRAL_BONUS_PERCENT = 2;
 
 // ============================================
 // RATE LIMITING
@@ -263,16 +265,31 @@ const PendingDepositSchema = new mongoose.Schema({
 });
 const PendingDeposit = mongoose.model('PendingDeposit', PendingDepositSchema);
 
+const BroadcastSchema = new mongoose.Schema({
+    message: { type: String, required: true },
+    imageUrl: { type: String, default: null },
+    buttons: { type: Array, default: [] },
+    parseMode: { type: String, default: 'HTML' },
+    sentCount: { type: Number, default: 0 },
+    failedCount: { type: Number, default: 0 },
+    totalUsers: { type: Number, default: 0 },
+    status: { type: String, enum: ['pending', 'completed', 'cancelled'], default: 'pending' },
+    createdBy: { type: String },
+    createdAt: { type: Date, default: Date.now },
+    completedAt: { type: Date, default: null }
+});
+const Broadcast = mongoose.model('Broadcast', BroadcastSchema);
+
 const GameConfigSchema = new mongoose.Schema({
     capsuleCosts: { basic: Number, premium: Number },
     capsuleRarities: {
         basic: { common: Number, uncommon: Number, rare: Number, epic: Number, legendary: Number },
         premium: { common: Number, uncommon: Number, rare: Number, epic: Number, legendary: Number }
     },
-    adReward: { type: Number, default: 20 },
+    adReward: { type: Number, default: 50 },
     adCooldown: { type: Number, default: 60 },
     upgradeBaseCost: { type: Number, default: 300 },
-    upgradeMultiplier: { type: Number, default: 1.5 },
+    upgradeMultiplier: { type: Number, default: 1.4 },
     specialQuests: [{
         id: String, title: String, description: String, icon: String,
         reward: Number, type: String, link: String, required_count: Number, isActive: Boolean
@@ -522,19 +539,19 @@ async function getGameConfig() {
     let config = await GameConfig.findOne();
     if (!config) {
         config = await GameConfig.create({
-            capsuleCosts: { basic: 500, premium: 2000 },
+            capsuleCosts: { basic: 1000, premium: 6000 },
             capsuleRarities: {
-                basic: { common: 100, uncommon: 0, rare: 0, epic: 0, legendary: 0 }, // ИЗМЕНЕНО: только common
-                premium: { common: 70, uncommon: 20, rare: 10, epic: 0, legendary: 0 } // ИЗМЕНЕНО: 70/20/10
+                basic: { common: 100, uncommon: 0, rare: 0, epic: 0, legendary: 0 },
+                premium: { common: 70, uncommon: 20, rare: 10, epic: 0, legendary: 0 }
             },
-            adReward: 20,
+            adReward: 50,
             adCooldown: 60,
             upgradeBaseCost: 300,
-            upgradeMultiplier: 1.5,
+            upgradeMultiplier: 1.4,
             specialQuests: [],
             limits: { maxInventorySlots: 50, maxMarketplacePrice: 100000, maxLevel: 100 }
         });
-        console.log('✅ Созданы настройки игры по умолчанию (капсулы: basic только common, premium 70/20/10)');
+        console.log('✅ Созданы настройки игры по умолчанию (как в первой версии)');
     }
     
     cachedConfig = config;
@@ -1543,22 +1560,20 @@ app.post('/api/marketplace/list', authMiddleware, async (req, res) => {
         const creature = await getCreature(creatureId);
         if (!creature) return res.status(400).json({ success: false, message: 'Существо не найдено' });
 
-        // НОВАЯ ПРОВЕРКА ДЛЯ COMMON
-        if (creature.rarity === 'common') {
-            if (price < MIN_MARKETPLACE_PRICE) {
-                return res.status(400).json({ success: false, message: `Минимальная цена для обычных существ ${MIN_MARKETPLACE_PRICE} MMO` });
-            }
-            if (price > MAX_MARKETPLACE_PRICE_COMMON) {
-                return res.status(400).json({ success: false, message: `Максимальная цена для обычных существ ${MAX_MARKETPLACE_PRICE_COMMON} MMO` });
-            }
-        } else {
-            // Старая проверка для остальных
-            if (price < MIN_MARKETPLACE_PRICE) {
-                return res.status(400).json({ success: false, message: `Минимальная цена ${MIN_MARKETPLACE_PRICE} MMO` });
-            }
-            if (price > limits.maxMarketplacePrice) {
-                return res.status(400).json({ success: false, message: `Максимальная цена ${limits.maxMarketplacePrice} MMO` });
-            }
+        // Проверка для Common (как в первой версии)
+        if (creature.rarity === 'common' && price > MAX_COMMON_PRICE) {
+            return res.status(400).json({ 
+                success: false, 
+                message: `Common существ нельзя продавать дороже ${MAX_COMMON_PRICE} MMO` 
+            });
+        }
+
+        if (!price || price < MIN_MARKETPLACE_PRICE) {
+            return res.status(400).json({ success: false, message: `Минимальная цена ${MIN_MARKETPLACE_PRICE} MMO` });
+        }
+        
+        if (price > limits.maxMarketplacePrice) {
+            return res.status(400).json({ success: false, message: `Максимальная цена ${limits.maxMarketplacePrice} MMO` });
         }
 
         const activeListingsCount = await Marketplace.countDocuments({ sellerTgId: user.telegramId, active: true });
@@ -1965,9 +1980,6 @@ app.post('/api/arena/find-match', authMiddleware, async (req, res) => {
     }
 });
 
-// ============================================
-// ПОЛУЧЕНИЕ СТАТУСА БОЯ (для восстановления после переподключения)
-// ============================================
 app.get('/api/arena/battle/status', authMiddleware, async (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.setHeader('Content-Type', 'application/json');
@@ -2291,21 +2303,20 @@ app.post('/api/wallet/get-payment-details', authMiddleware, async (req, res) => 
             return res.status(400).json({ success: false, message: `Минимальная сумма ${MIN_TRANSACTION_AMOUNT} MMO` });
         }
         
-        const memo = `DEPOSIT_${user.telegramId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const walletAddress = process.env.TON_DEPOSIT_WALLET || 'UQAERj-q7eOitwIl9rHrgsb_6i35E6MwYoDwU0WeS8O5LBzX';
+        const generatedMemo = crypto.randomBytes(16).toString('hex');
         
         await PendingDeposit.create({
-            memo: memo,
+            memo: generatedMemo,
             telegramId: user.telegramId,
             userId: user._id,
             amount: amount
         });
         
-        const MMO_WALLET = process.env.MMO_WALLET || 'UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
-        
         res.json({
             success: true,
-            wallet: MMO_WALLET,
-            memo: memo,
+            wallet: walletAddress,
+            memo: generatedMemo,
             amount: amount
         });
     } catch (e) {
@@ -2319,46 +2330,60 @@ app.post('/api/wallet/create-deposit-request', authMiddleware, async (req, res) 
         const { memo } = req.body;
         const user = req.user;
         
-        if (!memo) {
-            return res.status(400).json({ success: false, message: 'Memo обязателен' });
+        const pending = await PendingDeposit.findOne({ memo });
+        if (!pending) {
+            return res.status(404).json({ success: false, message: 'Данные платежа не найдены или истекли. Начните заново.' });
         }
         
-        const pendingDeposit = await PendingDeposit.findOne({ memo, telegramId: user.telegramId });
-        if (!pendingDeposit) {
-            return res.status(404).json({ success: false, message: 'Pending депозит не найден' });
+        if (pending.telegramId !== user.telegramId) {
+            return res.status(403).json({ success: false, message: 'Неверный мемо' });
         }
         
-        const existingRequest = await TransactionRequest.findOne({
-            userId: user._id,
-            type: 'deposit',
+        const pendingCount = await TransactionRequest.countDocuments({
+            telegramId: user.telegramId,
             status: 'pending'
         });
         
-        if (existingRequest) {
-            return res.status(400).json({ success: false, message: 'У вас уже есть активная заявка на депозит' });
+        if (pendingCount >= MAX_ACTIVE_REQUESTS) {
+            return res.status(400).json({ success: false, message: `У вас уже ${MAX_ACTIVE_REQUESTS} активных заявок` });
         }
         
-        await TransactionRequest.create({
+        const request = await TransactionRequest.create({
             userId: user._id,
             telegramId: user.telegramId,
             type: 'deposit',
-            amount: pendingDeposit.amount,
-            memo: memo,
-            status: 'pending'
+            amount: pending.amount,
+            wallet: process.env.TON_DEPOSIT_WALLET,
+            memo: memo
         });
         
-        await PendingDeposit.deleteOne({ _id: pendingDeposit._id });
+        await PendingDeposit.deleteOne({ memo });
         
-        await notifyAdmins(
-            `💎 <b>НОВАЯ ЗАЯВКА НА ДЕПОЗИТ</b>\n\n` +
-            `👤 Пользователь: ${user.username || user.firstName || user.telegramId}\n` +
-            `🆔 ID: ${user.telegramId}\n` +
-            `💰 Сумма: ${pendingDeposit.amount.toLocaleString()} MMO\n` +
-            `📝 Мемо: <code>${memo}</code>\n` +
-            `🕐 Время: ${new Date().toLocaleString()}`
-        );
+        const replyMarkup = {
+            inline_keyboard: [
+                [
+                    { text: "✅ ПОДТВЕРДИТЬ", callback_data: `approve_${request._id}` },
+                    { text: "❌ ОТКЛОНИТЬ", callback_data: `reject_${request._id}` }
+                ]
+            ]
+        };
         
-        res.json({ success: true, message: 'Заявка создана' });
+        const adminMessage = `💎 <b>НОВАЯ ЗАЯВКА НА ДЕПОЗИТ</b>\n\n` +
+            `🆔 #${request._id.toString().slice(-8)}\n` +
+            `👤 ${user.username || user.firstName || user.telegramId}\n` +
+            `💰 Сумма: ${request.amount.toLocaleString()} MMO\n` +
+            `🏦 Кошелек TON: ${request.wallet}\n` +
+            `📝 Мемо: <code>${request.memo}</code>\n` +
+            `🕐 ${new Date().toLocaleString()}\n\n` +
+            `⚠️ Проверьте получение средств по мемо и подтвердите заявку.`;
+        
+        await notifyAdmins(adminMessage, replyMarkup);
+        
+        res.json({
+            success: true,
+            request,
+            message: 'Заявка создана! Администратор проверит платеж и начислит средства.'
+        });
     } catch (e) {
         console.error('create-deposit-request error:', e);
         res.status(500).json({ success: false, message: e.message });
@@ -2392,25 +2417,81 @@ app.post('/api/wallet/withdraw-request', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: `У вас уже ${MAX_ACTIVE_REQUESTS} активных заявок` });
         }
         
-        await TransactionRequest.create({
+        const updatedUser = await User.findOneAndUpdate(
+            { _id: user._id, balance: { $gte: amount } },
+            {
+                $inc: { balance: -amount },
+                $push: {
+                    transactions: {
+                        $each: [{ 
+                            name: `Withdraw request: ${amount} MMO to ${wallet.slice(0, 10)}...`, 
+                            amount: -amount, 
+                            time: new Date() 
+                        }],
+                        $position: 0,
+                        $slice: 30
+                    }
+                }
+            },
+            { new: true }
+        );
+        
+        if (!updatedUser) {
+            return res.status(400).json({ success: false, message: 'Ошибка списания средств' });
+        }
+        
+        const request = await TransactionRequest.create({
             userId: user._id,
             telegramId: user.telegramId,
             type: 'withdraw',
-            amount: amount,
-            wallet: wallet,
+            amount,
+            wallet: wallet.trim(),
             status: 'pending'
         });
         
-        await notifyAdmins(
-            `💸 <b>НОВАЯ ЗАЯВКА НА ВЫВОД</b>\n\n` +
-            `👤 Пользователь: ${user.username || user.firstName || user.telegramId}\n` +
-            `🆔 ID: ${user.telegramId}\n` +
-            `💰 Сумма: ${amount.toLocaleString()} MMO\n` +
-            `🏦 Кошелек: <code>${wallet}</code>\n` +
-            `🕐 Время: ${new Date().toLocaleString()}`
-        );
+        const replyMarkup = {
+            inline_keyboard: [
+                [
+                    { text: "✅ ПОДТВЕРДИТЬ", callback_data: `approve_${request._id}` },
+                    { text: "❌ ОТКЛОНИТЬ", callback_data: `reject_${request._id}` }
+                ]
+            ]
+        };
         
-        res.json({ success: true, message: 'Заявка создана' });
+        const adminMessage = `💸 <b>НОВАЯ ЗАЯВКА НА ВЫВОД</b>\n\n` +
+            `🆔 #${request._id.toString().slice(-8)}\n` +
+            `👤 ${user.username || user.firstName || user.telegramId}\n` +
+            `💰 Сумма: ${amount.toLocaleString()} MMO\n` +
+            `🏦 TON Кошелек: <code>${wallet}</code>\n` +
+            `📊 Баланс после списания: ${updatedUser.balance.toLocaleString()} MMO\n` +
+            `🕐 ${new Date().toLocaleString()}\n\n` +
+            `⚠️ Средства уже списаны с баланса пользователя.\n` +
+            `Подтвердите вывод, чтобы отправить средства на кошелек.`;
+        
+        await notifyAdmins(adminMessage, replyMarkup);
+        
+        try {
+            await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: user.telegramId,
+                    text: `💸 <b>Заявка на вывод создана</b>\n\n` +
+                        `Сумма: -${amount.toLocaleString()} MMO\n` +
+                        `Кошелек: <code>${wallet}</code>\n` +
+                        `Статус: ⏳ Ожидает подтверждения администратора\n\n` +
+                        `После подтверждения средства будут отправлены на ваш кошелек.`,
+                    parse_mode: 'HTML'
+                })
+            });
+        } catch (e) {}
+        
+        res.json({ 
+            success: true, 
+            request, 
+            balance: updatedUser.balance,
+            message: 'Заявка создана, средства списаны. Ожидайте подтверждения администратора.' 
+        });
     } catch (e) {
         console.error('withdraw-request error:', e);
         res.status(500).json({ success: false, message: e.message });
@@ -2470,13 +2551,428 @@ app.get('/api/wallet/history', authMiddleware, async (req, res) => {
 });
 
 // ============================================
-// АДМИН-ПАНЕЛЬ API (сокращённо)
+// АДМИН: ОБРАБОТКА ЗАЯВОК
 // ============================================
-
-app.get('/api/admin/metrics', adminAuthMiddleware, async (req, res) => {
-    res.json({ success: true, uptime: process.uptime(), timestamp: Date.now() });
+app.post('/api/admin/transaction-request/:id', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { action, note } = req.body;
+        
+        const request = await TransactionRequest.findById(id);
+        if (!request) {
+            return res.status(404).json({ success: false, message: 'Заявка не найдена' });
+        }
+        
+        if (request.status !== 'pending') {
+            return res.status(400).json({ success: false, message: 'Заявка уже обработана' });
+        }
+        
+        const user = await User.findById(request.userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'Пользователь не найден' });
+        }
+        
+        if (action === 'approve') {
+            if (request.type === 'deposit') {
+                user.balance += request.amount;
+                addTransaction(user, `Deposit (Подтвержден)`, request.amount);
+                await user.save();
+                
+                // Реферальный бонус (2%)
+                if (user.referredBy) {
+                    const referrer = await User.findOne({ telegramId: user.referredBy });
+                    if (referrer) {
+                        const referralBonus = Math.floor(request.amount * REFERRAL_BONUS_PERCENT / 100);
+                        if (referralBonus > 0) {
+                            referrer.balance += referralBonus;
+                            referrer.totalReferralBonus = (referrer.totalReferralBonus || 0) + referralBonus;
+                            addTransaction(referrer, `Referral bonus from ${user.username || user.firstName || user.telegramId} (${REFERRAL_BONUS_PERCENT}% of deposit)`, referralBonus);
+                            await referrer.save();
+                            
+                            await sendNotificationToUser(referrer.telegramId, 
+                                `🎉 <b>Реферальный бонус!</b>\n\n` +
+                                `Ваш друг ${user.username || user.firstName || 'игрок'} пополнил баланс на ${request.amount.toLocaleString()} MMO\n` +
+                                `Вы получили ${REFERRAL_BONUS_PERCENT}%: +${referralBonus.toLocaleString()} MMO\n\n` +
+                                `💰 Ваш баланс: ${referrer.balance.toLocaleString()} MMO\n` +
+                                `🏆 Всего получено бонусов: ${referrer.totalReferralBonus.toLocaleString()} MMO`
+                            );
+                        }
+                    }
+                }
+                
+                const successMessage = `✅ <b>Депозит подтвержден!</b>\n\n` +
+                    `💰 Сумма: +${request.amount.toLocaleString()} MMO\n` +
+                    `💳 Баланс: ${user.balance.toLocaleString()} MMO\n\n` +
+                    `Спасибо за пополнение! 🎉`;
+                await sendNotificationToUser(user.telegramId, successMessage);
+                
+            } else if (request.type === 'withdraw') {
+                const successMessage = `✅ <b>Вывод подтвержден!</b>\n\n` +
+                    `💰 Сумма: -${request.amount.toLocaleString()} MMO\n` +
+                    `💳 Баланс: ${user.balance.toLocaleString()} MMO\n` +
+                    `🏦 Кошелек: ${request.wallet}\n\n` +
+                    `⏱ Средства поступят в течение 1-30 минут.`;
+                await sendNotificationToUser(user.telegramId, successMessage);
+            }
+            
+            request.status = 'approved';
+            
+        } else if (action === 'reject') {
+            
+            if (request.type === 'withdraw') {
+                await User.findByIdAndUpdate(user._id, {
+                    $inc: { balance: request.amount },
+                    $push: {
+                        transactions: {
+                            $each: [{ 
+                                name: `Withdraw rejected: refund ${request.amount} MMO`, 
+                                amount: request.amount, 
+                                time: new Date() 
+                            }],
+                            $position: 0,
+                            $slice: 30
+                        }
+                    }
+                });
+                
+                const rejectMessage = `❌ <b>Вывод отклонен</b>\n\nСредства возвращены на баланс.`;
+                await sendNotificationToUser(user.telegramId, rejectMessage);
+                
+            } else if (request.type === 'deposit') {
+                const rejectMessage = `❌ Депозит отклонен\n\n` +
+                    `💰 Сумма: ${request.amount.toLocaleString()} MMO\n` +
+                    `📝 Причина: ${note || 'Свяжитесь с администратором'}\n\n` +
+                    `Если вы отправляли средства, обратитесь к администратору.`;
+                await sendNotificationToUser(user.telegramId, rejectMessage);
+            }
+            
+            request.status = 'rejected';
+        }
+        
+        request.adminNote = note || request.adminNote;
+        request.processedAt = new Date();
+        await request.save();
+        
+        await notifyAdmins(`🔄 <b>ЗАЯВКА ОБРАБОТАНА</b>\n\n` +
+            `🆔 #${request._id.toString().slice(-8)}\n` +
+            `👤 ${user.username || user.firstName || user.telegramId}\n` +
+            `💰 Сумма: ${request.amount.toLocaleString()} MMO\n` +
+            `📊 Статус: ${action === 'approve' ? '✅ ПОДТВЕРЖДЕНА' : '❌ ОТКЛОНЕНА'}\n` +
+            `🕐 ${new Date().toLocaleString()}`);
+        
+        res.json({ success: true, request, message: `Заявка ${action === 'approve' ? 'подтверждена' : 'отклонена'}` });
+        
+    } catch (e) {
+        console.error('admin transaction request error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
 });
 
+// ============================================
+// АДМИН: УПРАВЛЕНИЕ РЕКЛАМОЙ
+// ============================================
+app.post('/api/admin/user/:id/reset-ads-stats', adminAuthMiddleware, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'Пользователь не найден' });
+        }
+        
+        const originalCount = user.transactions.filter(tx => tx.name === 'Watch Ad Reward').length;
+        user.transactions = user.transactions.filter(tx => tx.name !== 'Watch Ad Reward');
+        
+        user.adsAvailable = MAX_ADS_AVAILABLE;
+        user.adsLastRegen = new Date();
+        user.adsCooldownUntil = null;
+        
+        await user.save();
+        
+        res.json({
+            success: true,
+            message: `Удалено ${originalCount} записей о просмотре рекламы у ${user.username || user.firstName}`,
+            removedCount: originalCount
+        });
+    } catch (e) {
+        console.error('reset-ads-stats error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/admin/reset-all-ads-stats', adminAuthMiddleware, async (req, res) => {
+    try {
+        const users = await User.find({});
+        let totalRemoved = 0;
+        
+        for (const user of users) {
+            const removedCount = user.transactions.filter(tx => tx.name === 'Watch Ad Reward').length;
+            if (removedCount > 0) {
+                user.transactions = user.transactions.filter(tx => tx.name !== 'Watch Ad Reward');
+                user.adsAvailable = MAX_ADS_AVAILABLE;
+                user.adsLastRegen = new Date();
+                user.adsCooldownUntil = null;
+                await user.save();
+                totalRemoved += removedCount;
+            }
+        }
+        
+        res.json({
+            success: true,
+            message: `Удалено ${totalRemoved} записей о просмотре рекламы у всех пользователей`,
+            totalRemoved
+        });
+    } catch (e) {
+        console.error('reset-all-ads-stats error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/admin/give-ads-to-all', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { amount } = req.body;
+        
+        if (!amount || amount <= 0 || amount > 50) {
+            return res.status(400).json({ success: false, message: 'Укажите количество от 1 до 50' });
+        }
+        
+        const result = await User.updateMany(
+            {},
+            { 
+                $inc: { adsAvailable: amount },
+                $set: { adsLastRegen: new Date() }
+            }
+        );
+        
+        await User.updateMany(
+            { adsAvailable: { $gt: MAX_ADS_AVAILABLE } },
+            { $set: { adsAvailable: MAX_ADS_AVAILABLE } }
+        );
+        
+        res.json({
+            success: true,
+            message: `Выдано +${amount} рекламы ${result.modifiedCount} игрокам`,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (e) {
+        console.error('give-ads-to-all error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.put('/api/admin/ads-config', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { adReward, adCooldownSeconds } = req.body;
+        
+        let config = await GameConfig.findOne();
+        if (!config) {
+            config = new GameConfig();
+        }
+        
+        if (adReward !== undefined) config.adReward = adReward;
+        if (adCooldownSeconds !== undefined) config.adCooldown = adCooldownSeconds;
+        
+        await config.save();
+        
+        await notifyAdmins(`⚙️ <b>Изменены настройки рекламы</b>\n\n` +
+            `💰 Награда: ${adReward || config.adReward} MMO\n` +
+            `🔄 Кулдаун: ${adCooldownSeconds || config.adCooldown} сек`);
+        
+        await invalidateConfigCache();
+        
+        res.json({ success: true, message: 'Настройки рекламы обновлены' });
+    } catch (e) {
+        console.error('ads-config error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ============================================
+// АДМИН: РАССЫЛКА
+// ============================================
+async function sendBroadcastAsync(broadcastId, users, testMode) {
+    const broadcast = await Broadcast.findById(broadcastId);
+    if (!broadcast) return;
+    
+    const BOT_TOKEN = process.env.BOT_TOKEN;
+    if (!BOT_TOKEN) {
+        console.error('❌ BOT_TOKEN не задан');
+        broadcast.status = 'cancelled';
+        await broadcast.save();
+        return;
+    }
+    
+    let sent = 0;
+    let failed = 0;
+    
+    console.log(`📢 Начинаем рассылку #${broadcastId} для ${users.length} пользователей`);
+    
+    for (let i = 0; i < users.length; i++) {
+        const user = users[i];
+        
+        try {
+            let replyMarkup = null;
+            if (broadcast.buttons && broadcast.buttons.length > 0) {
+                const inlineKeyboard = [];
+                for (const btn of broadcast.buttons) {
+                    inlineKeyboard.push([{ text: btn.text, url: btn.url }]);
+                }
+                replyMarkup = { inline_keyboard: inlineKeyboard };
+            }
+            
+            if (broadcast.imageUrl) {
+                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: user.telegramId,
+                        photo: broadcast.imageUrl,
+                        caption: broadcast.message,
+                        parse_mode: broadcast.parseMode,
+                        reply_markup: replyMarkup,
+                        disable_web_page_preview: true
+                    })
+                });
+            } else {
+                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: user.telegramId,
+                        text: broadcast.message,
+                        parse_mode: broadcast.parseMode,
+                        reply_markup: replyMarkup,
+                        disable_web_page_preview: true
+                    })
+                });
+            }
+            
+            sent++;
+            
+            if (sent % 100 === 0) {
+                console.log(`📢 Рассылка #${broadcastId}: отправлено ${sent}/${users.length}`);
+                broadcast.sentCount = sent;
+                broadcast.failedCount = failed;
+                await broadcast.save();
+            }
+            
+        } catch (e) {
+            failed++;
+            console.error(`❌ Ошибка отправки пользователю ${user.telegramId}:`, e.message);
+        }
+        
+        await new Promise(r => setTimeout(r, 30));
+    }
+    
+    broadcast.sentCount = sent;
+    broadcast.failedCount = failed;
+    broadcast.status = 'completed';
+    broadcast.completedAt = new Date();
+    await broadcast.save();
+    
+    console.log(`✅ Рассылка #${broadcastId} завершена! Отправлено: ${sent}, Ошибок: ${failed}`);
+    
+    await notifyAdmins(`📢 <b>Рассылка завершена!</b>\n\n` +
+        `📝 ID: #${broadcastId.toString().slice(-8)}\n` +
+        `✅ Отправлено: ${sent}\n` +
+        `❌ Ошибок: ${failed}\n` +
+        `👥 Всего: ${users.length}\n` +
+        `🕐 ${new Date().toLocaleString()}`);
+}
+
+app.post('/api/admin/broadcast/create', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { message, imageUrl, buttons, parseMode = 'HTML', testMode = false } = req.body;
+        
+        if (!message) {
+            return res.status(400).json({ success: false, message: 'Введите текст сообщения' });
+        }
+        
+        let users;
+        if (testMode) {
+            const adminIds = ADMIN_IDS;
+            users = await User.find({ telegramId: { $in: adminIds } }).select('telegramId username firstName');
+        } else {
+            users = await User.find({ isBanned: false }).select('telegramId username firstName');
+        }
+        
+        if (users.length === 0) {
+            return res.status(400).json({ success: false, message: 'Нет получателей' });
+        }
+        
+        const broadcast = new Broadcast({
+            message,
+            imageUrl: imageUrl || null,
+            buttons: buttons || [],
+            parseMode,
+            totalUsers: users.length,
+            createdBy: req.adminLogin,
+            status: 'pending'
+        });
+        
+        await broadcast.save();
+        
+        sendBroadcastAsync(broadcast._id, users, testMode);
+        
+        res.json({ 
+            success: true, 
+            message: `Рассылка запущена! Будет отправлено ${users.length} сообщений${testMode ? ' (ТЕСТОВЫЙ РЕЖИМ)' : ''}`,
+            broadcastId: broadcast._id
+        });
+        
+    } catch (e) {
+        console.error('broadcast create error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/admin/broadcast/history', adminAuthMiddleware, async (req, res) => {
+    try {
+        const broadcasts = await Broadcast.find()
+            .sort({ createdAt: -1 })
+            .limit(50)
+            .lean();
+        
+        res.json({ success: true, broadcasts });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/admin/broadcast/cancel/:id', adminAuthMiddleware, async (req, res) => {
+    try {
+        const broadcast = await Broadcast.findById(req.params.id);
+        if (!broadcast) {
+            return res.status(404).json({ success: false, message: 'Рассылка не найдена' });
+        }
+        
+        if (broadcast.status !== 'pending') {
+            return res.status(400).json({ success: false, message: 'Рассылка уже завершена или отменена' });
+        }
+        
+        broadcast.status = 'cancelled';
+        await broadcast.save();
+        
+        res.json({ success: true, message: 'Рассылка отменена' });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/admin/broadcast/status/:id', adminAuthMiddleware, async (req, res) => {
+    try {
+        const broadcast = await Broadcast.findById(req.params.id);
+        if (!broadcast) {
+            return res.status(404).json({ success: false, message: 'Рассылка не найдена' });
+        }
+        
+        res.json({ success: true, broadcast });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ============================================
+// АДМИН: ОБЩИЕ МЕТРИКИ И ПОЛЬЗОВАТЕЛИ
+// ============================================
 app.get('/api/admin/stats', adminAuthMiddleware, async (req, res) => {
     try {
         if (cachedAdminStats.expiresAt > Date.now() && cachedAdminStats.data) {
@@ -2560,7 +3056,19 @@ app.get('/api/admin/users/:id', adminAuthMiddleware, async (req, res) => {
         
         const referrals = await User.find({ referredBy: user.telegramId }).select('username firstName balance createdAt');
         
-        res.json({ success: true, user: formatUser(user), inventory, referrals });
+        const adsWatched = user.transactions.filter(tx => tx.name === 'Watch Ad Reward').length;
+        const adsEarned = user.transactions
+            .filter(tx => tx.name === 'Watch Ad Reward')
+            .reduce((sum, tx) => sum + tx.amount, 0);
+        
+        res.json({ 
+            success: true, 
+            user: formatUser(user), 
+            inventory, 
+            referrals,
+            adsWatched,
+            adsEarned
+        });
     } catch (e) {
         res.status(500).json({ success: false, message: e.message });
     }
@@ -2759,93 +3267,6 @@ app.delete('/api/admin/creatures/:id', adminAuthMiddleware, async (req, res) => 
     }
 });
 
-app.get('/api/admin/special-quests', adminAuthMiddleware, async (req, res) => {
-    try {
-        const config = await getGameConfig();
-        res.json({ success: true, specialQuests: config.specialQuests });
-    } catch (e) {
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
-
-app.post('/api/admin/special-quests', adminAuthMiddleware, async (req, res) => {
-    try {
-        const { id, title, description, icon, reward, type, link, required_count, isActive } = req.body;
-        
-        if (!id || !title || !reward || !type) {
-            return res.status(400).json({ success: false, message: 'Не все обязательные поля заполнены' });
-        }
-        
-        const config = await getGameConfig();
-        
-        if (config.specialQuests.some(q => q.id === id)) {
-            return res.status(400).json({ success: false, message: 'Квест с таким ID уже существует' });
-        }
-        
-        config.specialQuests.push({
-            id, title, description: description || '', icon: icon || '🎯', reward, type,
-            link: link || '', required_count: required_count || 1, isActive: isActive !== false
-        });
-        
-        await config.save();
-        await invalidateConfigCache();
-        
-        res.json({ success: true, specialQuests: config.specialQuests });
-    } catch (e) {
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
-
-app.put('/api/admin/special-quests/:id', adminAuthMiddleware, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { title, description, icon, reward, type, link, required_count, isActive } = req.body;
-        
-        const config = await getGameConfig();
-        const quest = config.specialQuests.find(q => q.id === id);
-        
-        if (!quest) {
-            return res.status(404).json({ success: false, message: 'Квест не найден' });
-        }
-        
-        if (title) quest.title = title;
-        if (description !== undefined) quest.description = description;
-        if (icon) quest.icon = icon;
-        if (reward) quest.reward = reward;
-        if (type) quest.type = type;
-        if (link !== undefined) quest.link = link;
-        if (required_count) quest.required_count = required_count;
-        if (isActive !== undefined) quest.isActive = isActive;
-        
-        await config.save();
-        await invalidateConfigCache();
-        
-        res.json({ success: true, specialQuests: config.specialQuests });
-    } catch (e) {
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
-
-app.delete('/api/admin/special-quests/:id', adminAuthMiddleware, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const config = await getGameConfig();
-        
-        const questIndex = config.specialQuests.findIndex(q => q.id === id);
-        if (questIndex === -1) {
-            return res.status(404).json({ success: false, message: 'Квест не найден' });
-        }
-        
-        config.specialQuests.splice(questIndex, 1);
-        await config.save();
-        await invalidateConfigCache();
-        
-        res.json({ success: true });
-    } catch (e) {
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
-
 app.get('/api/admin/config', adminAuthMiddleware, async (req, res) => {
     try {
         const config = await getGameConfig();
@@ -2977,40 +3398,40 @@ setInterval(() => {
 }, CLEANUP_INTERVAL);
 
 // ============================================
-// ИНИЦИАЛИЗАЦИЯ СУЩЕСТВ
+// ИНИЦИАЛИЗАЦИЯ СУЩЕСТВ (с повышенным incomeBase как в первой версии)
 // ============================================
 async function initCreatures() {
     const staticCreatures = [
         { id: 'duck_c', name: 'Duck', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/dc.png', incomeBase: 2, desc: 'Young waterfowl.' },
         { id: 'duck_u', name: 'Duck', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/du.png', incomeBase: 8, desc: 'Mature waterfowl.' },
         { id: 'duck_r', name: 'Duck', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/dr.png', incomeBase: 25, desc: 'Ancient waterfowl.' },
-        { id: 'duck_e', name: 'Duck', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/de.png', incomeBase: 80, desc: 'Eternal waterfowl.' },
-        { id: 'duck_l', name: 'Duck', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/dl.png', incomeBase: 250, desc: 'Divine waterfowl.' },
+        { id: 'duck_e', name: 'Duck', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/de.png', incomeBase: 120, desc: 'Eternal waterfowl.' },
+        { id: 'duck_l', name: 'Duck', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/dl.png', incomeBase: 400, desc: 'Divine waterfowl.' },
         { id: 'owl_c', name: 'Owl', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/oc.png', incomeBase: 2, desc: 'Small night hunter.' },
         { id: 'owl_u', name: 'Owl', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/ou.png', incomeBase: 8, desc: 'Experienced night hunter.' },
         { id: 'owl_r', name: 'Owl', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/or.png', incomeBase: 25, desc: 'Wise night guardian.' },
-        { id: 'owl_e', name: 'Owl', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/oe.png', incomeBase: 80, desc: 'Eternal guardian.' },
-        { id: 'owl_l', name: 'Owl', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/ol.png', incomeBase: 250, desc: 'Divine guardian.' },
+        { id: 'owl_e', name: 'Owl', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/oe.png', incomeBase: 120, desc: 'Eternal guardian.' },
+        { id: 'owl_l', name: 'Owl', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/ol.png', incomeBase: 400, desc: 'Divine guardian.' },
         { id: 'shark_c', name: 'Shark', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/sc.png', incomeBase: 2, desc: 'Young predator.' },
         { id: 'shark_u', name: 'Shark', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/su.png', incomeBase: 8, desc: 'Experienced apex predator.' },
         { id: 'shark_r', name: 'Shark', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/sr.png', incomeBase: 25, desc: 'Legendary predator.' },
-        { id: 'shark_e', name: 'Shark', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/se.png', incomeBase: 80, desc: 'Eternal terror.' },
-        { id: 'shark_l', name: 'Shark', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/sl.png', incomeBase: 250, desc: 'Divine terror.' },
+        { id: 'shark_e', name: 'Shark', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/se.png', incomeBase: 120, desc: 'Eternal terror.' },
+        { id: 'shark_l', name: 'Shark', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/sl.png', incomeBase: 400, desc: 'Divine terror.' },
         { id: 'wolf_c', name: 'Wolf', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/wc.png', incomeBase: 2, desc: 'Young pack member.' },
         { id: 'wolf_u', name: 'Wolf', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/wu.png', incomeBase: 8, desc: 'Pack leader in training.' },
         { id: 'wolf_r', name: 'Rare Wolf', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/wr.png', incomeBase: 25, desc: 'Rare wolf for 10 friends 5+.' },
-        { id: 'wolf_e', name: 'Epic Wolf', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/we.png', incomeBase: 80, desc: 'Epic wolf for 50 friends 5+.' },
-        { id: 'wolf_l', name: 'Legendary Wolf', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/wl.png', incomeBase: 250, desc: 'Legendary wolf for 150 friends 5+.' },
+        { id: 'wolf_e', name: 'Epic Wolf', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/we.png', incomeBase: 120, desc: 'Epic wolf for 50 friends 5+.' },
+        { id: 'wolf_l', name: 'Legendary Wolf', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/wl.png', incomeBase: 400, desc: 'Legendary wolf for 150 friends 5+.' },
         { id: 'dragon_c', name: 'Dragon', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/ddc.png', incomeBase: 2, desc: 'Young fire breather.' },
         { id: 'dragon_u', name: 'Dragon', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/ddu.png', incomeBase: 8, desc: 'Grown fire breather.' },
         { id: 'dragon_r', name: 'Dragon', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/ddr.png', incomeBase: 25, desc: 'Ancient fire drake.' },
-        { id: 'dragon_e', name: 'Dragon', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/dde.png', incomeBase: 80, desc: 'Eternal flame.' },
-        { id: 'dragon_l', name: 'Dragon', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/ddl.png', incomeBase: 250, desc: 'Divine flame.' },
+        { id: 'dragon_e', name: 'Dragon', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/dde.png', incomeBase: 120, desc: 'Eternal flame.' },
+        { id: 'dragon_l', name: 'Dragon', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/ddl.png', incomeBase: 400, desc: 'Divine flame.' },
         { id: 'unicorn_c', name: 'Unicorn', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/uc.png', incomeBase: 2, desc: 'Young magical beast.' },
         { id: 'unicorn_u', name: 'Unicorn', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/uu.png', incomeBase: 8, desc: 'Magical evolution.' },
         { id: 'unicorn_r', name: 'Unicorn', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/ru.png', incomeBase: 25, desc: 'Rare magical entity.' },
-        { id: 'unicorn_e', name: 'Unicorn', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/er.png', incomeBase: 80, desc: 'Eternal magic.' },
-        { id: 'unicorn_l', name: 'Unicorn', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/ll.png', incomeBase: 250, desc: 'Divine magic.' },
+        { id: 'unicorn_e', name: 'Unicorn', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/er.png', incomeBase: 120, desc: 'Eternal magic.' },
+        { id: 'unicorn_l', name: 'Unicorn', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/ll.png', incomeBase: 400, desc: 'Divine magic.' },
         { id: 'lion_mythic', name: 'Lion', rarity: 'mythic', icon: 'https://ndammo.github.io/Mmodna/lm.png', incomeBase: 1000, desc: 'THE MYTHIC KING.' },
         { id: 'panther_mythic', name: 'Black Panther', rarity: 'mythic', icon: 'https://ndammo.github.io/Mmodna/pm.png', incomeBase: 2000, desc: 'TOP 1 SEASON.' }
     ];
@@ -3130,7 +3551,6 @@ io.on('connection', (socket) => {
 mongoose.connection.once('open', async () => {
     await initCreatures();
     
-    // Миграция настроек капсул
     const currentConfig = await GameConfig.findOne();
     if (currentConfig) {
         let needSave = false;
@@ -3172,6 +3592,11 @@ mongoose.connection.once('open', async () => {
     console.log('✅ Сервер готов');
     console.log('👥 Telegram Админы: ' + (ADMIN_IDS.join(', ') || 'не заданы'));
     console.log('🔐 Web Админ: ' + ADMIN_LOGIN);
+    console.log('💰 Мин. сумма транзакции: ' + MIN_TRANSACTION_AMOUNT + ' MMO');
+    console.log('📋 Макс. активных заявок: ' + MAX_ACTIVE_REQUESTS);
+    console.log('📺 Новая система рекламы: макс. ' + MAX_ADS_AVAILABLE + ', восстановление +1/час');
+    console.log('🎁 Реферальный бонус: ' + REFERRAL_BONUS_PERCENT + '% от депозита друга');
+    console.log('🏪 Маркет: мин. цена ' + MIN_MARKETPLACE_PRICE + ' MMO, макс. лотов ' + MAX_ACTIVE_LISTINGS);
     console.log('⚔️ PvP Арена: активна (WebSocket для Railway)!');
 });
 
