@@ -95,7 +95,7 @@ async function getAdminToken() {
         
         if (data.success) {
             cachedAdminToken = data.token;
-            tokenExpiresAt = now + 23 * 60 * 60 * 1000;
+            tokenExpiresAt = now + 22 * 60 * 60 * 1000; // обновляем за 2ч до истечения 24ч сессии
             console.log('✅ Админ-токен получен для бота');
             return cachedAdminToken;
         } else {
@@ -174,7 +174,7 @@ async function processTransaction(chatId, callbackId, requestId, action, bot, ca
     }
     
     try {
-        const adminToken = await getAdminToken();
+        let adminToken = await getAdminToken();
         if (!adminToken) {
             await bot.answerCallbackQuery(callbackId, { 
                 text: '❌ Ошибка авторизации на сервере. Попробуйте позже.', 
@@ -185,7 +185,7 @@ async function processTransaction(chatId, callbackId, requestId, action, bot, ca
         
         console.log(`📤 Отправка запроса на ${API_URL}/api/admin/transaction-request/${requestId} с action: ${action}`);
         
-        const response = await fetch(`${API_URL}/api/admin/transaction-request/${requestId}`, {
+        let response = await fetch(`${API_URL}/api/admin/transaction-request/${requestId}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -193,6 +193,23 @@ async function processTransaction(chatId, callbackId, requestId, action, bot, ca
             },
             body: JSON.stringify({ action, note: '' })
         });
+        
+        // Если сессия истекла (деплой сбросил in-memory сессии) — перелогиниться и повторить
+        if (response.status === 401) {
+            console.log('🔄 Токен истёк, перелогиниваемся...');
+            cachedAdminToken = null;
+            tokenExpiresAt = 0;
+            adminToken = await getAdminToken();
+            if (!adminToken) {
+                await bot.answerCallbackQuery(callbackId, { text: '❌ Не удалось авторизоваться', show_alert: true });
+                return;
+            }
+            response = await fetch(`${API_URL}/api/admin/transaction-request/${requestId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken },
+                body: JSON.stringify({ action, note: '' })
+            });
+        }
         
         console.log(`📥 Ответ статус: ${response.status}`);
         const result = await response.json();

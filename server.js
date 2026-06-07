@@ -4,7 +4,6 @@
 // ============================================
 
 require('dotenv').config();
-const path = require('path');
 const express = require('express');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
@@ -21,7 +20,7 @@ app.set('trust proxy', 1); // Railway проксирует запросы — н
 // ============================================
 // ИМПОРТ МОДУЛЯ АРЕНЫ (WebSocket версия)
 // ============================================
-const ArenaModule = require('./server/arena-socket');
+const ArenaModule = require('./arena-socket');
 
 // ============================================
 // MIDDLEWARE
@@ -59,6 +58,9 @@ const MIN_MARKETPLACE_PRICE = 500;
 const MAX_COMMON_PRICE = 1100;  // ЗАЩИТА ОТ ФАРМА
 const MAX_ADS_AVAILABLE = 10;
 const ADS_REGEN_INTERVAL = 60 * 60 * 1000;
+
+const MAX_ARENA_BATTLES = 10;
+const ARENA_BATTLE_REGEN_INTERVAL = 60 * 60 * 1000; // +1 бой каждый час
 const REFERRAL_BONUS_PERCENT = 2;
 
 // ============================================
@@ -126,8 +128,6 @@ mongoose.connect(process.env.MONGODB_URI, {
 async function createIndexes() {
     try {
         await User.collection.createIndex({ level: -1, xp: -1 });
-        await User.collection.createIndex({ telegramId: 1 });
-        await User.collection.createIndex({ referralCode: 1 });
         await User.collection.createIndex({ referredBy: 1 });
         await User.collection.createIndex({ lastLogin: -1 });
         await Inventory.collection.createIndex({ telegramId: 1, creatureId: 1 });
@@ -170,6 +170,8 @@ const UserSchema = new mongoose.Schema({
     }],
     adsAvailable: { type: Number, default: MAX_ADS_AVAILABLE },
     adsLastRegen: { type: Date, default: Date.now },
+    arenaBattlesLeft: { type: Number, default: MAX_ARENA_BATTLES },
+    arenaLastBattleRegen: { type: Date, default: Date.now },
     adsCooldownUntil: { type: Date, default: null },
     lastPassiveIncome: { type: Date, default: Date.now },
     referralCode: { type: String, unique: true, sparse: true },
@@ -183,7 +185,8 @@ const UserSchema = new mongoose.Schema({
     incomeCacheExpires: { type: Date, default: Date.now },
     arenaTeam: [{ type: String, default: [] }],
     arenaCooldownUntil: { type: Date, default: null },
-    currentBattleId: { type: mongoose.Schema.Types.ObjectId, ref: 'ArenaBattle', default: null }
+    currentBattleId: { type: mongoose.Schema.Types.ObjectId, ref: 'ArenaBattle', default: null },
+    lastOpponentId: { type: mongoose.Schema.Types.ObjectId, default: null }
 });
 
 UserSchema.pre('save', function(next) {
@@ -213,6 +216,7 @@ const CreatureSchema = new mongoose.Schema({
     incomeBase: { type: Number, required: true, min: 1 },
     desc: { type: String, default: '' },
     isActive: { type: Boolean, default: true },
+    premiumOnly: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now }
 });
 const Creature = mongoose.model('Creature', CreatureSchema);
@@ -361,6 +365,18 @@ const ArenaStatsSchema = new mongoose.Schema({
     updatedAt: { type: Date, default: Date.now }
 });
 const ArenaStats = mongoose.model('ArenaStats', ArenaStatsSchema);
+
+const StakingSchema = new mongoose.Schema({
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
+    amount: { type: Number, required: true },
+    days: { type: Number, required: true }, // 10 или 30
+    rate: { type: Number, required: true }, // 0.10 или 0.20
+    reward: { type: Number, required: true },
+    startedAt: { type: Date, default: Date.now },
+    endsAt: { type: Date, required: true },
+    claimed: { type: Boolean, default: false }
+});
+const Staking = mongoose.model('Staking', StakingSchema);
 
 // ============================================
 // АДМИН АВТОРИЗАЦИЯ
@@ -676,9 +692,14 @@ function addTransaction(user, name, amount) {
     if (user.transactions.length > 30) user.transactions = user.transactions.slice(0, 30);
 }
 
+function xpNeeded(level) {
+    if (level <= 15) return level * 100;
+    return 1500 + (level - 15) * 1000;
+}
+
 function addXP(user, amount) {
     user.xp += amount;
-    const needed = user.level * 100;
+    const needed = xpNeeded(user.level);
     if (user.xp >= needed) {
         user.xp -= needed;
         user.level += 1;
@@ -732,7 +753,7 @@ async function getGameConfig() {
                 basic: { common: 100, uncommon: 0, rare: 0, epic: 0, legendary: 0 },
                 premium: { common: 70, uncommon: 20, rare: 10, epic: 0, legendary: 0 }
             },
-            adReward: 50,
+            adReward: 20,
             adCooldown: 60,
             upgradeBaseCost: 300,
             upgradeMultiplier: 1.4,
@@ -757,6 +778,14 @@ async function invalidateConfigCache() {
     userIncomeCache.clear();
     cachedAdminStats = { data: null, expiresAt: 0 };
     console.log('🔄 Кэш конфига сброшен');
+}
+
+// Читает specialQuests напрямую через нативный драйвер,
+// обходя CastError Mongoose при несовпадении типов в БД.
+async function getSpecialQuestsRaw() {
+    const doc = await GameConfig.collection.findOne({}, { projection: { specialQuests: 1 } });
+    const quests = doc?.specialQuests || [];
+    return quests.filter(q => q && typeof q === 'object' && q.id);
 }
 
 async function formatInventory(telegramId) {
@@ -825,8 +854,14 @@ async function getUserIncome(telegramId) {
     return income;
 }
 
-async function randomCreatureByRarity(rarity) {
-    const pool = creaturesCache ? creaturesCache.filter(c => c.rarity === rarity && c.isActive) : await Creature.find({ rarity, isActive: true });
+async function randomCreatureByRarity(rarity, capsuleType = 'premium') {
+    const allByRarity = creaturesCache
+        ? creaturesCache.filter(c => c.rarity === rarity && c.isActive)
+        : await Creature.find({ rarity, isActive: true });
+    // premiumOnly существа недоступны из basic капсулы
+    const pool = capsuleType === 'basic'
+        ? allByRarity.filter(c => !c.premiumOnly)
+        : allByRarity;
     if (!pool.length) return null;
     return pool[Math.floor(Math.random() * pool.length)];
 }
@@ -934,6 +969,31 @@ async function regenerateAds(user) {
 }
 
 // ============================================
+// РЕГЕНЕРАЦИЯ БОЁВ АРЕНЫ
+// ============================================
+async function regenerateArenaBattles(user) {
+    const now = Date.now();
+    const lastRegen = user.arenaLastBattleRegen ? new Date(user.arenaLastBattleRegen).getTime() : now;
+    const hoursPassed = Math.floor((now - lastRegen) / ARENA_BATTLE_REGEN_INTERVAL);
+
+    if (hoursPassed <= 0) return user.arenaBattlesLeft ?? MAX_ARENA_BATTLES;
+
+    const current = user.arenaBattlesLeft ?? MAX_ARENA_BATTLES;
+    const newCount = Math.min(MAX_ARENA_BATTLES, current + hoursPassed);
+    const newLastRegen = new Date(lastRegen + (hoursPassed * ARENA_BATTLE_REGEN_INTERVAL));
+
+    await User.updateOne(
+        { _id: user._id },
+        { $set: { arenaBattlesLeft: newCount, arenaLastBattleRegen: newLastRegen } }
+    );
+
+    user.arenaBattlesLeft = newCount;
+    user.arenaLastBattleRegen = newLastRegen;
+
+    return newCount;
+}
+
+// ============================================
 // УВЕДОМЛЕНИЯ
 // ============================================
 async function sendNotificationToUser(telegramId, message) {
@@ -1004,19 +1064,27 @@ const authMiddleware = async (req, res, next) => {
 // ============================================
 // HEALTH CHECK
 // ============================================
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString(), db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' });
 });
 
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    const fs = require('fs');
+    const apiUrl = process.env.API_URL || `https://${req.headers.host}`;
+    let html = fs.readFileSync(__dirname + '/index.html', 'utf8');
+    html = html.replace("'{{API_URL}}'", JSON.stringify(apiUrl));
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
 });
 
 // ============================================
 // ПУБЛИЧНЫЕ ЭНДПОИНТЫ
 // ============================================
 app.get('/api/game/config', async (req, res) => {
+    if (mongoose.connection.readyState !== 1) {
+        return res.status(503).json({ success: false, message: 'Server starting...' });
+    }
     try {
         const config = await getGameConfig();
         res.json({
@@ -1029,7 +1097,7 @@ app.get('/api/game/config', async (req, res) => {
                 upgradeBaseCost: config.upgradeBaseCost,
                 upgradeMultiplier: config.upgradeMultiplier,
                 limits: config.limits,
-                specialQuests: config.specialQuests.filter(q => q.isActive),
+                specialQuests: (await getSpecialQuestsRaw()).filter(q => q.isActive),
                 marketplace: { minPrice: MIN_MARKETPLACE_PRICE, maxActiveListings: MAX_ACTIVE_LISTINGS }
             }
         });
@@ -1397,8 +1465,8 @@ app.post('/api/game/open-capsule', authMiddleware, async (req, res) => {
 
         // Атомарный XP: вычисляем нужный increment с учётом level-up
         {
-            const xpGain = 10;
-            const needed = updatedUser.level * 100;
+            const xpGain = type === 'premium' ? 100 : 10;
+            const needed = xpNeeded(updatedUser.level);
             const newXp = updatedUser.xp + xpGain;
             if (newXp >= needed) {
                 await User.updateOne({ _id: updatedUser._id }, { $inc: { level: 1 }, $set: { xp: newXp - needed } });
@@ -1419,7 +1487,7 @@ app.post('/api/game/open-capsule', authMiddleware, async (req, res) => {
             if (roll < cum) { rarity = r; break; }
         }
 
-        const creature = await randomCreatureByRarity(rarity);
+        const creature = await randomCreatureByRarity(rarity, type);
         if (!creature) {
             await User.findByIdAndUpdate(user._id, { $inc: { balance: cost, capsulesOpened: -1 } });
             return res.status(500).json({ success: false, message: 'Ошибка: существо не найдено' });
@@ -1506,7 +1574,9 @@ app.post('/api/game/merge', authMiddleware, async (req, res) => {
         }
 
         const currentRarityIdx = RARITY_ORDER.indexOf(creature.rarity);
-        const success = Math.random() < 0.3;
+        const MERGE_CHANCES = { common: 0.3, uncommon: 0.3, rare: 0.3, epic: 0.10, legendary: 0.05 };
+        const mergeChance = MERGE_CHANCES[creature.rarity] ?? 0.3;
+        const success = Math.random() < mergeChance;
 
         let resultCreature;
         if (success && currentRarityIdx < RARITY_ORDER.length - 2) {
@@ -1531,7 +1601,7 @@ app.post('/api/game/merge', authMiddleware, async (req, res) => {
 
         // Атомарно сохраняем mergeCount, discovered, транзакцию
         const xpGain = 20;
-        const needed = user.level * 100;
+        const needed = xpNeeded(user.level);
         const newXp = user.xp + xpGain;
         const xpUpdate = newXp >= needed
             ? { $inc: { level: 1 }, $set: { xp: newXp - needed } }
@@ -1605,11 +1675,11 @@ app.post('/api/game/upgrade-inventory', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Недостаточно MMO', required: cost });
         }
 
-        addXP(updatedUser, 25); // обновляем in-memory для formatUser (атомарный блок ниже записывает в БД)
+        addXP(updatedUser, 30); // обновляем in-memory для formatUser (атомарный блок ниже записывает в БД)
         // Атомарный XP
         {
-            const xpGain = 25;
-            const needed = updatedUser.level * 100;
+            const xpGain = 30;
+            const needed = xpNeeded(updatedUser.level);
             const newXp = updatedUser.xp + xpGain;
             if (newXp >= needed) {
                 await User.updateOne({ _id: updatedUser._id }, { $inc: { level: 1 }, $set: { xp: newXp - needed } });
@@ -1691,11 +1761,11 @@ app.post('/api/game/watch-ad', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Не удалось получить награду. Попробуйте ещё раз.' });
         }
         
-        addXP(updatedUser, 15); // обновляем in-memory для formatUser (атомарный блок ниже записывает в БД)
+        addXP(updatedUser, 5); // обновляем in-memory для formatUser (атомарный блок ниже записывает в БД)
         // Атомарный XP
         {
-            const xpGain = 15;
-            const needed = updatedUser.level * 100;
+            const xpGain = 5;
+            const needed = xpNeeded(updatedUser.level);
             const newXp = updatedUser.xp + xpGain;
             if (newXp >= needed) {
                 await User.updateOne({ _id: updatedUser._id }, { $inc: { level: 1 }, $set: { xp: newXp - needed } });
@@ -1978,7 +2048,7 @@ app.post('/api/game/complete-special-quest', authMiddleware, async (req, res) =>
             return res.status(400).json({ success: false, message: 'Вы уже получили награду за этот квест' });
         }
         
-        const quest = config.specialQuests.find(q => q.id === questId && q.isActive);
+        const quest = (await getSpecialQuestsRaw()).find(q => q.id === questId && q.isActive);
         if (!quest) {
             return res.status(404).json({ success: false, message: 'Квест не найден или отключён' });
         }
@@ -2005,7 +2075,7 @@ app.post('/api/game/complete-special-quest', authMiddleware, async (req, res) =>
         // Атомарный XP
         {
             const xpGain = 20;
-            const needed = updatedUser.level * 100;
+            const needed = xpNeeded(updatedUser.level);
             const newXp = updatedUser.xp + xpGain;
             if (newXp >= needed) {
                 await User.updateOne({ _id: updatedUser._id }, { $inc: { level: 1 }, $set: { xp: newXp - needed } });
@@ -2180,7 +2250,7 @@ app.post('/api/marketplace/buy', authMiddleware, async (req, res) => {
         // Атомарно: XP + discovered за одну операцию
         {
             const xpGain = 5;
-            const needed = updatedBuyer.level * 100;
+            const needed = xpNeeded(updatedBuyer.level);
             const newXp = updatedBuyer.xp + xpGain;
             const xpUpdate = newXp >= needed
                 ? { $inc: { level: 1 }, $set: { xp: newXp - needed } }
@@ -2395,7 +2465,15 @@ app.post('/api/arena/cancel-search', authMiddleware, async (req, res) => {
         if (user.currentBattleId) {
             const battle = await ArenaBattle.findById(user.currentBattleId);
             if (battle && battle.status === 'waiting') {
-                await User.findByIdAndUpdate(user._id, { $inc: { balance: battle.entryFee }, $set: { currentBattleId: null } });
+                // Возвращаем взнос И попытку — бой так и не начался
+                await User.findByIdAndUpdate(user._id, {
+                    $inc: { balance: battle.entryFee },
+                    $set: { currentBattleId: null }
+                });
+                await User.updateOne(
+                    { _id: user._id, arenaBattlesLeft: { $lt: MAX_ARENA_BATTLES } },
+                    { $inc: { arenaBattlesLeft: 1 } }
+                );
                 battle.status = 'expired';
                 await battle.save();
             } else {
@@ -2417,6 +2495,10 @@ app.post('/api/arena/find-match', authMiddleware, async (req, res) => {
         if (arenaTeam.length !== 3) {
             return res.status(400).json({ success: false, message: 'Сначала выберите команду из 3 питомцев' });
         }
+
+        if ((user.level || 1) < 5) {
+            return res.status(403).json({ success: false, message: 'Арена доступна с 5 уровня' });
+        }
         
         if (user.currentBattleId) {
             const existingBattle = await ArenaBattle.findById(user.currentBattleId);
@@ -2429,37 +2511,36 @@ app.post('/api/arena/find-match', authMiddleware, async (req, res) => {
             const secondsLeft = Math.ceil((new Date(user.arenaCooldownUntil) - new Date()) / 1000);
             return res.status(400).json({ success: false, message: `Подождите ${secondsLeft} секунд перед следующим боем` });
         }
-        
+
+        // --- ЛИМИТ БОЁВ АРЕНЫ ОТКЛЮЧЁН (безлимитные бои) ---
+        const battlesLeft = 999;
+
         const result = await arenaManager.findMatch(user, arenaTeam);
-        
+
         if (!result.success) {
             return res.status(400).json(result);
         }
-        
-        const player1 = await User.findById(result.battle.player1Id).select('username firstName level');
-        const player2 = result.battle.player2Id ? await User.findById(result.battle.player2Id).select('username firstName level') : null;
+
+        // Попытки не списываем (безлимитная арена)
+        let battlesLeftAfter = 999;
         
         if (!result.isNew) {
             arenaSocketManager.send(result.battle.player1Id, 'match_found', {
                 battleId: result.battle._id,
                 status: 'pending_confirmation',
                 isPlayer1: true,
-                opponent: { name: player2?.username || player2?.firstName || 'Игрок', level: player2?.level },
                 prizePool: result.battle.prizePool,
                 entryFee: result.entryFee,
-                myTeam: result.battle.player1Team,
-                opponentTeam: result.battle.player2Team
+                myTeam: result.battle.player1Team
             });
             
             arenaSocketManager.send(result.battle.player2Id, 'match_found', {
                 battleId: result.battle._id,
                 status: 'pending_confirmation',
                 isPlayer1: false,
-                opponent: { name: player1?.username || player1?.firstName || 'Игрок', level: player1?.level },
                 prizePool: result.battle.prizePool,
                 entryFee: result.entryFee,
-                myTeam: result.battle.player2Team,
-                opponentTeam: result.battle.player1Team
+                myTeam: result.battle.player2Team
             });
         }
         
@@ -2467,6 +2548,8 @@ app.post('/api/arena/find-match', authMiddleware, async (req, res) => {
             success: true,
             battle: result.battle,
             isNew: result.isNew,
+            battlesLeft: battlesLeftAfter,
+            maxArenaBattles: MAX_ARENA_BATTLES,
             message: result.isNew ? 'Поиск соперника...' : 'Соперник найден! Ожидайте подтверждения.'
         });
     } catch (e) {
@@ -2495,12 +2578,21 @@ app.get('/api/arena/battle/status', authMiddleware, async (req, res) => {
         if (['waiting', 'pending_confirmation'].includes(battle.status) && battle.expiresAt < new Date()) {
             battle.status = 'expired';
             await battle.save();
-            await User.updateOne({ _id: user._id }, { $set: { currentBattleId: null, arenaCooldownUntil: null } });
+            // Возвращаем попытку — бой истёк до начала
+            await User.updateOne({ _id: user._id }, {
+                $set: { currentBattleId: null, arenaCooldownUntil: null }
+            });
+            await User.updateOne(
+                { _id: user._id, arenaBattlesLeft: { $lt: MAX_ARENA_BATTLES } },
+                { $inc: { arenaBattlesLeft: 1 } }
+            );
             return res.json({ success: true, hasBattle: false, expired: true });
         }
         
         const isPlayer1 = battle.player1Id.toString() === user._id.toString();
         
+        const isActive = battle.status === 'active';
+
         const response = {
             success: true,
             hasBattle: true,
@@ -2516,15 +2608,22 @@ app.get('/api/arena/battle/status', authMiddleware, async (req, res) => {
             turnCount: battle.turnCount,
             lastMoveAt: battle.lastMoveAt,
             myTeam: isPlayer1 ? battle.player1Team : battle.player2Team,
-            opponentTeam: isPlayer1 ? battle.player2Team : battle.player1Team,
+            // opponentTeam и opponent раскрываем только когда бой активен
+            opponentTeam: isActive ? (isPlayer1 ? battle.player2Team : battle.player1Team) : undefined,
             battleLog: battle.battleLog ? battle.battleLog.slice(-20) : []
         };
-        
-        if (battle.status === 'active') {
+
+        if (isActive) {
             const timeSinceLastMove = (Date.now() - new Date(battle.lastMoveAt).getTime()) / 1000;
             response.timeLeft = Math.max(0, 30 - Math.floor(timeSinceLastMove));
+            // Имя соперника только в активном бою
+            const opponentId = isPlayer1 ? battle.player2Id : battle.player1Id;
+            if (opponentId) {
+                const opp = await User.findById(opponentId).select('username firstName level').lean();
+                response.opponent = { name: opp?.username || opp?.firstName || 'Соперник', level: opp?.level };
+            }
         }
-        
+
         return res.json(response);
         
     } catch (e) {
@@ -2555,7 +2654,7 @@ app.post('/api/arena/accept-match', authMiddleware, async (req, res) => {
                 currentTurn: battle.currentTurn,
                 myTeam: battle.player1Team,
                 opponentTeam: battle.player2Team,
-                opponent: { name: player2?.username || player2?.firstName, level: player2?.level },
+                opponent: { name: player2?.username || player2?.firstName || 'Соперник', level: player2?.level },
                 prizePool: battle.prizePool,
                 entryFee: battle.entryFee,
                 battleLog: battle.battleLog,
@@ -2569,7 +2668,7 @@ app.post('/api/arena/accept-match', authMiddleware, async (req, res) => {
                 currentTurn: battle.currentTurn,
                 myTeam: battle.player2Team,
                 opponentTeam: battle.player1Team,
-                opponent: { name: player1?.username || player1?.firstName, level: player1?.level },
+                opponent: { name: player1?.username || player1?.firstName || 'Соперник', level: player1?.level },
                 prizePool: battle.prizePool,
                 entryFee: battle.entryFee,
                 battleLog: battle.battleLog,
@@ -2702,6 +2801,25 @@ app.post('/api/arena/surrender', authMiddleware, async (req, res) => {
     }
 });
 
+app.get('/api/arena/battles-status', authMiddleware, async (req, res) => {
+    try {
+        const user = req.user;
+        await regenerateArenaBattles(user);
+        const battlesLeft = user.arenaBattlesLeft ?? MAX_ARENA_BATTLES;
+        const now = Date.now();
+        const lastRegen = user.arenaLastBattleRegen ? new Date(user.arenaLastBattleRegen).getTime() : now;
+        const msUntilNext = ARENA_BATTLE_REGEN_INTERVAL - ((now - lastRegen) % ARENA_BATTLE_REGEN_INTERVAL);
+        res.json({
+            success: true,
+            battlesLeft,
+            maxArenaBattles: MAX_ARENA_BATTLES,
+            nextRegenMinutes: battlesLeft < MAX_ARENA_BATTLES ? Math.ceil(msUntilNext / 60000) : 0
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
 app.get('/api/arena/leaderboard', authMiddleware, async (req, res) => {
     if (!arenaManager) return res.status(503).json({ success: false, message: 'Арена не готова' });
     try {
@@ -2788,6 +2906,106 @@ app.get('/api/arena/history', authMiddleware, async (req, res) => {
     } catch (e) {
         console.error('arena history error:', e);
         res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ============================================
+// STAKING ENDPOINTS
+// ============================================
+
+const STAKING_PLANS = {
+    10: { days: 10, rate: 0.10, minAmount: 300000 },
+    30: { days: 30, rate: 0.20, minAmount: 50000  }
+};
+
+// Получить текущий стейкинг пользователя
+app.get('/api/staking/status', authMiddleware, async (req, res) => {
+    try {
+        const staking = await Staking.findOne({ userId: req.user._id, claimed: false });
+        res.json({ success: true, staking: staking || null });
+    } catch (e) {
+        res.status(500).json({ success: false, message: 'Ошибка сервера' });
+    }
+});
+
+// Создать стейкинг
+app.post('/api/staking/start', authMiddleware, async (req, res) => {
+    try {
+        const user = req.user;
+        const { days, amount } = req.body;
+
+        const plan = STAKING_PLANS[days];
+        if (!plan) return res.status(400).json({ success: false, message: 'Неверный план' });
+
+        const amt = Math.floor(Number(amount));
+        if (!amt || amt < plan.minAmount) {
+            return res.status(400).json({ success: false, message: `Минимальная сумма: ${plan.minAmount.toLocaleString()} MMO` });
+        }
+
+        // Проверяем нет ли уже активного стейкинга
+        const existing = await Staking.findOne({ userId: user._id, claimed: false });
+        if (existing) return res.status(400).json({ success: false, message: 'У вас уже есть активный стейкинг' });
+
+        // Списываем с баланса
+        const updated = await User.findOneAndUpdate(
+            { _id: user._id, balance: { $gte: amt } },
+            {
+                $inc: { balance: -amt },
+                $push: { transactions: { $each: [{ name: `Стейкинг ${days}д. (${plan.rate * 100}%)`, amount: -amt, time: new Date() }], $position: 0, $slice: 30 } }
+            },
+            { new: true }
+        );
+        if (!updated) return res.status(400).json({ success: false, message: 'Недостаточно MMO' });
+
+        const reward = Math.floor(amt * plan.rate);
+        const endsAt = new Date(Date.now() + plan.days * 24 * 60 * 60 * 1000);
+
+        const staking = await Staking.create({
+            userId: user._id,
+            amount: amt,
+            days: plan.days,
+            rate: plan.rate,
+            reward,
+            endsAt
+        });
+
+        invalidateInventoryCache(user.telegramId);
+        res.json({ success: true, staking, user: formatUser(updated) });
+    } catch (e) {
+        console.error('staking start error:', e);
+        res.status(500).json({ success: false, message: 'Ошибка сервера' });
+    }
+});
+
+// Забрать награду
+app.post('/api/staking/claim', authMiddleware, async (req, res) => {
+    try {
+        const user = req.user;
+        const staking = await Staking.findOne({ userId: user._id, claimed: false });
+
+        if (!staking) return res.status(400).json({ success: false, message: 'Нет активного стейкинга' });
+        if (new Date() < staking.endsAt) {
+            return res.status(400).json({ success: false, message: 'Стейкинг ещё не завершён' });
+        }
+
+        const total = staking.amount + staking.reward;
+        staking.claimed = true;
+        await staking.save();
+
+        const updated = await User.findByIdAndUpdate(
+            user._id,
+            {
+                $inc: { balance: total },
+                $push: { transactions: { $each: [{ name: `Стейкинг завершён +${staking.reward.toLocaleString()} MMO`, amount: total, time: new Date() }], $position: 0, $slice: 30 } }
+            },
+            { new: true }
+        );
+
+        invalidateInventoryCache(user.telegramId);
+        res.json({ success: true, total, reward: staking.reward, user: formatUser(updated) });
+    } catch (e) {
+        console.error('staking claim error:', e);
+        res.status(500).json({ success: false, message: 'Ошибка сервера' });
     }
 });
 
@@ -3497,58 +3715,112 @@ app.put('/api/admin/config', adminAuthMiddleware, async (req, res) => {
     }
 });
 
-app.post('/api/admin/give-to-all', adminAuthMiddleware, async (req, res) => {
+// ADMIN: SPECIAL QUESTS CRUD
+app.get('/api/admin/special-quests', adminAuthMiddleware, async (req, res) => {
     try {
-        const { type, amount, creatureId } = req.body;
-        
-        if (type === 'coins' && amount) {
-            if (Math.abs(amount) > 1000000) {
-                return res.status(400).json({ success: false, message: 'Слишком большая сумма' });
-            }
-            const result = await User.updateMany({}, { $inc: { balance: amount } });
-            leaderboardCache = { data: null, expiresAt: 0 };
-            res.json({ success: true, message: `Выдано ${amount} MMO ${result.modifiedCount} игрокам` });
-        } 
-        else if (type === 'creature' && creatureId) {
-            const creature = await getCreature(creatureId);
-            if (!creature) return res.status(400).json({ success: false, message: 'Существо не найдено' });
-            
-            let count = 0;
-            const batchSize = 100;
-            let skip = 0;
-            let hasMore = true;
-            
-            while (hasMore) {
-                const users = await User.find({}).select('_id telegramId inventorySlots').skip(skip).limit(batchSize).lean();
-                if (users.length === 0) { hasMore = false; break; }
-                
-                const bulkOps = [];
-                for (const user of users) {
-                    const inventory = await Inventory.find({ telegramId: user.telegramId });
-                    const usedSlots = inventory.reduce((sum, i) => sum + i.count, 0);
-                    if (usedSlots >= user.inventorySlots) continue;
-                    
-                    bulkOps.push({ updateOne: { filter: { telegramId: user.telegramId, creatureId }, update: { $inc: { count: 1 } }, upsert: true } });
-                    
-                    if (!user.discovered?.includes(creatureId)) {
-                        await User.updateOne({ _id: user._id }, { $addToSet: { discovered: creatureId } });
-                    }
-                    count++;
-                }
-                
-                if (bulkOps.length > 0) await Inventory.bulkWrite(bulkOps);
-                skip += batchSize;
-            }
-            
-            inventoryCache.clear();
-            userIncomeCache.clear();
-            res.json({ success: true, message: `Выдано существо ${creature.name} ${count} игрокам` });
-        }
-        else {
-            res.status(400).json({ success: false, message: 'Неверные параметры' });
-        }
+        const specialQuests = await getSpecialQuestsRaw();
+        res.json({ success: true, specialQuests });
     } catch (e) {
-        console.error('give-to-all error:', e);
+        console.error('GET /special-quests error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/admin/special-quests', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { title, description, icon, reward, type, link, required_count, isActive } = req.body;
+        
+        console.log('📝 Создание квеста:', { title, reward, type });
+        
+        if (!title || !reward || !type) {
+            return res.status(400).json({ success: false, message: 'title, reward, type обязательны' });
+        }
+        
+        const newQuest = {
+            id: Date.now().toString(),
+            title,
+            description: description || '',
+            icon: icon || '🎯',
+            reward: Number(reward),
+            type,
+            link: link || '',
+            required_count: Number(required_count) || 1,
+            isActive: isActive !== false
+        };
+        
+        // Нативный драйвер — обходит CastError Mongoose при несовпадении схемы в БД
+        const col = GameConfig.collection;
+        await col.updateOne(
+            {},
+            { $push: { specialQuests: newQuest }, $set: { updatedAt: new Date() } },
+            { upsert: true }
+        );
+        
+        await invalidateConfigCache();
+        
+        console.log('✅ Квест создан:', newQuest.id);
+        res.json({ success: true, quest: newQuest });
+    } catch (e) {
+        console.error('❌ POST /special-quests error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.put('/api/admin/special-quests/:questId', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { questId } = req.params;
+        const { title, description, icon, reward, type, link, required_count, isActive } = req.body;
+        
+        const col = GameConfig.collection;
+        const config = await col.findOne({});
+        if (!config) {
+            return res.status(404).json({ success: false, message: 'Config not found' });
+        }
+        
+        const quests = config.specialQuests || [];
+        const idx = quests.findIndex(q => q.id === questId);
+        if (idx === -1) {
+            return res.status(404).json({ success: false, message: 'Квест не найден' });
+        }
+        
+        const q = quests[idx];
+        if (title !== undefined) q.title = title;
+        if (description !== undefined) q.description = description;
+        if (icon !== undefined) q.icon = icon;
+        if (reward !== undefined) q.reward = Number(reward);
+        if (type !== undefined) q.type = type;
+        if (link !== undefined) q.link = link;
+        if (required_count !== undefined) q.required_count = Number(required_count);
+        if (isActive !== undefined) q.isActive = isActive;
+        
+        await col.updateOne({}, { $set: { specialQuests: quests, updatedAt: new Date() } });
+        
+        await invalidateConfigCache();
+        res.json({ success: true, quest: q });
+    } catch (e) {
+        console.error('PUT /special-quests error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.delete('/api/admin/special-quests/:questId', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { questId } = req.params;
+        
+        const col = GameConfig.collection;
+        const result = await col.updateOne(
+            {},
+            { $pull: { specialQuests: { id: questId } } }
+        );
+        
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ success: false, message: 'Config not found' });
+        }
+        
+        await invalidateConfigCache();
+        res.json({ success: true });
+    } catch (e) {
+        console.error('DELETE /special-quests error:', e);
         res.status(500).json({ success: false, message: e.message });
     }
 });
@@ -4224,7 +4496,8 @@ async function initCreatures() {
         { id: 'unicorn_e', name: 'Unicorn', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/er.png', incomeBase: 120, desc: 'Eternal magic.' },
         { id: 'unicorn_l', name: 'Unicorn', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/ll.png', incomeBase: 400, desc: 'Divine magic.' },
         { id: 'lion_mythic', name: 'Lion', rarity: 'mythic', icon: 'https://ndammo.github.io/Mmodna/lm.png', incomeBase: 1000, desc: 'THE MYTHIC KING.' },
-        { id: 'panther_mythic', name: 'Black Panther', rarity: 'mythic', icon: 'https://ndammo.github.io/Mmodna/pm.png', incomeBase: 2000, desc: 'TOP 1 SEASON.' }
+        { id: 'panther_mythic', name: 'Black Panther', rarity: 'mythic', icon: 'https://ndammo.github.io/Mmodna/pm.png', incomeBase: 2000, desc: 'TOP 1 SEASON.' },
+        { id: 'monkey_r', name: 'Monkey', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/mr.png', incomeBase: 30, desc: 'Warrior with twin axes. Premium capsule only.', premiumOnly: true }
     ];
 
     for (const creature of staticCreatures) {
