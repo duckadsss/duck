@@ -1,7 +1,7 @@
 // ============================================================
 // arena-socket.js - Серверная логика PvP арены с WebSocket
 // ============================================================
-const ArenaSkills = require('./arena-skills');
+const ArenaSkills = require('../public/arena-skills');
 const LEAGUE_CONFIG = {
     bronze: {
         minRating: 0,

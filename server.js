@@ -4,6 +4,7 @@
 // ============================================
 
 require('dotenv').config();
+const path = require('path');
 const express = require('express');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
@@ -20,7 +21,7 @@ app.set('trust proxy', 1); // Railway проксирует запросы — н
 // ============================================
 // ИМПОРТ МОДУЛЯ АРЕНЫ (WebSocket версия)
 // ============================================
-const ArenaModule = require('./arena-socket');
+const ArenaModule = require('./server/arena-socket');
 
 // ============================================
 // MIDDLEWARE
@@ -1003,13 +1004,13 @@ const authMiddleware = async (req, res, next) => {
 // ============================================
 // HEALTH CHECK
 // ============================================
-app.use(express.static(__dirname));
+app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString(), db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' });
 });
 
 app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/index.html');
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // ============================================
