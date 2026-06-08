@@ -12,7 +12,6 @@
 <meta property="og:title" content="DNA MMO — Merge & Evolve">
 <meta property="og:description" content="Open DNA capsules, collect creatures, merge to evolve and earn MMO tokens.">
 <meta property="og:type" content="website">
-<script>window.__API_URL__ = '{{API_URL}}';</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <!-- Font Awesome 6.7.2 (полностью рабочая) -->
@@ -258,13 +257,13 @@
     <div class="arena-subtab" id="arena-fight-tab">
         <div id="arenaFightStatus" class="arena-fight-status">
             <div class="arena-stats-preview">
-                <div class="arena-stat-item">
+                <div class="arena-stat-item" id="arenaEntryFeeRow" style="display:none;">
                     <span class="arena-stat-label"><i class="fa-solid fa-coins"></i> Вход:</span>
-                    <span class="arena-stat-value" id="arenaEntryFee">500</span>
+                    <span class="arena-stat-value" id="arenaEntryFee">0</span>
                 </div>
                 <div class="arena-stat-item">
                     <span class="arena-stat-label"><i class="fa-solid fa-gift"></i> Приз:</span>
-                    <span class="arena-stat-value" id="arenaPrizePool">800</span>
+                    <span class="arena-stat-value" id="arenaPrizePool">10</span>
                 </div>
                 <div class="arena-stat-item">
                     <span class="arena-stat-label"><i class="fa-solid fa-chart-line"></i> Лига:</span>
@@ -460,6 +459,12 @@
     <div class="wallet-hero">
         <div class="wallet-label" data-i18n="wallet.totalBalance">Total Balance</div>
         <div class="wallet-balance"><span id="walletBalance">0</span> <span style="font-size:16px;color:var(--text2)">MMO</span></div>
+        <div class="wallet-hero-stats">
+            <div class="wallet-hero-stat"><span class="whs-icon">🧬</span><span class="whs-val" id="walletCards">0</span><span class="whs-label">Creatures</span></div>
+            <div class="wallet-hero-stat"><span class="whs-icon">🔀</span><span class="whs-val" id="walletMerges">0</span><span class="whs-label">Merges</span></div>
+            <div class="wallet-hero-stat"><span class="whs-icon">📺</span><span class="whs-val" id="walletAdsWatched">0</span><span class="whs-label">Ads</span></div>
+            <div class="wallet-hero-stat"><span class="whs-icon">👥</span><span class="whs-val" id="walletReferralEarned">0</span><span class="whs-label">Refs</span></div>
+        </div>
     </div>
     <div class="lang-switcher">
         <button class="lang-btn" data-lang="ru" onclick="setLanguage('ru')">RU</button>
@@ -478,21 +483,19 @@
     <div class="staking-section">
         <div class="staking-title"><i class="fa-solid fa-lock"></i> Стейкинг</div>
         <div class="staking-subtitle">Заблокируй MMO и получи доход</div>
-
         <div class="staking-plans">
-            <div class="staking-plan" onclick="openStakingModal(10)">
+            <div class="staking-plan" id="stakingPlan10" onclick="selectStakingPlan(10)">
                 <div class="staking-plan-days">10 дней</div>
                 <div class="staking-plan-rate">+10%</div>
+                <div class="staking-plan-bonus">🦫 + Capybara Rare</div>
                 <div class="staking-plan-min">мин. 300 000 MMO</div>
             </div>
-            <div class="staking-plan featured" onclick="openStakingModal(30)">
-                <div class="staking-plan-badge">ВЫГОДНО</div>
+            <div class="staking-plan" id="stakingPlan30" onclick="selectStakingPlan(30)">
                 <div class="staking-plan-days">30 дней</div>
                 <div class="staking-plan-rate">+20%</div>
                 <div class="staking-plan-min">мин. 50 000 MMO</div>
             </div>
         </div>
-
         <div id="activeStakingBlock" style="display:none;">
             <div class="staking-active-title">⏳ Активный стейкинг</div>
             <div class="staking-active-card">
@@ -516,24 +519,27 @@
     </div>
 
     <div id="pendingRequests"></div>
+</div>
+</div>
 
-    <!-- Staking Modal -->
-    <div id="stakingModal" class="modal-overlay" style="display:none;" onclick="closeStakingModal(event)">
-        <div class="modal-box staking-modal-box">
-            <div class="modal-title">🔒 Стейкинг <span id="stakingModalDays"></span> дней</div>
-            <div class="staking-modal-rate" id="stakingModalRate"></div>
-            <div class="staking-modal-min" id="stakingModalMin"></div>
-            <div class="staking-modal-input-wrap">
-                <input type="number" id="stakingAmountInput" class="staking-modal-input" placeholder="Введите сумму MMO">
-            </div>
-            <div class="staking-modal-preview" id="stakingModalPreview"></div>
-            <div style="display:flex;gap:10px;margin-top:16px;">
-                <button class="modal-cancel-btn" onclick="closeStakingModal()">Отмена</button>
-                <button class="staking-confirm-btn" onclick="confirmStaking()">Застейкать</button>
-            </div>
+<!-- GUILD TAB -->
+<div class="tab-content" id="tab-guild" style="display:none;">
+    <div class="guild-loading">Загрузка...</div>
+</div>
+
+<!-- Staking Modal (fixed, вне таба) -->
+<div id="stakingModal" class="staking-modal-overlay" style="display:none;" onclick="closeStakingModal(event)">
+    <div class="staking-modal-box">
+        <div class="staking-modal-title">🔒 Стейкинг <span id="stakingModalDays"></span> дней</div>
+        <div class="staking-modal-rate" id="stakingModalRate"></div>
+        <div class="staking-modal-min" id="stakingModalMin"></div>
+        <input type="number" id="stakingAmountInput" class="staking-modal-input" placeholder="Введите сумму MMO">
+        <div class="staking-modal-preview" id="stakingModalPreview"></div>
+        <div style="display:flex;gap:10px;margin-top:16px;">
+            <button class="staking-cancel-btn" onclick="closeStakingModal()">Отмена</button>
+            <button class="staking-confirm-btn" onclick="confirmStaking()">Застейкать</button>
         </div>
     </div>
-</div>
 </div>
 
 <!-- BOTTOM NAV -->
@@ -566,6 +572,10 @@
         <i class="fa-solid fa-wallet"></i>
         <span data-i18n="nav.wallet">Wallet</span>
     </div>
+    <div class="nav-item" onclick="switchTab('guild')" id="nav-guild">
+        <i class="fa-solid fa-shield-halved"></i>
+        <span>Гильдия</span>
+    </div>
 </div>
 
 <!-- OVERLAYS -->
@@ -579,6 +589,7 @@
 <script src="arena-client.js"></script>
 <script src="arena-skills.js"></script>
 <script src="script.js"></script>
+<script src="guild-ui.js"></script>
 <script src="localization.js"></script>
 <script>
 // Скиллы для отображения в UI (клиентская копия)

@@ -206,6 +206,22 @@ const SKILLS_MAP = {
         description: 'Наносит ×3 урона!'
     },
 
+    // ── CAPYBARA ──────────────────────────────────────────
+    capybara_r: {
+        id: 'zen_aura',
+        name: '🧘 Zen Aura',
+        chance: 0.30,
+        description: 'Отключает умение врага на 3 хода'
+    },
+
+    // ── KANGAROO ──────────────────────────────────────────
+    kangaroo_u: {
+        id: 'toxic_kick',
+        name: '☠️ Toxic Kick',
+        chance: 0.30,
+        description: 'Отравляет всех врагов на 3 хода — каждый ход -10% HP'
+    },
+
     // ── MYTHIC ────────────────────────────────────────────
     lion_mythic: {
         id: 'king_roar',
@@ -245,16 +261,18 @@ function applySkill(skillId, attacker, target, myTeam, enemyTeam, baseDamage) {
         triggered: false,
         skillId: skillId,
         skillName: '',
-        damage: baseDamage,           // итоговый урон по основной цели
-        splashDamage: 0,              // урон по остальным врагам (если есть)
-        splashTargets: [],            // индексы врагов получивших splash
-        healAmount: 0,                // сколько HP восстановили атакующему
-        allyHealAmount: 0,            // сколько HP восстановили союзникам
-        allyHealTarget: null,         // 'all' | 'lowest'
-        stunTarget: false,            // цель оглушена
-        shieldSelf: false,            // атакующий получает щит
-        missTarget: false,            // цель промахивается (0 урона входящего)
-        ignoredDefense: false,        // для лога
+        damage: baseDamage,
+        splashDamage: 0,
+        splashTargets: [],
+        healAmount: 0,
+        allyHealAmount: 0,
+        allyHealTarget: null,
+        stunTarget: false,
+        shieldSelf: false,
+        missTarget: false,
+        ignoredDefense: false,
+        disableSkillTurns: 0,   // капибара: отключить скилл цели на N ходов
+        poisonAllTurns: 0,      // кенгуру: яд на всех врагов на N ходов
         description: ''
     };
 
@@ -446,6 +464,15 @@ function applySkill(skillId, attacker, target, myTeam, enemyTeam, baseDamage) {
             result.damage = Math.floor(baseDamage * 3);
             break;
 
+        // ── KANGAROO ─────────────────────────────────────
+        case 'toxic_kick':
+            // Отравляет всех живых врагов на 3 хода — каждый ход -10% maxHP
+            result.poisonAllTurns = 3;
+            break;
+            // Отключает умение врага на 3 хода (базовый урон без изменений)
+            result.disableSkillTurns = 3;
+            break;
+
         // ── MYTHIC ──────────────────────────────────────
         case 'king_roar':
             result.damage = Math.floor(baseDamage * 2.5);
@@ -476,11 +503,13 @@ function applySkill(skillId, attacker, target, myTeam, enemyTeam, baseDamage) {
 function applySkillResult(skillResult, attackerIndex, targetIndex, myTeam, enemyTeam) {
     const summary = {
         healedSelf: 0,
-        healedAllies: [],   // [{ index, amount }]
+        healedAllies: [],
         stunned: false,
         shielded: false,
-        splashHits: [],     // [{ index, damage }]
-        missed: false
+        splashHits: [],
+        missed: false,
+        skillDisabled: false,
+        poisoned: false
     };
 
     if (!skillResult.triggered) return summary;
@@ -492,6 +521,22 @@ function applySkillResult(skillResult, attackerIndex, targetIndex, myTeam, enemy
     if (skillResult.stunTarget && target) {
         target.stunned = true;
         summary.stunned = true;
+    }
+
+    // Отключение скилла цели (zen_aura капибары)
+    if (skillResult.disableSkillTurns > 0 && target) {
+        target.skillDisabledTurns = skillResult.disableSkillTurns;
+        summary.skillDisabled = true;
+    }
+
+    // Яд на всех врагов (toxic_kick кенгуру)
+    if (skillResult.poisonAllTurns > 0) {
+        enemyTeam.forEach(p => {
+            if (p.isAlive) {
+                p.poisonTurns = skillResult.poisonAllTurns;
+            }
+        });
+        summary.poisoned = true;
     }
 
     // Щит на атакующего

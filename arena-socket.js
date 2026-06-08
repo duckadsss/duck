@@ -74,22 +74,30 @@ const RARITY_MULTIPLIERS = {
     mythic: 1.40
 };
 
-function calculateCreatureStats(creature, userLevel) {
+function calculateCreatureStats(creature, userLevel, guildLevel = 0) {
     const multiplier = RARITY_MULTIPLIERS[creature.rarity] || 1;
-    const baseHP = Math.ceil((50 + (creature.incomeBase * 2) + (userLevel * 5)) * multiplier);
+    const baseHP  = Math.ceil((50 + (creature.incomeBase * 2) + (userLevel * 5)) * multiplier);
     const baseATK = Math.ceil((10 + (creature.incomeBase / 2) + (userLevel * 2)) * multiplier);
-    const baseDEF = Math.ceil((5 + (creature.incomeBase / 3) + (userLevel * 1)) * multiplier);
+    const baseDEF = Math.ceil((5  + (creature.incomeBase / 3) + (userLevel * 1)) * multiplier);
     const baseCRIT = 0.10;
-    
-    return { maxHp: baseHP, attack: baseATK, defense: baseDEF, critChance: baseCRIT };
+
+    // Бонус гильдии: +2% за каждый уровень (макс +20% на 10 уровне)
+    const gBonus = 1 + Math.min(guildLevel * 0.02, 0.20);
+
+    return {
+        maxHp:     Math.ceil(baseHP  * gBonus),
+        attack:    Math.ceil(baseATK * gBonus),
+        defense:   Math.ceil(baseDEF * gBonus),
+        critChance: baseCRIT
+    };
 }
 
-async function buildTeamFromIds(teamIds, userLevel, userId, getCreatureFn) {
+async function buildTeamFromIds(teamIds, userLevel, userId, getCreatureFn, guildLevel = 0) {
     const teamData = [];
     for (const creatureId of teamIds) {
         const creature = await getCreatureFn(creatureId);
         if (creature) {
-            const stats = calculateCreatureStats(creature, userLevel);
+            const stats = calculateCreatureStats(creature, userLevel, guildLevel);
             teamData.push({
                 creatureId: creature.id,
                 name: creature.name,
@@ -103,6 +111,8 @@ async function buildTeamFromIds(teamIds, userLevel, userId, getCreatureFn) {
                 isAlive: true,
                 stunned: false,
                 shielded: false,
+                skillDisabledTurns: 0,
+                poisonTurns: 0,
                 skill: ArenaSkills.getSkillForCreature(creature.id) || null
             });
         }
@@ -171,9 +181,9 @@ class ArenaBattleManager {
         this.searchQueue = []; // резерв
     }
 
-    async createBattle(player1Id, teamIds, userLevel, league) {
+    async createBattle(player1Id, teamIds, userLevel, league, guildLevel = 0) {
         const leagueConfig = LEAGUE_CONFIG[league];
-        const team = await buildTeamFromIds(teamIds, userLevel, player1Id, this.getCreature);
+        const team = await buildTeamFromIds(teamIds, userLevel, player1Id, this.getCreature, guildLevel);
         
         const battle = await this.Battle.create({
             player1Id: player1Id,
@@ -198,34 +208,44 @@ class ArenaBattleManager {
         
         const userLeague = userStats.league;
         const leagueConfig = LEAGUE_CONFIG[userLeague];
-        
-        if (user.balance < leagueConfig.entryFee) {
-            return { success: false, message: `Недостаточно MMO. Нужно ${leagueConfig.entryFee} MMO для участия в ${leagueConfig.name} лиге` };
+
+        // Получаем уровень гильдии для бонусов
+        let userGuildLevel = 0;
+        if (user.guildId) {
+            const { Guild: GuildModel } = require('./guild-models');
+            const guild = await GuildModel.findById(user.guildId).select('level').lean();
+            if (guild) userGuildLevel = guild.level;
         }
         
-        const updatedUser = await this.User.findOneAndUpdate(
-            { _id: user._id, balance: { $gte: leagueConfig.entryFee } },
-            { $inc: { balance: -leagueConfig.entryFee } },
-            { new: true }
-        );
-        
-        if (!updatedUser) {
-            return { success: false, message: 'Не удалось списать средства' };
+        // Списываем взнос только если он > 0
+        if (leagueConfig.entryFee > 0) {
+            if (user.balance < leagueConfig.entryFee) {
+                return { success: false, message: `Недостаточно MMO. Нужно ${leagueConfig.entryFee} MMO для участия в ${leagueConfig.name} лиге` };
+            }
+            const updatedUser = await this.User.findOneAndUpdate(
+                { _id: user._id, balance: { $gte: leagueConfig.entryFee } },
+                { $inc: { balance: -leagueConfig.entryFee } },
+                { new: true }
+            );
+            if (!updatedUser) {
+                return { success: false, message: 'Не удалось списать средства' };
+            }
         }
-        
-        // Исключаем самого игрока и последнего соперника (анти-повтор)
+
+        // Анти-повтор: исключаем себя и последнего соперника
         const excludeIds = [user._id];
         if (user.lastOpponentId) excludeIds.push(user.lastOpponentId);
-        
-        const waitingBattle = await this.Battle.findOne({
+
+        let waitingBattle = await this.Battle.findOne({
             status: 'waiting',
             league: userLeague,
             player1Id: { $nin: excludeIds },
             expiresAt: { $gt: new Date() }
         }).sort({ createdAt: 1 });
-        
+
+        // Если никого нет кроме последнего соперника — встаём в очередь
         if (waitingBattle) {
-            const player2Team = await buildTeamFromIds(teamIds, userLevel, user._id, this.getCreature);
+            const player2Team = await buildTeamFromIds(teamIds, userLevel, user._id, this.getCreature, userGuildLevel);
             
             waitingBattle.player2Id = user._id;
             waitingBattle.player2Team = player2Team;
@@ -235,12 +255,10 @@ class ArenaBattleManager {
             waitingBattle.markModified('player2Team');
             await waitingBattle.save();
             
-            // Атомарно устанавливаем currentBattleId для player2
             await this.User.updateOne(
                 { _id: user._id },
                 { $set: { currentBattleId: waitingBattle._id } }
             );
-            // Также устанавливаем для player1 (он уже в waiting, но currentBattleId мог не сохраниться)
             await this.User.updateOne(
                 { _id: waitingBattle.player1Id },
                 { $set: { currentBattleId: waitingBattle._id } }
@@ -248,27 +266,21 @@ class ArenaBattleManager {
             
             return { success: true, battle: waitingBattle, isNew: false, entryFee: leagueConfig.entryFee };
         } else {
-            // Нет подходящего соперника (или остался только последний противник) —
-            // встаём в очередь и ждём кого-то другого
-            
-            // Проверяем, нет ли уже нашего waiting-боя в очереди (не вставать дважды)
+            // Не вставать дважды в очередь
             const alreadyWaiting = await this.Battle.findOne({
                 status: 'waiting',
                 player1Id: user._id,
                 expiresAt: { $gt: new Date() }
             });
-            
             if (alreadyWaiting) {
                 return { success: true, battle: alreadyWaiting, isNew: true, entryFee: leagueConfig.entryFee };
             }
-            
-            const newBattle = await this.createBattle(user._id, teamIds, userLevel, userLeague);
-            
+
+            const newBattle = await this.createBattle(user._id, teamIds, userLevel, userLeague, userGuildLevel);
             await this.User.updateOne(
                 { _id: user._id },
                 { $set: { currentBattleId: newBattle._id } }
             );
-            
             return { success: true, battle: newBattle, isNew: true, entryFee: leagueConfig.entryFee };
         }
     }
@@ -366,9 +378,41 @@ class ArenaBattleManager {
     if (!isMyTurn) {
         return { success: false, message: 'Сейчас не ваш ход' };
     }
-    
+
+    // Атомарная блокировка от race condition — помечаем что ход обрабатывается
+    const expectedTurn = battle.currentTurn;
+    const locked = await this.Battle.findOneAndUpdate(
+        { _id: battleId, status: 'active', currentTurn: expectedTurn },
+        { $set: { currentTurn: '__processing__' } }
+    );
+    if (!locked) {
+        return { success: false, message: 'Ход уже обрабатывается, подождите' };
+    }
+
+    try {
     const myTeam = isPlayer1 ? battle.player1Team : battle.player2Team;
     const enemyTeam = isPlayer1 ? battle.player2Team : battle.player1Team;
+
+    // ── ЯД: тик в начале хода ──────────────────────────────
+    const poisonLog = [];
+    myTeam.forEach(p => {
+        if (p.isAlive && p.poisonTurns > 0) {
+            const dmg = Math.max(1, Math.floor(p.maxHp * 0.10));
+            p.currentHp = Math.max(0, p.currentHp - dmg);
+            p.poisonTurns--;
+            if (p.currentHp <= 0) p.isAlive = false;
+            poisonLog.push({ name: p.name, dmg });
+        }
+    });
+    // Если яд убил всех наших — враг победил
+    if (myTeam.every(p => !p.isAlive)) {
+        battle.status = 'finished';
+        battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
+        battle.markModified('player1Team');
+        battle.markModified('player2Team');
+        await this.finishBattle(battle);
+        return { success: true, finished: true, winnerId: battle.winnerId, poisonLog };
+    }
     
     let attackerIndex = -1;
     let attacker = null;
@@ -420,11 +464,15 @@ class ArenaBattleManager {
     let damage = Math.max(1, attacker.attack - target.defense);
     if (isCrit) damage = Math.floor(damage * 1.5);
 
-    // Применяем скилл атакующего
+    // Применяем скилл атакующего (если не отключён капибарой)
     let skillResult = { triggered: false };
     if (attacker.skill) {
-        skillResult = ArenaSkills.applySkill(attacker.skill.id, attacker, target, myTeam, enemyTeam, damage);
-        if (skillResult.triggered) damage = skillResult.damage;
+        if (attacker.skillDisabledTurns > 0) {
+            attacker.skillDisabledTurns--;
+        } else {
+            skillResult = ArenaSkills.applySkill(attacker.skill.id, attacker, target, myTeam, enemyTeam, damage);
+            if (skillResult.triggered) damage = skillResult.damage;
+        }
     }
 
     // Проверяем щит цели (puddle_dodge)
@@ -435,28 +483,45 @@ class ArenaBattleManager {
     // Применяем урон к цели
     target.currentHp = Math.max(0, target.currentHp - damage);
 
-    // Применяем все эффекты скилла (хил, сплеш, стан, щит)
-    const skillSummary = ArenaSkills.applySkillResult(skillResult, attackerIndex, targetIndex, myTeam, enemyTeam);
-    
+    // Помечаем цель мёртвой ДО применения скилла — чтобы сплеш не бил мёртвых
     if (target.currentHp <= 0) {
         target.isAlive = false;
     }
-    
-    battle.battleLog.push({
-        turn: battle.turnCount + 1,
-        player: battle.currentTurn,
-        attackerName: attacker.name,
-        attackerIndex: attackerIndex,
-        targetName: target.name,
-        targetIndex: targetIndex,
-        damage: damage,
-        isCrit: isCrit,
-        remainingHp: target.currentHp,
-        timestamp: new Date()
-    });
-    
+
+    // Применяем все эффекты скилла (хил, сплеш, стан, щит)
+    const skillSummary = ArenaSkills.applySkillResult(skillResult, attackerIndex, targetIndex, myTeam, enemyTeam);
+
+    // Проверяем не умер ли кто-то из своей команды (самоурон не предусмотрен, но на всякий случай)
+    myTeam.forEach(p => { if (p.currentHp <= 0) p.isAlive = false; });
+    // Убеждаемся что все враги с 0 HP помечены мёртвыми (могли быть убиты сплешем)
+    enemyTeam.forEach(p => { if (p.currentHp <= 0) p.isAlive = false; });
+
+    // Проверяем победные условия ПОСЛЕ всех эффектов
     const allEnemyDead = enemyTeam.every(p => !p.isAlive);
+    const allMyDead    = myTeam.every(p => !p.isAlive);
     
+    if (allMyDead && allEnemyDead) {
+        // Ничья — оба мертвы (редко, возможно при сплеш-скилле)
+        battle.status = 'finished';
+        battle.winnerId = null;
+        battle.turnCount++;
+        battle.markModified('player1Team');
+        battle.markModified('player2Team');
+        await this.finishBattle(battle);
+        return { success: true, finished: true, draw: true, winnerId: null };
+    }
+
+    if (allMyDead) {
+        // Все мои мертвы — враг победил
+        battle.status = 'finished';
+        battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
+        battle.turnCount++;
+        battle.markModified('player1Team');
+        battle.markModified('player2Team');
+        await this.finishBattle(battle);
+        return { success: true, finished: true, winnerId: battle.winnerId, lastMove: { damage, isCrit, targetIndex, targetHp: target.currentHp, targetDead: true } };
+    }
+
     if (allEnemyDead) {
         battle.status = 'finished';
         battle.winnerId = isPlayer1 ? battle.player1Id : battle.player2Id;
@@ -516,7 +581,9 @@ class ArenaBattleManager {
             healedAllies: skillSummary.healedAllies,
             stunned: skillSummary.stunned,
             shielded: skillSummary.shielded,
-            missed: skillSummary.missed
+            missed: skillSummary.missed,
+            skillDisabled: skillSummary.skillDisabled,
+            poisoned: skillSummary.poisoned
         } : null,
         currentTurn: battle.currentTurn,
         turnCount: battle.turnCount,
@@ -526,6 +593,14 @@ class ArenaBattleManager {
         timeLeft: timeLeft,
         serverTimestamp: moveTimestamp
     };
+    } catch(err) {
+        // Восстанавливаем ход если что-то пошло не так
+        await this.Battle.findOneAndUpdate(
+            { _id: battleId, currentTurn: '__processing__' },
+            { $set: { currentTurn: expectedTurn } }
+        );
+        throw err;
+    }
 }
     async finishBattle(battle) {
         const winnerId = battle.winnerId;
@@ -622,38 +697,15 @@ class ArenaBattleManager {
             await winnerStats.save();
             await loserStats.save();
             
-            // XP за арену
-            const xpNeededCalc = (level) => level <= 15 ? level * 100 : 1500 + (level - 15) * 1000;
-            const winner = await this.User.findById(winnerId);
-            const loser = await this.User.findById(loserId);
-            if (winner) {
-                const xpWin = 20;
-                const neededW = xpNeededCalc(winner.level);
-                const newXpW = winner.xp + xpWin;
-                if (newXpW >= neededW) {
-                    await this.User.updateOne({ _id: winnerId }, { $inc: { level: 1 }, $set: { xp: newXpW - neededW } });
-                } else {
-                    await this.User.updateOne({ _id: winnerId }, { $inc: { xp: xpWin } });
-                }
-            }
-            if (loser) {
-                const xpLose = 5;
-                const neededL = xpNeededCalc(loser.level);
-                const newXpL = loser.xp + xpLose;
-                if (newXpL >= neededL) {
-                    await this.User.updateOne({ _id: loserId }, { $inc: { level: 1 }, $set: { xp: newXpL - neededL } });
-                } else {
-                    await this.User.updateOne({ _id: loserId }, { $inc: { xp: xpLose } });
-                }
-            }
-                
             if (this.sendNotification) {
+                const winner = await this.User.findById(winnerId);
+                const loser = await this.User.findById(loserId);
+                
                 if (winner) {
                     await this.sendNotification(winner.telegramId,
                         `🏆 <b>ПОБЕДА В АРЕНЕ!</b>\n\n` +
                         `Вы победили ${loser?.username || loser?.firstName || 'игрока'}!\n` +
                         `💰 Выигрыш: +${battle.prizePool.toLocaleString()} MMO\n` +
-                        `⭐ XP: +20\n` +
                         `📊 Рейтинг: ${winnerStats.rating} ${ratingChange > 0 ? `(+${ratingChange})` : `(${ratingChange})`}\n` +
                         `🔥 Серия побед: ${winnerStats.streak}\n` +
                         `${promotionMessage ? `\n${promotionMessage}` : ''}\n` +
@@ -665,7 +717,6 @@ class ArenaBattleManager {
                     await this.sendNotification(loser.telegramId,
                         `💀 <b>ПОРАЖЕНИЕ В АРЕНЕ</b>\n\n` +
                         `Вы проиграли ${winner?.username || winner?.firstName || 'игроку'}.\n` +
-                        `⭐ XP: +5\n` +
                         `📊 Рейтинг: ${loserStats.rating} (${ratingChange > 0 ? `-${ratingChange}` : `-${Math.abs(ratingChange)}`})\n` +
                         `${demotionMessage ? `\n${demotionMessage}` : ''}\n` +
                         `💪 Следующий бой будет лучше!`
@@ -678,11 +729,30 @@ class ArenaBattleManager {
             { _id: { $in: [battle.player1Id, battle.player2Id].filter(id => id) } },
             { $set: { currentBattleId: null, arenaCooldownUntil: new Date(Date.now() + 30 * 1000) } }
         );
-        
-        // Запоминаем последнего соперника для каждого игрока (анти-повтор)
+
+        // Сохраняем lastOpponentId для анти-повтора
         if (battle.player1Id && battle.player2Id) {
             await this.User.updateOne({ _id: battle.player1Id }, { $set: { lastOpponentId: battle.player2Id } });
             await this.User.updateOne({ _id: battle.player2Id }, { $set: { lastOpponentId: battle.player1Id } });
+        }
+
+        // XP: победитель +20, проигравший +5
+        if (winnerId && loserId) {
+            const xpCalc = (level) => level <= 15 ? level * 100 : 1500 + (level - 15) * 1000;
+            const winner = await this.User.findById(winnerId);
+            const loser  = await this.User.findById(loserId);
+            if (winner) {
+                const newXp = winner.xp + 20;
+                newXp >= xpCalc(winner.level)
+                    ? await this.User.updateOne({ _id: winnerId }, { $inc: { level: 1 }, $set: { xp: newXp - xpCalc(winner.level) } })
+                    : await this.User.updateOne({ _id: winnerId }, { $inc: { xp: 20 } });
+            }
+            if (loser) {
+                const newXp = loser.xp + 5;
+                newXp >= xpCalc(loser.level)
+                    ? await this.User.updateOne({ _id: loserId }, { $inc: { level: 1 }, $set: { xp: newXp - xpCalc(loser.level) } })
+                    : await this.User.updateOne({ _id: loserId }, { $inc: { xp: 5 } });
+            }
         }
         
         await battle.save();

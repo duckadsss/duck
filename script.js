@@ -3,9 +3,9 @@
 // ============================================================
 
 // ============================================================
-// CONFIG — API_URL подставляется сервером через index.html
+// CONFIG
 // ============================================================
-const API_URL = window.__API_URL__ || '';
+const API_URL = 'https://serv-production-765e.up.railway.app';
 
 // ============================================================
 // ЗАПРЕТ КОНТЕКСТНОГО МЕНЮ И ВЫДЕЛЕНИЯ
@@ -444,7 +444,7 @@ function showArenaClosedModal() {
             <div style="font-size:20px;font-weight:700;color:#fff;margin-bottom:8px">Арена закрыта</div>
             <div style="font-size:14px;color:#94a3b8;margin-bottom:16px;line-height:1.5">
                 Арена работает по расписанию<br>
-                <span style="color:#a78bfa;font-weight:600">10:00 – 11:00</span> и <span style="color:#a78bfa;font-weight:600">20:00 – 21:00</span><br>(UTC+3)
+                <span style="color:#a78bfa;font-weight:600">10:00 – 12:00</span> и <span style="color:#a78bfa;font-weight:600">20:00 – 22:00</span><br>(UTC+3)
             </div>
             <div style="background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.3);border-radius:12px;padding:12px;margin-bottom:20px">
                 <div style="font-size:12px;color:#94a3b8;margin-bottom:4px">До открытия</div>
@@ -457,7 +457,7 @@ function showArenaClosedModal() {
 }
 
 // Расписание арены (UTC+3)
-const ARENA_SCHEDULE_CLIENT = [[10, 11], [20, 21]];
+const ARENA_SCHEDULE_CLIENT = [[10, 12], [20, 22]];
 
 function isArenaOpenClient() {
     const nowUTC = new Date();
@@ -489,7 +489,7 @@ function updateArenaLock() {
     } else if (!isArenaOpenClient()) {
         lock.style.display = 'inline';
         lock.textContent = '⏰';
-        lock.title = `Арена закрыта. Открыта в 10:00–11:00 и 20:00–21:00 (UTC+3)`;
+        lock.title = `Арена закрыта. Открыта в 10:00–12:00 и 20:00–22:00 (UTC+3)`;
     } else {
         lock.style.display = 'none';
     }
@@ -947,6 +947,10 @@ async function watchAd() {
         const nextRegenText = res.nextRegenMinutes > 0 ? ` (ещё ${res.nextRegenMinutes} мин до +1)` : '';
         showToast(`+${AD_REWARD} MMO! Осталось рекламы: ${res.adsAvailable}/${res.maxAdsPerDay}${nextRegenText}`, '🎉');
         spawnFloatingMMO(AD_REWARD);
+        
+        if (res.kangarooUnlocked) {
+            setTimeout(() => showToast('🦘 Получен Kangaroo Uncommon за 200 просмотров рекламы!', '🎉'), 1500);
+        }
         
         updateAdsStatus();
         
@@ -2377,6 +2381,10 @@ async function findMatch() {
                 findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; 
             }
             if (searchStatus) searchStatus.innerHTML = '';
+            // Если команда сброшена — переключаем на вкладку команды
+            if (res?.teamReset) {
+                setTimeout(() => switchArenaTab('team'), 500);
+            }
         } else {
             // Обновляем счётчик боёв из ответа сервера
             if (res.battlesLeft !== undefined) {
@@ -2468,6 +2476,12 @@ async function makeAttack(targetIndex) {
         showToast('ID боя не найден', '⚠️'); 
         return; 
     }
+
+    // Глобальный лок — не допускаем двойной атаки пока не пришёл ответ
+    if (makeAttack._inProgress) return;
+    makeAttack._inProgress = true;
+    
+    try {
     
     const attackBtn = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${targetIndex}"] .arena-attack-btn`);
     if (attackBtn) {
@@ -2476,6 +2490,7 @@ async function makeAttack(targetIndex) {
     }
     
     const res = await apiRequest('POST', '/api/arena/move', { battleId, targetIndex });
+    makeAttack._inProgress = false;
     
     if (!res?.success) {
         showToast(res?.message || 'Ошибка атаки', '❌');
@@ -2498,15 +2513,20 @@ async function makeAttack(targetIndex) {
     }
 
     if (res.finished) {
-        if (res.winnerId) {
-            const isWin = res.winnerId === arenaClient?.getCurrentUserId();
-            showNativeBattleResult(isWin, res.prizePool || 0);
-            renderArenaFightTab();
-        }
+        // Всегда завершаем бой на клиенте по HTTP-ответу — не ждём WebSocket
+        arenaClient?.endBattle(res.winnerId || null, res.prizePool || 0);
+        const isWin = !!res.winnerId && res.winnerId === arenaClient?.getCurrentUserId();
+        showNativeBattleResult(isWin, res.prizePool || 0);
+        renderArenaFightTab();
     } else {
         const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
         if (res.skillResult) {
             showSkillBanner(res.skillResult.skillName, res.skillResult.description);
+            if (res.skillResult.poisoned) showToast('☠️ Противник отравлен на 3 хода!', '☠️');
+        }
+        if (res.poisonLog && res.poisonLog.length > 0) {
+            const totalDmg = res.poisonLog.reduce((s, p) => s + p.dmg, 0);
+            showToast(`☠️ Яд: -${totalDmg} HP у врагов`, '💀');
         }
         updateBattleUIFromClient({
             myTeam: res.myTeam,
@@ -2520,7 +2540,12 @@ async function makeAttack(targetIndex) {
             showDamageAnimation(res.lastMove.targetIndex, res.lastMove.damage, res.lastMove.isCrit, false);
         }
     }
+    } catch(e) {
+        makeAttack._inProgress = false;
+        showToast('Ошибка соединения', '❌');
+    }
 }
+makeAttack._inProgress = false;
 
 async function surrenderBattle() {
     const battleId = arenaClient?.getBattleId();
@@ -2613,7 +2638,7 @@ async function renderArenaFightTab() {
                 if (leaderboardRes?.success && leaderboardRes.myStats) {
                     const myLeague = leaderboardRes.myStats.league || 'bronze';
                     const leagueConfigs = {
-                        bronze: { entryFee: 200, prizePool: 350, name: '🥉 Бронзовая' },
+                        bronze: { entryFee: 0, prizePool: 10, name: '🥉 Бронзовая' },
                         silver: { entryFee: 500, prizePool: 800, name: '🥈 Серебряная' },
                         gold: { entryFee: 1000, prizePool: 1600, name: '🥇 Золотая' },
                         platinum: { entryFee: 2000, prizePool: 3200, name: '💎 Платиновая' },
@@ -2624,6 +2649,9 @@ async function renderArenaFightTab() {
                     const entryFeeEl = document.getElementById('arenaEntryFee');
                     const prizePoolEl = document.getElementById('arenaPrizePool');
                     const leagueEl = document.getElementById('arenaLeague');
+
+                    const entryRow = document.getElementById('arenaEntryFeeRow');
+                    if (entryRow) entryRow.style.display = config.entryFee === 0 ? 'none' : '';
                     if (entryFeeEl) entryFeeEl.textContent = config.entryFee;
                     if (prizePoolEl) prizePoolEl.textContent = config.prizePool;
                     if (leagueEl) {
@@ -3126,6 +3154,7 @@ function switchTab(tab) {
     if (tab === 'leaderboard') { leaderboardCache = { data: null, expiresAt: 0 }; renderLeaderboard(); }
     if (tab === 'special') renderSpecialQuests();
     if (tab === 'wallet') { updateHeader(); checkActiveRequests(); loadUserStats(); loadStakingStatus(); }
+    if (tab === 'guild')  { loadGuildTab(); }
     if (tab === 'shop') renderMarketplaceBuy();
     if (tab === 'friends') renderFriendsList();
     if (tab === 'arena') {
@@ -3428,51 +3457,60 @@ let stakingTimerInterval = null;
 let currentStakingPlan = null;
 
 const STAKING_PLANS_CLIENT = {
-    10: { days: 10, rate: 0.10, minAmount: 300000, label: '+10%' },
+    10: { days: 10, rate: 0.10, minAmount: 300000, label: '+10%', capybara: true },
     30: { days: 30, rate: 0.20, minAmount: 50000,  label: '+20%' }
 };
 
 async function loadStakingStatus() {
     try {
-        const res = await apiFetch('/api/staking/status');
-        const data = await res.json();
-        if (data.success && data.staking) {
+        const data = await apiRequest('GET', '/api/staking/status');
+        if (data && data.success && data.staking) {
             renderActiveStaking(data.staking);
         } else {
-            document.getElementById('activeStakingBlock').style.display = 'none';
+            const block = document.getElementById('activeStakingBlock');
+            if (block) block.style.display = 'none';
         }
     } catch (e) {}
 }
 
 function renderActiveStaking(s) {
     const block = document.getElementById('activeStakingBlock');
+    if (!block) return;
     block.style.display = 'block';
     document.getElementById('stakeAmount').textContent = formatNum(s.amount) + ' MMO';
-    document.getElementById('stakeReward').textContent = '+' + formatNum(s.reward) + ' MMO';
+    document.getElementById('stakeReward').textContent = '+' + formatNum(s.reward) + ' MMO'
+        + (s.days === 10 ? ' + 🦫 Capybara' : '');
 
     if (stakingTimerInterval) clearInterval(stakingTimerInterval);
 
     function tick() {
-        const now = Date.now();
-        const end = new Date(s.endsAt).getTime();
-        const diff = end - now;
+        const diff = new Date(s.endsAt).getTime() - Date.now();
         const claimBtn = document.getElementById('stakeClaimBtn');
+        const timerEl  = document.getElementById('stakeTimer');
+        if (!timerEl) return;
         if (diff <= 0) {
-            document.getElementById('stakeTimer').textContent = 'Готово!';
-            claimBtn.style.display = 'flex';
+            timerEl.textContent = 'Готово! ✅';
+            if (claimBtn) claimBtn.style.display = 'flex';
             clearInterval(stakingTimerInterval);
         } else {
-            const d = Math.floor(diff / 86400000);
-            const h = Math.floor((diff % 86400000) / 3600000);
-            const m = Math.floor((diff % 3600000) / 60000);
+            const d   = Math.floor(diff / 86400000);
+            const h   = Math.floor((diff % 86400000) / 3600000);
+            const m   = Math.floor((diff % 3600000) / 60000);
             const sec = Math.floor((diff % 60000) / 1000);
-            document.getElementById('stakeTimer').textContent =
-                (d > 0 ? d + 'д ' : '') + String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
-            claimBtn.style.display = 'none';
+            timerEl.textContent = (d > 0 ? d + 'д ' : '') +
+                String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+            if (claimBtn) claimBtn.style.display = 'none';
         }
     }
     tick();
     stakingTimerInterval = setInterval(tick, 1000);
+}
+
+function selectStakingPlan(days) {
+    document.querySelectorAll('.staking-plan').forEach(el => el.classList.remove('selected'));
+    const el = document.getElementById('stakingPlan' + days);
+    if (el) el.classList.add('selected');
+    openStakingModal(days);
 }
 
 function openStakingModal(days) {
@@ -3481,19 +3519,20 @@ function openStakingModal(days) {
     currentStakingPlan = plan;
     document.getElementById('stakingModalDays').textContent = days;
     document.getElementById('stakingModalRate').textContent = plan.label;
-    document.getElementById('stakingModalMin').textContent = 'Минимум: ' + formatNum(plan.minAmount) + ' MMO';
-    document.getElementById('stakingAmountInput').value = '';
+    document.getElementById('stakingModalMin').textContent  = 'Минимум: ' + formatNum(plan.minAmount) + ' MMO';
+    document.getElementById('stakingAmountInput').value     = '';
     document.getElementById('stakingModalPreview').textContent = '';
-    document.getElementById('stakingModal').style.display = 'flex';
+    document.getElementById('stakingModal').style.display   = 'flex';
 
     document.getElementById('stakingAmountInput').oninput = function() {
-        const val = Math.floor(Number(this.value));
+        const val     = Math.floor(Number(this.value));
         const preview = document.getElementById('stakingModalPreview');
         if (val >= plan.minAmount) {
             const reward = Math.floor(val * plan.rate);
-            preview.textContent = `Получите: ${formatNum(val + reward)} MMO (+${formatNum(reward)})`;
+            preview.textContent = 'Получите: ' + formatNum(val + reward) + ' MMO'
+                + (plan.capybara ? ' + 🦫 Capybara Rare' : '');
         } else {
-            preview.textContent = val > 0 ? `Минимум ${formatNum(plan.minAmount)} MMO` : '';
+            preview.textContent = val > 0 ? 'Минимум ' + formatNum(plan.minAmount) + ' MMO' : '';
         }
     };
 }
@@ -3506,58 +3545,49 @@ function closeStakingModal(e) {
 
 async function confirmStaking() {
     if (!currentStakingPlan) return;
+    const plan   = currentStakingPlan;
     const amount = Math.floor(Number(document.getElementById('stakingAmountInput').value));
-    const plan = currentStakingPlan;
 
     if (!amount || amount < plan.minAmount) {
-        showToast(`Минимум ${formatNum(plan.minAmount)} MMO`, '⚠️');
-        return;
+        showToast('Минимум ' + formatNum(plan.minAmount) + ' MMO', '⚠️'); return;
     }
     if (amount > (state.user?.balance || 0)) {
-        showToast('Недостаточно MMO', '❌');
-        return;
+        showToast('Недостаточно MMO', '❌'); return;
     }
 
-    try {
-        const res = await apiFetch('/api/staking/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ days: plan.days, amount })
-        });
-        const data = await res.json();
-        if (data.success) {
-            document.getElementById('stakingModal').style.display = 'none';
-            currentStakingPlan = null;
-            if (data.user) { state.user = data.user; updateHeader(); }
-            renderActiveStaking(data.staking);
-            showToast(`Стейкинг на ${plan.days} дней запущен!`, '🔒');
-        } else {
-            showToast(data.message || 'Ошибка', '❌');
-        }
-    } catch (e) {
-        showToast('Ошибка сервера', '❌');
+    const data = await apiRequest('POST', '/api/staking/start', { days: plan.days, amount });
+    if (data && data.success) {
+        document.getElementById('stakingModal').style.display = 'none';
+        currentStakingPlan = null;
+        document.querySelectorAll('.staking-plan').forEach(el => el.classList.remove('selected'));
+        if (data.user) { state.user = data.user; updateHeader(); }
+        renderActiveStaking(data.staking);
+        showToast('Стейкинг на ' + plan.days + ' дней запущен!', '🔒');
+    } else {
+        showToast((data && data.message) || 'Ошибка', '❌');
     }
 }
 
 async function claimStaking() {
-    try {
-        const res = await apiFetch('/api/staking/claim', { method: 'POST' });
-        const data = await res.json();
-        if (data.success) {
-            if (stakingTimerInterval) clearInterval(stakingTimerInterval);
-            document.getElementById('activeStakingBlock').style.display = 'none';
-            if (data.user) { state.user = data.user; updateHeader(); }
-            showToast(`+${formatNum(data.reward)} MMO получено!`, '🎉');
+    const data = await apiRequest('POST', '/api/staking/claim');
+    if (data && data.success) {
+        if (stakingTimerInterval) clearInterval(stakingTimerInterval);
+        const block = document.getElementById('activeStakingBlock');
+        if (block) block.style.display = 'none';
+        if (data.user) { state.user = data.user; updateHeader(); }
+        if (data.capybara) {
+            showToast('+' + formatNum(data.reward) + ' MMO + 🦫 Capybara Rare!', '🎉');
         } else {
-            showToast(data.message || 'Ошибка', '❌');
+            showToast('+' + formatNum(data.reward) + ' MMO получено!', '🎉');
         }
-    } catch (e) {
-        showToast('Ошибка сервера', '❌');
+    } else {
+        showToast((data && data.message) || 'Ошибка', '❌');
     }
 }
 
-window.openStakingModal = openStakingModal;
-window.closeStakingModal = closeStakingModal;
-window.confirmStaking = confirmStaking;
-window.claimStaking = claimStaking;
-window.loadStakingStatus = loadStakingStatus;
+window.selectStakingPlan = selectStakingPlan;
+window.openStakingModal   = openStakingModal;
+window.closeStakingModal  = closeStakingModal;
+window.confirmStaking     = confirmStaking;
+window.claimStaking       = claimStaking;
+window.loadStakingStatus  = loadStakingStatus;

@@ -21,6 +21,8 @@ app.set('trust proxy', 1); // Railway проксирует запросы — н
 // ИМПОРТ МОДУЛЯ АРЕНЫ (WebSocket версия)
 // ============================================
 const ArenaModule = require('./arena-socket');
+const { Guild, GuildInvite, guildBonus } = require('./guild-models');
+const registerGuildRoutes = require('./guild-api');
 
 // ============================================
 // MIDDLEWARE
@@ -136,6 +138,9 @@ async function createIndexes() {
         await User.collection.createIndex({ level: -1, xp: -1, balance: -1 });
         await ArenaBattle.collection.createIndex({ status: 1, league: 1, expiresAt: 1 });
         await ArenaBattle.collection.createIndex({ player1Id: 1, player2Id: 1 });
+        await Guild.collection.createIndex({ name: 1 }, { unique: true });
+        await Guild.collection.createIndex({ tag: 1 }, { unique: true });
+        await Guild.collection.createIndex({ level: -1, totalGxpEarned: -1 });
         console.log('✅ Индексы созданы');
     } catch (e) {
         console.warn('⚠️ Индексы:', e.message);
@@ -170,6 +175,7 @@ const UserSchema = new mongoose.Schema({
     }],
     adsAvailable: { type: Number, default: MAX_ADS_AVAILABLE },
     adsLastRegen: { type: Date, default: Date.now },
+    adsWatchedTotal: { type: Number, default: 0 }, // точный счётчик просмотров рекламы
     arenaBattlesLeft: { type: Number, default: MAX_ARENA_BATTLES },
     arenaLastBattleRegen: { type: Date, default: Date.now },
     adsCooldownUntil: { type: Date, default: null },
@@ -186,7 +192,9 @@ const UserSchema = new mongoose.Schema({
     arenaTeam: [{ type: String, default: [] }],
     arenaCooldownUntil: { type: Date, default: null },
     currentBattleId: { type: mongoose.Schema.Types.ObjectId, ref: 'ArenaBattle', default: null },
-    lastOpponentId: { type: mongoose.Schema.Types.ObjectId, default: null }
+    lastOpponentId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    guildId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Guild', default: null },
+    guildRole: { type: String, enum: ['leader', 'officer', 'member'], default: null }
 });
 
 UserSchema.pre('save', function(next) {
@@ -217,6 +225,7 @@ const CreatureSchema = new mongoose.Schema({
     desc: { type: String, default: '' },
     isActive: { type: Boolean, default: true },
     premiumOnly: { type: Boolean, default: false },
+    stakingOnly: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now }
 });
 const Creature = mongoose.model('Creature', CreatureSchema);
@@ -322,7 +331,7 @@ const ArenaBattleSchema = new mongoose.Schema({
         stunned: Boolean, shielded: Boolean,
         skill: { id: String, name: String, chance: Number, description: String } }],
     
-    currentTurn: { type: String, enum: ['player1', 'player2'], default: 'player1' },
+    currentTurn: { type: String, enum: ['player1', 'player2', '__processing__'], default: 'player1' },
     turnCount: { type: Number, default: 0 },
     battleLog: [{
         turn: Number, player: String, attackerName: String, attackerIndex: Number,
@@ -366,15 +375,16 @@ const ArenaStatsSchema = new mongoose.Schema({
 });
 const ArenaStats = mongoose.model('ArenaStats', ArenaStatsSchema);
 
+// ── STAKING ──────────────────────────────────────────────────
 const StakingSchema = new mongoose.Schema({
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
-    amount: { type: Number, required: true },
-    days: { type: Number, required: true }, // 10 или 30
-    rate: { type: Number, required: true }, // 0.10 или 0.20
-    reward: { type: Number, required: true },
+    userId:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
+    amount:    { type: Number, required: true },
+    days:      { type: Number, required: true },
+    rate:      { type: Number, required: true },
+    reward:    { type: Number, required: true },
     startedAt: { type: Date, default: Date.now },
-    endsAt: { type: Date, required: true },
-    claimed: { type: Boolean, default: false }
+    endsAt:    { type: Date, required: true },
+    claimed:   { type: Boolean, default: false }
 });
 const Staking = mongoose.model('Staking', StakingSchema);
 
@@ -858,10 +868,13 @@ async function randomCreatureByRarity(rarity, capsuleType = 'premium') {
     const allByRarity = creaturesCache
         ? creaturesCache.filter(c => c.rarity === rarity && c.isActive)
         : await Creature.find({ rarity, isActive: true });
-    // premiumOnly существа недоступны из basic капсулы
-    const pool = capsuleType === 'basic'
-        ? allByRarity.filter(c => !c.premiumOnly)
-        : allByRarity;
+    // stakingOnly — только через стейкинг, никогда из капсул
+    // premiumOnly — только из premium капсулы (не из basic)
+    const pool = allByRarity.filter(c => {
+        if (c.stakingOnly) return false;
+        if (capsuleType === 'basic' && c.premiumOnly) return false;
+        return true;
+    });
     if (!pool.length) return null;
     return pool[Math.floor(Math.random() * pool.length)];
 }
@@ -1070,13 +1083,13 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    const fs = require('fs');
-    const apiUrl = process.env.API_URL || `https://${req.headers.host}`;
-    let html = fs.readFileSync(__dirname + '/index.html', 'utf8');
-    html = html.replace("'{{API_URL}}'", JSON.stringify(apiUrl));
-    res.setHeader('Content-Type', 'text/html');
-    res.send(html);
+    res.sendFile(__dirname + '/index.html');
 });
+
+// ============================================
+// GUILD ROUTES
+// ============================================
+registerGuildRoutes(app, authMiddleware, User);
 
 // ============================================
 // ПУБЛИЧНЫЕ ЭНДПОИНТЫ
@@ -1339,7 +1352,7 @@ app.get('/api/user/stats', authMiddleware, async (req, res) => {
     try {
         const user = req.user;
         
-        const adsWatched = user.transactions.filter(tx => tx.name === 'Watch Ad Reward').length;
+        const adsWatched = user.adsWatchedTotal || 0;
         const adsEarned = user.transactions
             .filter(tx => tx.name === 'Watch Ad Reward')
             .reduce((sum, tx) => sum + tx.amount, 0);
@@ -1749,7 +1762,7 @@ app.post('/api/game/watch-ad', authMiddleware, async (req, res) => {
         const updatedUser = await User.findOneAndUpdate(
             { _id: user._id, adsAvailable: { $gt: 0 } },
             {
-                $inc: { balance: reward, adsAvailable: -1 },
+                $inc: { balance: reward, adsAvailable: -1, adsWatchedTotal: 1 },
                 $set: { adsCooldownUntil: newCooldown },
                 $push: { transactions: { $each: [{ name: 'Watch Ad Reward', amount: reward, time: new Date() }], $position: 0, $slice: 30 } }
             },
@@ -1780,6 +1793,18 @@ app.post('/api/game/watch-ad', authMiddleware, async (req, res) => {
         const lastRegen = new Date(updatedUser.adsLastRegen || updatedUser.createdAt).getTime();
         const nextRegenIn = ADS_REGEN_INTERVAL - (now.getTime() - lastRegen);
         const nextRegenMinutes = Math.ceil(nextRegenIn / 60000);
+
+        // Milestone: 200 реклам — выдаём Kangaroo Uncommon (один раз)
+        let kangarooUnlocked = false;
+        const newTotal = updatedUser.adsWatchedTotal;
+        if (newTotal >= 200 && !(updatedUser.discovered || []).includes('kangaroo_u')) {
+            let inv = await Inventory.findOne({ telegramId: updatedUser.telegramId, creatureId: 'kangaroo_u' });
+            if (inv) { inv.count += 1; await inv.save(); }
+            else { await Inventory.create({ userId: updatedUser._id, telegramId: updatedUser.telegramId, creatureId: 'kangaroo_u', count: 1 }); }
+            await User.findByIdAndUpdate(updatedUser._id, { $addToSet: { discovered: 'kangaroo_u' } });
+            invalidateInventoryCache(updatedUser.telegramId);
+            kangarooUnlocked = true;
+        }
         
         adLocks.delete(userId);
         
@@ -1790,6 +1815,7 @@ app.post('/api/game/watch-ad', authMiddleware, async (req, res) => {
             adsAvailable: updatedUser.adsAvailable,
             maxAdsPerDay: MAX_ADS_AVAILABLE,
             nextRegenMinutes: nextRegenMinutes,
+            kangarooUnlocked,
             user: formatUser(updatedUser)
         });
     } catch (e) {
@@ -1842,17 +1868,6 @@ app.get('/api/admin/ads-stats', adminAuthMiddleware, async (req, res) => {
         
         const adsStats = await User.aggregate([
             {
-                $addFields: {
-                    transactionsArray: {
-                        $cond: {
-                            if: { $isArray: "$transactions" },
-                            then: "$transactions",
-                            else: []
-                        }
-                    }
-                }
-            },
-            {
                 $project: {
                     telegramId: 1,
                     username: 1,
@@ -1860,15 +1875,7 @@ app.get('/api/admin/ads-stats', adminAuthMiddleware, async (req, res) => {
                     level: 1,
                     adsAvailable: 1,
                     adsLastRegen: 1,
-                    adsWatched: {
-                        $size: {
-                            $filter: {
-                                input: "$transactionsArray",
-                                as: "tx",
-                                cond: { $eq: ["$$tx.name", "Watch Ad Reward"] }
-                            }
-                        }
-                    }
+                    adsWatched: { $ifNull: ['$adsWatchedTotal', 0] }
                 }
             },
             { $sort: { [sortBy]: -1 } },
@@ -1877,34 +1884,10 @@ app.get('/api/admin/ads-stats', adminAuthMiddleware, async (req, res) => {
         
         const totalStats = await User.aggregate([
             {
-                $addFields: {
-                    transactionsArray: {
-                        $cond: {
-                            if: { $isArray: "$transactions" },
-                            then: "$transactions",
-                            else: []
-                        }
-                    }
-                }
-            },
-            {
-                $project: {
-                    adsWatched: {
-                        $size: {
-                            $filter: {
-                                input: "$transactionsArray",
-                                as: "tx",
-                                cond: { $eq: ["$$tx.name", "Watch Ad Reward"] }
-                            }
-                        }
-                    }
-                }
-            },
-            {
                 $group: {
                     _id: null,
-                    totalAdsWatched: { $sum: "$adsWatched" },
-                    avgAdsPerUser: { $avg: "$adsWatched" }
+                    totalAdsWatched: { $sum: { $ifNull: ['$adsWatchedTotal', 0] } },
+                    avgAdsPerUser: { $avg: { $ifNull: ['$adsWatchedTotal', 0] } }
                 }
             }
         ]);
@@ -2151,6 +2134,13 @@ app.post('/api/marketplace/list', authMiddleware, async (req, res) => {
             price,
             active: true
         });
+
+        // Убираем существо из арена-команды если оно там есть и больше нет в инвентаре
+        const remainingCount = invItem.count; // уже уменьшен выше
+        if (remainingCount <= 0 && user.arenaTeam && user.arenaTeam.includes(creatureId)) {
+            const newTeam = user.arenaTeam.filter(id => id !== creatureId);
+            await User.updateOne({ _id: user._id }, { $set: { arenaTeam: newTeam } });
+        }
         
         marketplaceListingsCache = { data: null, expiresAt: 0 };
         invalidateInventoryCache(user.telegramId);
@@ -2515,6 +2505,21 @@ app.post('/api/arena/find-match', authMiddleware, async (req, res) => {
         // --- ЛИМИТ БОЁВ АРЕНЫ ОТКЛЮЧЁН (безлимитные бои) ---
         const battlesLeft = 999;
 
+        // Проверяем что все существа команды реально есть в инвентаре
+        const inventory = await Inventory.find({ telegramId: user.telegramId }).lean();
+        const inventoryMap = new Map(inventory.map(i => [i.creatureId, i.count]));
+        const missingCreatures = arenaTeam.filter(id => !inventoryMap.get(id) || inventoryMap.get(id) < 1);
+        if (missingCreatures.length > 0) {
+            // Чистим команду от отсутствующих существ
+            const newTeam = arenaTeam.filter(id => inventoryMap.get(id) >= 1);
+            await User.updateOne({ _id: user._id }, { $set: { arenaTeam: newTeam } });
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Некоторых существ из вашей команды нет в инвентаре (возможно они на маркете). Обновите команду в разделе "Команда".',
+                teamReset: true
+            });
+        }
+
         const result = await arenaManager.findMatch(user, arenaTeam);
 
         if (!result.success) {
@@ -2525,7 +2530,7 @@ app.post('/api/arena/find-match', authMiddleware, async (req, res) => {
         let battlesLeftAfter = 999;
         
         if (!result.isNew) {
-            arenaSocketManager.send(result.battle.player1Id, 'match_found', {
+            arenaSocketManager?.send(result.battle.player1Id, 'match_found', {
                 battleId: result.battle._id,
                 status: 'pending_confirmation',
                 isPlayer1: true,
@@ -2534,7 +2539,7 @@ app.post('/api/arena/find-match', authMiddleware, async (req, res) => {
                 myTeam: result.battle.player1Team
             });
             
-            arenaSocketManager.send(result.battle.player2Id, 'match_found', {
+            arenaSocketManager?.send(result.battle.player2Id, 'match_found', {
                 battleId: result.battle._id,
                 status: 'pending_confirmation',
                 isPlayer1: false,
@@ -2647,7 +2652,7 @@ app.post('/api/arena/accept-match', authMiddleware, async (req, res) => {
             const player1 = await User.findById(battle.player1Id).select('username firstName level');
             const player2 = await User.findById(battle.player2Id).select('username firstName level');
             
-            arenaSocketManager.send(battle.player1Id, 'battle_start', {
+            arenaSocketManager?.send(battle.player1Id, 'battle_start', {
                 battleId: battle._id,
                 status: 'active',
                 isPlayer1: true,
@@ -2661,7 +2666,7 @@ app.post('/api/arena/accept-match', authMiddleware, async (req, res) => {
                 timeLeft: 30
             });
             
-            arenaSocketManager.send(battle.player2Id, 'battle_start', {
+            arenaSocketManager?.send(battle.player2Id, 'battle_start', {
                 battleId: battle._id,
                 status: 'active',
                 isPlayer1: false,
@@ -2675,11 +2680,11 @@ app.post('/api/arena/accept-match', authMiddleware, async (req, res) => {
                 timeLeft: 30
             });
         } else {
-            arenaSocketManager.send(result.battle.player1Id, 'confirmation_update', {
+            arenaSocketManager?.send(result.battle.player1Id, 'confirmation_update', {
                 player1Confirmed: result.battle.player1Confirmed,
                 player2Confirmed: result.battle.player2Confirmed
             });
-            arenaSocketManager.send(result.battle.player2Id, 'confirmation_update', {
+            arenaSocketManager?.send(result.battle.player2Id, 'confirmation_update', {
                 player1Confirmed: result.battle.player1Confirmed,
                 player2Confirmed: result.battle.player2Confirmed
             });
@@ -2709,12 +2714,12 @@ app.post('/api/arena/reject-match', authMiddleware, async (req, res) => {
                 : battleBefore.player1Id;
             // Уведомляем обоих: соперника и самого реджектящего
             if (otherId) {
-                arenaSocketManager.send(otherId, 'match_rejected', {
+                arenaSocketManager?.send(otherId, 'match_rejected', {
                     battleId: battleId,
                     message: 'Соперник отклонил бой. Ставка возвращена.'
                 });
             }
-            arenaSocketManager.send(req.user._id, 'match_rejected', {
+            arenaSocketManager?.send(req.user._id, 'match_rejected', {
                 battleId: battleId,
                 message: 'Вы отклонили бой. Ставка возвращена.'
             });
@@ -2740,7 +2745,7 @@ app.post('/api/arena/move', authMiddleware, async (req, res) => {
         if (result.finished) {
             const battle = await ArenaBattle.findById(battleId);
             if (battle) {
-                arenaSocketManager.sendBoth(battle, 'battle_end', {
+                arenaSocketManager?.sendBoth(battle, 'battle_end', {
                     battleId: battle._id,
                     winnerId: result.winnerId?.toString(),
                     lastMove: result.lastMove,
@@ -2766,8 +2771,8 @@ app.post('/api/arena/move', authMiddleware, async (req, res) => {
                     serverTimestamp: result.serverTimestamp || Date.now()
                 };
                 
-                arenaSocketManager.send(opponentId, 'move_update', moveUpdatePayload);
-                arenaSocketManager.send(moverId, 'move_update', { ...moveUpdatePayload, isSelf: true });
+                arenaSocketManager?.send(opponentId, 'move_update', moveUpdatePayload);
+                arenaSocketManager?.send(moverId, 'move_update', { ...moveUpdatePayload, isSelf: true });
             }
         }
         
@@ -2786,7 +2791,7 @@ app.post('/api/arena/surrender', authMiddleware, async (req, res) => {
         if (result.success) {
             const battle = await ArenaBattle.findById(battleId);
             if (battle) {
-                arenaSocketManager.sendBoth(battle, 'battle_end', {
+                arenaSocketManager?.sendBoth(battle, 'battle_end', {
                     battleId: battle._id,
                     winnerId: battle.winnerId?.toString(),
                     surrendered: true
@@ -2912,13 +2917,11 @@ app.get('/api/arena/history', authMiddleware, async (req, res) => {
 // ============================================
 // STAKING ENDPOINTS
 // ============================================
-
 const STAKING_PLANS = {
-    10: { days: 10, rate: 0.10, minAmount: 300000 },
+    10: { days: 10, rate: 0.10, minAmount: 300000, capybara: true },
     30: { days: 30, rate: 0.20, minAmount: 50000  }
 };
 
-// Получить текущий стейкинг пользователя
 app.get('/api/staking/status', authMiddleware, async (req, res) => {
     try {
         const staking = await Staking.findOne({ userId: req.user._id, claimed: false });
@@ -2928,46 +2931,33 @@ app.get('/api/staking/status', authMiddleware, async (req, res) => {
     }
 });
 
-// Создать стейкинг
 app.post('/api/staking/start', authMiddleware, async (req, res) => {
     try {
         const user = req.user;
         const { days, amount } = req.body;
-
-        const plan = STAKING_PLANS[days];
+        const plan = STAKING_PLANS[Number(days)];
         if (!plan) return res.status(400).json({ success: false, message: 'Неверный план' });
 
         const amt = Math.floor(Number(amount));
-        if (!amt || amt < plan.minAmount) {
-            return res.status(400).json({ success: false, message: `Минимальная сумма: ${plan.minAmount.toLocaleString()} MMO` });
-        }
+        if (!amt || amt < (plan.minAmount || 1))
+            return res.status(400).json({ success: false, message: `Минимум ${(plan.minAmount || 1).toLocaleString()} MMO` });
 
-        // Проверяем нет ли уже активного стейкинга
         const existing = await Staking.findOne({ userId: user._id, claimed: false });
         if (existing) return res.status(400).json({ success: false, message: 'У вас уже есть активный стейкинг' });
 
-        // Списываем с баланса
         const updated = await User.findOneAndUpdate(
             { _id: user._id, balance: { $gte: amt } },
             {
                 $inc: { balance: -amt },
-                $push: { transactions: { $each: [{ name: `Стейкинг ${days}д. (${plan.rate * 100}%)`, amount: -amt, time: new Date() }], $position: 0, $slice: 30 } }
+                $push: { transactions: { $each: [{ name: `Стейкинг ${plan.days}д. (+${plan.rate * 100}%${plan.capybara ? ' + Capybara' : ''})`, amount: -amt, time: new Date() }], $position: 0, $slice: 30 } }
             },
             { new: true }
         );
         if (!updated) return res.status(400).json({ success: false, message: 'Недостаточно MMO' });
 
-        const reward = Math.floor(amt * plan.rate);
-        const endsAt = new Date(Date.now() + plan.days * 24 * 60 * 60 * 1000);
-
-        const staking = await Staking.create({
-            userId: user._id,
-            amount: amt,
-            days: plan.days,
-            rate: plan.rate,
-            reward,
-            endsAt
-        });
+        const reward  = Math.floor(amt * plan.rate);
+        const endsAt  = new Date(Date.now() + plan.days * 24 * 60 * 60 * 1000);
+        const staking = await Staking.create({ userId: user._id, amount: amt, days: plan.days, rate: plan.rate, reward, endsAt });
 
         invalidateInventoryCache(user.telegramId);
         res.json({ success: true, staking, user: formatUser(updated) });
@@ -2977,32 +2967,37 @@ app.post('/api/staking/start', authMiddleware, async (req, res) => {
     }
 });
 
-// Забрать награду
 app.post('/api/staking/claim', authMiddleware, async (req, res) => {
     try {
-        const user = req.user;
+        const user    = req.user;
         const staking = await Staking.findOne({ userId: user._id, claimed: false });
-
         if (!staking) return res.status(400).json({ success: false, message: 'Нет активного стейкинга' });
-        if (new Date() < staking.endsAt) {
-            return res.status(400).json({ success: false, message: 'Стейкинг ещё не завершён' });
-        }
+        if (new Date() < staking.endsAt) return res.status(400).json({ success: false, message: 'Стейкинг ещё не завершён' });
 
-        const total = staking.amount + staking.reward;
         staking.claimed = true;
         await staking.save();
 
+        const total   = staking.amount + staking.reward;
+        const plan    = STAKING_PLANS[staking.days];
         const updated = await User.findByIdAndUpdate(
             user._id,
             {
                 $inc: { balance: total },
-                $push: { transactions: { $each: [{ name: `Стейкинг завершён +${staking.reward.toLocaleString()} MMO`, amount: total, time: new Date() }], $position: 0, $slice: 30 } }
+                $push: { transactions: { $each: [{ name: `Стейкинг ${staking.days}д. завершён +${staking.reward.toLocaleString()} MMO`, amount: total, time: new Date() }], $position: 0, $slice: 30 } }
             },
             { new: true }
         );
 
+        // 10-дневный план — дополнительно выдаём Capybara Rare
+        if (plan && plan.capybara) {
+            let inv = await Inventory.findOne({ telegramId: user.telegramId, creatureId: 'capybara_r' });
+            if (inv) { inv.count += 1; await inv.save(); }
+            else { await Inventory.create({ userId: user._id, telegramId: user.telegramId, creatureId: 'capybara_r', count: 1 }); }
+            await User.findByIdAndUpdate(user._id, { $addToSet: { discovered: 'capybara_r' } });
+        }
+
         invalidateInventoryCache(user.telegramId);
-        res.json({ success: true, total, reward: staking.reward, user: formatUser(updated) });
+        res.json({ success: true, total, reward: staking.reward, capybara: !!(plan && plan.capybara), user: formatUser(updated) });
     } catch (e) {
         console.error('staking claim error:', e);
         res.status(500).json({ success: false, message: 'Ошибка сервера' });
@@ -3472,7 +3467,7 @@ app.get('/api/admin/users/:id', adminAuthMiddleware, async (req, res) => {
         
         const referrals = await User.find({ referredBy: user.telegramId }).select('username firstName balance createdAt');
         
-        const adsWatched = user.transactions.filter(tx => tx.name === 'Watch Ad Reward').length;
+        const adsWatched = user.adsWatchedTotal || 0;
         const adsEarned = user.transactions
             .filter(tx => tx.name === 'Watch Ad Reward')
             .reduce((sum, tx) => sum + tx.amount, 0);
@@ -4497,7 +4492,9 @@ async function initCreatures() {
         { id: 'unicorn_l', name: 'Unicorn', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/ll.png', incomeBase: 400, desc: 'Divine magic.' },
         { id: 'lion_mythic', name: 'Lion', rarity: 'mythic', icon: 'https://ndammo.github.io/Mmodna/lm.png', incomeBase: 1000, desc: 'THE MYTHIC KING.' },
         { id: 'panther_mythic', name: 'Black Panther', rarity: 'mythic', icon: 'https://ndammo.github.io/Mmodna/pm.png', incomeBase: 2000, desc: 'TOP 1 SEASON.' },
-        { id: 'monkey_r', name: 'Monkey', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/mr.png', incomeBase: 30, desc: 'Warrior with twin axes. Premium capsule only.', premiumOnly: true }
+        { id: 'monkey_r', name: 'Monkey', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/mr.png', incomeBase: 30, desc: 'Warrior with twin axes. Premium capsule only.', premiumOnly: true },
+        { id: 'capybara_r', name: 'Capybara', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/cr.png', incomeBase: 25, desc: 'Zen master. Disables enemy skill for 3 turns. Staking reward only.', stakingOnly: true },
+        { id: 'kangaroo_u', name: 'Kangaroo', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/ku.png', incomeBase: 15, desc: 'Poisons all enemies for 3 turns (-10% HP/turn). Reward for 200 ads watched.', stakingOnly: true }
     ];
 
     for (const creature of staticCreatures) {
@@ -4505,6 +4502,14 @@ async function initCreatures() {
         if (!exists) {
             await Creature.create(creature);
             console.log(`✅ Добавлено существо: ${creature.name}`);
+        } else {
+            // Обновляем флаги stakingOnly/premiumOnly если изменились
+            await Creature.updateOne({ id: creature.id }, {
+                $set: {
+                    stakingOnly: creature.stakingOnly || false,
+                    premiumOnly: creature.premiumOnly || false
+                }
+            });
         }
     }
     await loadCreaturesToCache();
@@ -4568,7 +4573,10 @@ io.on('connection', (socket) => {
     if (arenaSocketManager) {
         arenaSocketManager.add(user._id, socket.id);
     } else {
-        console.error(`❌ arenaSocketManager не инициализирован!`);
+        // arenaSocketManager ещё не готов — ждём открытия БД и регистрируем
+        mongoose.connection.once('open', () => {
+            if (arenaSocketManager) arenaSocketManager.add(user._id, socket.id);
+        });
     }
     
     socket.on('check_battle_status', async (data) => {
@@ -4652,6 +4660,77 @@ mongoose.connection.once('open', async () => {
             await arenaManager.expireOldBattles();
         }
     }, 10000);
+
+    // ============================================
+    // УВЕДОМЛЕНИЯ ОБ АРЕНЕ (UTC+3)
+    // Расписание: 10:00–12:00 и 20:00–22:00
+    // За 30 минут: 9:30 и 19:30
+    // При открытии: 10:00 и 20:00
+    // ============================================
+    async function sendArenaNotificationToAll(message) {
+        const BOT_TOKEN = process.env.BOT_TOKEN;
+        if (!BOT_TOKEN) return;
+        try {
+            const users = await User.find({ isBanned: false }, { telegramId: 1 }).lean();
+            console.log(`📢 Арена-рассылка: ${users.length} пользователей`);
+            let sent = 0, failed = 0;
+            for (const user of users) {
+                if (!user.telegramId) continue;
+                try {
+                    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            chat_id: user.telegramId,
+                            text: message,
+                            parse_mode: 'HTML',
+                            disable_web_page_preview: true
+                        })
+                    });
+                    sent++;
+                    if (sent % 25 === 0) await new Promise(r => setTimeout(r, 1000));
+                } catch (e) { failed++; }
+            }
+            console.log(`✅ Арена-рассылка завершена: ${sent} отправлено, ${failed} ошибок`);
+        } catch (e) {
+            console.error('Arena broadcast error:', e);
+        }
+    }
+
+    let lastArenaNotiMinute = -1;
+    setInterval(async () => {
+        const now = new Date();
+        const utc3Hour = (now.getUTCHours() + 3) % 24;
+        const utc3Min  = now.getUTCMinutes();
+        const minuteKey = utc3Hour * 60 + utc3Min;
+
+        if (minuteKey === lastArenaNotiMinute) return;
+
+        // За 30 минут до открытия
+        if ((utc3Hour === 9 && utc3Min === 30) || (utc3Hour === 19 && utc3Min === 30)) {
+            lastArenaNotiMinute = minuteKey;
+            const openTime = utc3Hour === 9 ? '10:00' : '20:00';
+            await sendArenaNotificationToAll(
+                `⚔️ <b>Через 30 минут — Арена!</b>\n\n` +
+                `Готовься к бою! Арена откроется в ${openTime} (МСК).\n` +
+                `Собери команду и жди сигнала! 🏆`
+            );
+        }
+
+        // Арена открывается (10:00 и 20:00)
+        if ((utc3Hour === 10 && utc3Min === 0) || (utc3Hour === 20 && utc3Min === 0)) {
+            lastArenaNotiMinute = minuteKey;
+            const closeTime = utc3Hour === 10 ? '12:00' : '22:00';
+            await sendArenaNotificationToAll(
+                `🏟️ <b>Арена открыта!</b>\n\n` +
+                `⚔️ Сражайся с другими игроками прямо сейчас!\n` +
+                `🏆 Побеждай и поднимайся в рейтинге!\n\n` +
+                `⏳ Арена работает до ${closeTime} (МСК)`
+            );
+        }
+    }, 60 * 1000);
+
+    console.log('🔔 Уведомления об арене: активны (9:30, 10:00, 19:30, 20:00 МСК)');
     
     console.log('✅ Сервер готов');
     console.log('👥 Telegram Админы: ' + (ADMIN_IDS.join(', ') || 'не заданы'));
