@@ -1184,16 +1184,18 @@ app.post('/api/auth/login', async (req, res) => {
             // Используем findOneAndUpdate с upsert для защиты от race condition
             // (одновременные логины одного пользователя не создадут дубликат)
             const newReferralCode = 'REF' + String(userData.id) + Math.random().toString(36).slice(2, 7).toUpperCase();
-            const newUserData = {
-                telegramId: String(userData.id),
-                username: userData.username || '',
-                firstName: userData.first_name || '',
-                lastName: userData.last_name || '',
-                photoUrl: userData.photo_url || '',
-                balance: 4000,
-                adsAvailable: MAX_ADS_AVAILABLE,
-                adsLastRegen: new Date()
-            };
+            
+const newUserData = {
+    telegramId: String(userData.id),
+    username: userData.username || '',
+    firstName: userData.first_name || '',
+    lastName: userData.last_name || '',
+    photoUrl: userData.photo_url || '',
+    balance: 4000,
+    adsAvailable: MAX_ADS_AVAILABLE,
+    adsLastRegen: new Date(),
+    guildRole: null   // ← ЭТУ СТРОКУ ДОБАВИТЬ
+};
 
             let referrerInfo = null;
             if (referralCode) {
@@ -1236,9 +1238,11 @@ app.post('/api/auth/login', async (req, res) => {
             user.username = userData.username || user.username;
             user.firstName = userData.first_name || user.firstName;
             user.lastName = userData.last_name || user.lastName;
-            user.lastLogin = new Date();
-            await user.save();
-        }
+            
+await User.updateOne(
+    { _id: user._id },
+    { $set: { lastLogin: new Date() } }
+);
 
         const token = jwt.sign(
             { userId: user._id, telegramId: user.telegramId },
