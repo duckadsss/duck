@@ -1086,6 +1086,23 @@ app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
 
+// ВРЕМЕННЫЙ ЭНДПОИНТ ДЛЯ МИГРАЦИИ — УДАЛИТЬ ПОСЛЕ ИСПОЛЬЗОВАНИЯ!
+app.get('/api/migrate-guildrole', async (req, res) => {
+    try {
+        const result = await User.updateMany(
+            { guildRole: { $exists: false } },
+            { $set: { guildRole: null } }
+        );
+        res.json({ 
+            success: true, 
+            message: `Обновлено ${result.modifiedCount} пользователей`,
+            matched: result.matchedCount,
+            modified: result.modifiedCount
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
 // ============================================
 // GUILD ROUTES
 // ============================================
