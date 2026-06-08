@@ -10,7 +10,7 @@ const gxpForLevel = (level) => 100 * Math.pow(level, 2);
 const guildBonus = (level) => (level * 0.02);
 
 const GUILD_MAX_LEVEL = 10;
-const GUILD_CREATE_COST = 100000;
+const GUILD_CREATE_COST = 100;
 const GUILD_DAILY_CONTRIBUTION = 300;
 const GUILD_DAILY_GXP = 100;
 
