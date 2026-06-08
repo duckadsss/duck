@@ -183,7 +183,8 @@ const UserSchema = new mongoose.Schema({
     incomeCacheExpires: { type: Date, default: Date.now },
     arenaTeam: [{ type: String, default: [] }],
     arenaCooldownUntil: { type: Date, default: null },
-    currentBattleId: { type: mongoose.Schema.Types.ObjectId, ref: 'ArenaBattle', default: null }
+    currentBattleId: { type: mongoose.Schema.Types.ObjectId, ref: 'ArenaBattle', default: null },
+    guildRole: { type: String, default: null }
 });
 
 UserSchema.pre('save', function(next) {
