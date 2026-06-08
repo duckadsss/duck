@@ -1194,7 +1194,7 @@ const newUserData = {
     balance: 4000,
     adsAvailable: MAX_ADS_AVAILABLE,
     adsLastRegen: new Date(),
-    guildRole: null   // ← ЭТУ СТРОКУ ДОБАВИТЬ
+    guildRole: null   // ← ЭТО ДОБАВИТЬ
 };
 
             let referrerInfo = null;
@@ -1234,15 +1234,16 @@ const newUserData = {
                 `🕐 Время: ${new Date().toLocaleString()}`;
 
             await notifyAdmins(notificationMessage);
-        } else {
-            user.username = userData.username || user.username;
-            user.firstName = userData.first_name || user.firstName;
-            user.lastName = userData.last_name || user.lastName;
-            
-await User.updateOne(
-    { _id: user._id },
-    { $set: { lastLogin: new Date() } }
-);
+  } else {
+    user.username = userData.username || user.username;
+    user.firstName = userData.first_name || user.firstName;
+    user.lastName = userData.last_name || user.lastName;
+    
+    await User.updateOne(
+        { _id: user._id },
+        { $set: { lastLogin: new Date() } }
+    );
+}
 
         const token = jwt.sign(
             { userId: user._id, telegramId: user.telegramId },
