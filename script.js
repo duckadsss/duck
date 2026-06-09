@@ -482,7 +482,7 @@ function updateArenaLock() {
     const lock = document.getElementById('arenaNavLock');
     if (!lock) return;
     const level = state.user?.level || 1;
-    if (level < 5) {
+    if (level < 3) {
         lock.style.display = 'inline';
         lock.textContent = '🔒';
         lock.title = `Доступно с 3 уровня (ваш: ${level})`;
