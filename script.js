@@ -5,7 +5,7 @@
 // ============================================================
 // CONFIG
 // ============================================================
-const API_URL = 'https://serv-production-765e.up.railway.app';
+const API_URL = 'https://serv-production-dbf3.up.railway.app';
 
 // ============================================================
 // ЗАПРЕТ КОНТЕКСТНОГО МЕНЮ И ВЫДЕЛЕНИЯ
@@ -485,7 +485,7 @@ function updateArenaLock() {
     if (level < 5) {
         lock.style.display = 'inline';
         lock.textContent = '🔒';
-        lock.title = `Доступно с 5 уровня (ваш: ${level})`;
+        lock.title = `Доступно с 3 уровня (ваш: ${level})`;
     } else if (!isArenaOpenClient()) {
         lock.style.display = 'inline';
         lock.textContent = '⏰';
@@ -2346,8 +2346,8 @@ async function findMatch() {
         return; 
     }
 
-    if ((state.user?.level || 1) < 5) {
-        showToast('Арена доступна с 5 уровня', '🔒');
+    if ((state.user?.level || 1) < 3) {
+        showToast('Арена доступна с 3 уровня', '🔒');
         return;
     }
 
@@ -3135,8 +3135,8 @@ function switchTab(tab) {
     // Проверки ПЕРЕД переключением DOM
     if (tab === 'arena') {
         const userLevel = state.user?.level || 1;
-        if (userLevel < 5) {
-            showToast(`Арена доступна с 5 уровня (ваш: ${userLevel})`, '🔒');
+        if (userLevel < 3) {
+            showToast(`Арена доступна с 3 уровня (ваш: ${userLevel})`, '🔒');
             return;
         }
         if (!isArenaOpenClient()) {
@@ -3154,7 +3154,6 @@ function switchTab(tab) {
     if (tab === 'leaderboard') { leaderboardCache = { data: null, expiresAt: 0 }; renderLeaderboard(); }
     if (tab === 'special') renderSpecialQuests();
     if (tab === 'wallet') { updateHeader(); checkActiveRequests(); loadUserStats(); loadStakingStatus(); }
-    if (tab === 'guild')  { loadGuildTab(); }
     if (tab === 'shop') renderMarketplaceBuy();
     if (tab === 'friends') renderFriendsList();
     if (tab === 'arena') {
