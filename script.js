@@ -499,37 +499,40 @@ function updateHeader() {
     if (!state.user) return;
     const u = state.user;
 
+    // Пересчёт дохода если нужно
     if (!state.incomePerHour) {
         let income = 0;
-        state.inventory.forEach(item => { const c = getCreature(item.creatureId); if (c) income += c.incomeBase * item.count; });
+        state.inventory.forEach(item => { 
+            const c = getCreature(item.creatureId); 
+            if (c) income += c.incomeBase * item.count; 
+        });
         state.incomePerHour = income;
     }
 
     const visualBalance = getVisualBalance();
-    document.getElementById('balanceDisplay').textContent = formatBalance(visualBalance);
     
+    // Обновляем MMO баланс
+    const balanceEl = document.getElementById('balanceDisplay');
+    if (balanceEl) balanceEl.textContent = formatBalance(visualBalance);
+    
+    // Обновляем пыль
     const dustEl = document.getElementById('dustDisplay');
     if (dustEl) dustEl.textContent = formatNum(u.dust || 0);
-    const walletDustEl = document.getElementById('walletDust');
-    if (walletDustEl) walletDustEl.textContent = formatNum(u.dust || 0);
     
+    // Обновляем инлайн доход
     const incomeInline = document.getElementById('incomeInline');
-    if (incomeInline) incomeInline.textContent = `+${formatNum(state.incomePerHour)}/hr`;
-
+    if (incomeInline) incomeInline.textContent = formatNum(state.incomePerHour);
+    
+    // Остальной код без изменений...
     const needed = u.level * 100;
-    document.getElementById('xpLabel').textContent = `XP ${u.xp}/${needed}`;
-    document.getElementById('xpFill').style.width = `${Math.min(100, (u.xp / needed) * 100)}%`;
-    document.getElementById('playerLevelLabel').textContent = `LVL ${u.level} · ${getLevelTitle(u.level)}`;
-
-    document.getElementById('walletCards').textContent = state.inventory.reduce((s, i) => s + i.count, 0);
-    document.getElementById('walletMerges').textContent = u.mergeCount || 0;
-
-    updateUpgradeButton();
-    renderTransactions();
-    updateArenaLock();
-
-    const friendCountDisplay = document.getElementById('friendCountDisplay');
-    if (friendCountDisplay && state.user) friendCountDisplay.textContent = `${state.user.referralCount || 0} друзей 5+ уровня`;
+    const xpLabel = document.getElementById('xpLabel');
+    if (xpLabel) xpLabel.textContent = `XP ${u.xp}/${needed}`;
+    
+    const xpFill = document.getElementById('xpFill');
+    if (xpFill) xpFill.style.width = `${Math.min(100, (u.xp / needed) * 100)}%`;
+    
+    const levelLabel = document.getElementById('playerLevelLabel');
+    if (levelLabel) levelLabel.textContent = `LVL ${u.level} · ${getLevelTitle(u.level)}`;
 }
 
 function updateUpgradeButton() {

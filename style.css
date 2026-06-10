@@ -108,41 +108,89 @@ body {
     font-weight: 500;
 }
 
-.balance-area {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: rgba(124,58,237,0.12);
-    border: 1px solid rgba(124,58,237,0.25);
-    border-radius: 20px;
-    padding: 8px 16px;
-    min-width: 140px;
-    flex-shrink: 0;
+/* ============================================
+   БАЛАНС - ВАРИАНТ 2: СТЕК (два ряда)
+   ============================================ */
+.balance-area.stacked {
+    background: rgba(124, 58, 237, 0.12);
+    border: 1px solid rgba(124, 58, 237, 0.25);
+    border-radius: 16px;
+    padding: 8px 14px;
+    min-width: 110px;
     backdrop-filter: blur(4px);
 }
 
-.balance-icon {
-    width: 18px; height: 18px;
-    background: linear-gradient(135deg, var(--accent), var(--accent3));
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 9px;
-    color: #fff;
+.balance-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    padding: 4px 0;
 }
 
-.balance-amount {
-    font-family: 'Orbitron', monospace;
-    font-size: 14px;
+.balance-row i, 
+.balance-row span:first-child {
+    width: 20px;
+    font-size: 12px;
+    color: #a855f7;
+}
+
+.balance-row.dust span:first-child {
+    color: #a78bfa;
+}
+
+.balance-row span:nth-child(2) {
+    flex: 1;
+    text-align: right;
     font-weight: 700;
     color: #fff;
-    min-width: 75px;
-    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    letter-spacing: -0.3px;
 }
 
-.income-inline {
+.balance-suffix {
     font-size: 8px;
-    color: var(--uncommon);
-    margin-top: 2px;
+    color: #94a3b8;
+    min-width: 35px;
+    text-align: right;
+    font-weight: 500;
+}
+
+.balance-row.income {
+    color: #22c55e;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    margin-top: 4px;
+    padding-top: 6px;
+}
+
+.balance-row.income span:nth-child(2) {
+    color: #22c55e;
+}
+
+.balance-row.income i {
+    color: #22c55e;
+}
+
+/* Адаптация для узких экранов */
+@media (max-width: 420px) {
+    .balance-area.stacked {
+        padding: 5px 10px;
+        min-width: 95px;
+    }
+    .balance-row {
+        font-size: 10px;
+        padding: 3px 0;
+    }
+    .balance-row span:nth-child(2) {
+        font-size: 11px;
+    }
+    .balance-suffix {
+        font-size: 7px;
+        min-width: 30px;
+    }
 }
 
 .xp-bar-wrap {
@@ -1446,14 +1494,6 @@ body {
 }
 
 @media (max-width: 420px) {
-    .balance-area {
-        min-width: 100px;
-        padding: 4px 8px;
-    }
-    .balance-amount {
-        min-width: 60px;
-        font-size: 12px;
-    }
     .lang-btn {
         min-width: 32px;
         padding: 3px 6px;
@@ -2550,3 +2590,49 @@ img {
     gap: 8px;
 }
 .arena-reset-btn:active { transform: scale(0.97); }
+
+
+
+
+/* Фиксируем ширину header, чтобы не расширялся */
+.header {
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+}
+
+.header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    width: 100%;
+    flex-wrap: nowrap;
+}
+
+/* Ограничиваем ширину блока баланса */
+.balance-area.stacked {
+    flex-shrink: 1;
+    min-width: 85px;
+    max-width: 100px;
+}
+
+/* Ограничиваем информацию об игроке */
+.player-info {
+    flex-shrink: 1;
+    min-width: 0; /* Позволяет сжиматься */
+    overflow: hidden;
+}
+
+.player-name {
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100px;
+}
+
+.player-level {
+    font-size: 9px;
+    white-space: nowrap;
+}

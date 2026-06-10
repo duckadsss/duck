@@ -56,28 +56,33 @@
             </div>
         </div>
         
-        <div style="display:flex;align-items:center;gap:10px">
-            <div class="balance-area">
-                <div class="balance-icon"><i class="fa-solid fa-dna"></i></div>
-                <div>
-                    <div class="balance-amount" id="balanceDisplay">0</div>
-                    <div class="income-inline" id="incomeInline" style="font-size:8px; color:var(--uncommon); margin-top:2px;">+0/hr</div>
-                </div>
-            </div>
-            <div class="balance-area" style="background:rgba(139,92,246,0.15);border-color:rgba(139,92,246,0.3)">
-                <div class="balance-icon" style="color:#a78bfa">🌫️</div>
-                <div>
-                    <div class="balance-amount" id="dustDisplay" style="color:#a78bfa;font-size:16px">0</div>
-                    <div style="font-size:8px;color:#7c3aed;margin-top:2px">ПЫЛЬ</div>
-                </div>
-            </div>
+        <!-- ОБЪЕДИНЁННЫЙ БЛОК БАЛАНСА (СТЕК - ДВА РЯДА) -->
+<div class="balance-area stacked">
+    <div class="balance-row main">
+        <i class="fa-solid fa-dna"></i>
+        <span id="balanceDisplay">0</span>
+        <span class="balance-suffix">MMO</span>
+    </div>
+    <div class="balance-row stats">
+        <div class="stats-item dust">
+            <span>🌫️</span>
+            <span id="dustDisplay">0</span>
+        </div>
+        <div class="stats-divider"></div>
+        <div class="stats-item income">
+            <i class="fa-solid fa-bolt"></i>
+            <span id="incomeInline">0</span>
+            <span class="income-unit">/ч</span>
         </div>
     </div>
+</div>
     <div class="xp-bar-wrap">
         <div class="xp-label" id="xpLabel">XP 0/100</div>
-        <div class="xp-bar"><div class="xp-fill" id="xpFill" style="width:0%"></div></div>
+        <div class="xp-bar">
+            <div class="xp-fill" id="xpFill" style="width:0%"></div>
+        </div>
     </div>
-</div>
+</div>  <!-- Закрытие header -->
 
 <!-- MAIN CONTENT -->
 <div class="main-content" id="mainContent">
