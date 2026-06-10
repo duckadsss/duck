@@ -264,200 +264,203 @@ class ArenaClient {
     // ============================================================
     // WEBSOCKET (для Railway)
     // ============================================================
+connectSocket(token, apiUrl) {
+    if (this.state.socket && (this.state.socket.connected || this.state.socket.active)) {
+        console.log('🔌 WebSocket уже подключён/подключается, пропускаем');
+        return;
+    }
+    this.disconnectSocket();
     
-    connectSocket(token, apiUrl) {
-        // Если сокет уже подключён или активно подключается — не создаём дубль.
-        // .active = true когда socket.io находится в состоянии connecting/reconnecting.
-        if (this.state.socket && (this.state.socket.connected || this.state.socket.active)) {
-            console.log('🔌 WebSocket уже подключён/подключается, пропускаем');
-            return;
-        }
-        this.disconnectSocket();
+    if (!token) {
+        console.error('No token for WebSocket');
+        return;
+    }
+    
+    console.log(`🔌 Подключение WebSocket к ${apiUrl}`);
+    
+    try {
+        const socket = io(apiUrl, {
+            transports: ['websocket', 'polling'],
+            auth: { token },
+            reconnection: true,
+            reconnectionAttempts: this.maxReconnectAttempts,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 30000,
+            timeout: 30000,
+            upgrade: true,
+            forceNew: false,
+            path: '/socket.io/'
+        });
         
-        if (!token) {
-            console.error('No token for WebSocket');
-            return;
-        }
+        this.state.socket = socket;
         
-        console.log(`🔌 Подключение WebSocket к ${apiUrl}`);
+        socket.on('connect', () => {
+            console.log('✅ WebSocket connected');
+            this.reconnectAttempts = 0;
+            if (this.callbacks.onConnected) {
+                this.callbacks.onConnected();
+            }
+        });
         
-        try {
-            const socket = io(apiUrl, {
-                transports: ['websocket', 'polling'],
-                auth: { token },
-                reconnection: true,
-                reconnectionAttempts: this.maxReconnectAttempts,
-                reconnectionDelay: 1000,
-                reconnectionDelayMax: 30000,
-                timeout: 30000,
-                upgrade: true,
-                forceNew: false,
-                path: '/socket.io/'
-            });
-            
-            this.state.socket = socket;
-            
-            socket.on('connect', () => {
-                console.log('✅ WebSocket connected');
-                this.reconnectAttempts = 0;
-                if (this.timers.reconnectTimer) {
-                    clearTimeout(this.timers.reconnectTimer);
-                    this.timers.reconnectTimer = null;
-                }
-                if (this.callbacks.onConnected) {
-                    this.callbacks.onConnected();
-                }
-            });
-            
-            socket.on('disconnect', (reason) => {
-                console.log('❌ WebSocket disconnected:', reason);
-                if (this.callbacks.onDisconnected) {
-                    this.callbacks.onDisconnected(reason);
-                }
-            });
-            
-            socket.on('connect_error', (err) => {
-                console.error('WebSocket connect error:', err.message);
-            });
-            
-            socket.on('connected', (data) => {
-                console.log('📡 Connected to arena server', data);
-            });
-            
-            socket.on('battle_status', (data) => {
-                console.log('📡 Battle status received', data);
-                if (data.hasBattle && data.status === 'active' && !this.state.battleActive) {
-                    this.startBattle(
-                        data.battleId,
-                        data.isPlayer1,
-                        data.myTeam,
-                        data.opponentTeam
-                    );
-                } else if (data.hasBattle && data.status === 'pending_confirmation' && !this.state.confirmationShown) {
-                    this.stopSearch();
-                    this.state.confirmationShown = true;
-                    this.state.currentBattleId = data.battleId;
-                    if (this.callbacks.onMatchFound) {
-                        this.callbacks.onMatchFound(data);
-                    }
-                }
-            });
-            
-            socket.on('match_found', (data) => {
-                console.log('⚔️ Match found!', data);
-                this.state.confirmationShown = true;
-                this.state.currentBattleId = data.battleId;
-                this.state.currentBattleIsPlayer1 = data.isPlayer1;
-                if (this.callbacks.onMatchFound) {
-                    this.callbacks.onMatchFound(data);
-                }
-            });
-            
-            socket.on('battle_start', (data) => {
-                console.log('⚔️ Battle start!', data);
-                this.state.confirmationShown = false;
+        socket.on('disconnect', (reason) => {
+            console.log('❌ WebSocket disconnected:', reason);
+            if (this.callbacks.onDisconnected) {
+                this.callbacks.onDisconnected(reason);
+            }
+        });
+        
+        socket.on('connect_error', (err) => {
+            console.error('WebSocket connect error:', err.message);
+        });
+        
+        socket.on('connected', (data) => {
+            console.log('📡 Connected to arena server', data);
+        });
+        
+        socket.on('battle_status', (data) => {
+            console.log('📡 Battle status received', data);
+            if (data.hasBattle && data.status === 'active' && !this.state.battleActive) {
                 this.startBattle(
                     data.battleId,
                     data.isPlayer1,
                     data.myTeam,
-                    data.opponentTeam
+                    data.opponentTeam,
+                    data.timeLeft
                 );
-                // Запускаем таймер с переданным временем
-                if (data.timeLeft !== undefined) {
-                    this.startBattleTimer(data.timeLeft);
-                } else {
-                    this.startBattleTimer(30);
+            } else if (data.hasBattle && data.status === 'pending_confirmation' && !this.state.confirmationShown) {
+                this.stopSearch();
+                this.state.confirmationShown = true;
+                this.state.currentBattleId = data.battleId;
+                if (this.callbacks.onMatchFound) {
+                    this.callbacks.onMatchFound(data);
                 }
-            });
-            
-            socket.on('move_update', (data) => {
-                this.updateBattle(data);
-                // Обновляем таймер, если есть время
-                if (data.timeLeft !== undefined) {
-                    this.startBattleTimer(data.timeLeft);
+            } else if (data.hasBattle && data.status === 'waiting' && !this.state.isSearching) {
+                this.state.isSearching = true;
+                this.state.currentBattleId = data.battleId;
+                this.startSearchTimer();
+                if (this.callbacks.onSearchTick) {
+                    this.callbacks.onSearchTick(60);
                 }
-            });
+            }
+        });
+        
+        socket.on('match_found', (data) => {
+            console.log('⚔️ Match found!', data);
+            this.state.confirmationShown = true;
+            this.state.currentBattleId = data.battleId;
+            this.state.currentBattleIsPlayer1 = data.isPlayer1;
+            if (this.callbacks.onMatchFound) {
+                this.callbacks.onMatchFound(data);
+            }
+        });
+        
+        socket.on('battle_start', (data) => {
+            console.log('⚔️ Battle start!', data);
+            this.state.confirmationShown = false;
+            this.startBattle(
+                data.battleId,
+                data.isPlayer1,
+                data.myTeam,
+                data.opponentTeam,
+                data.timeLeft
+            );
+            if (data.timeLeft !== undefined) {
+                this.startBattleTimer(data.timeLeft);
+            } else {
+                this.startBattleTimer(30);
+            }
+        });
+        
+        socket.on('move_update', (data) => {
+            this.updateBattle(data);
+            if (data.timeLeft !== undefined) {
+                this.startBattleTimer(data.timeLeft);
+            }
+        });
+        
+        socket.on('battle_end', (data) => {
+            console.log('🏆 Battle end!', data);
+            this.endBattle(data.winnerId, data.prizePool);
+        });
+        
+        socket.on('confirmation_update', (data) => {
+            console.log('📡 Получено confirmation_update:', data);
             
-            socket.on('battle_end', (data) => {
-                console.log('🏆 Battle end!', data);
-                this.endBattle(data.winnerId, data.prizePool);
-            });
+            if (this.state.currentBattleId) {
+                if (data.player1Confirmed !== undefined) {
+                    this.state.player1Confirmed = data.player1Confirmed;
+                }
+                if (data.player2Confirmed !== undefined) {
+                    this.state.player2Confirmed = data.player2Confirmed;
+                }
+            }
             
-            socket.on('confirmation_update', (data) => {
-    console.log('📡 Получено confirmation_update:', data);
-    
-    // Обновляем состояние в клиенте
-    if (this.state.currentBattleId) {
-        if (data.player1Confirmed !== undefined) {
-            this.state.player1Confirmed = data.player1Confirmed;
-        }
-        if (data.player2Confirmed !== undefined) {
-            this.state.player2Confirmed = data.player2Confirmed;
-        }
-    }
-    
-    // Передаём обновление в UI
-    if (this.callbacks.onConfirmationUpdate) {
-        this.callbacks.onConfirmationUpdate(data);
-    }
-    
-    // ИСПРАВЛЕНО: Если оба игрока подтвердили, принудительно закрываем модалку
-    const myConfirmed = this.state.currentBattleIsPlayer1 
-        ? data.player1Confirmed 
-        : data.player2Confirmed;
-    const opponentConfirmed = this.state.currentBattleIsPlayer1 
-        ? data.player2Confirmed 
-        : data.player1Confirmed;
-    
-    if (myConfirmed && opponentConfirmed) {
-        console.log('✅ Оба игрока подтвердили, закрываем confirmation state');
-        this.state.confirmationShown = false;
-    }
-});
+            if (this.callbacks.onConfirmationUpdate) {
+                this.callbacks.onConfirmationUpdate(data);
+            }
             
-            socket.on('match_rejected', (data) => {
-                console.log('❌ Match rejected by opponent', data);
+            const myConfirmed = this.state.currentBattleIsPlayer1 
+                ? data.player1Confirmed 
+                : data.player2Confirmed;
+            const opponentConfirmed = this.state.currentBattleIsPlayer1 
+                ? data.player2Confirmed 
+                : data.player1Confirmed;
+            
+            if (myConfirmed && opponentConfirmed) {
+                console.log('✅ Оба игрока подтвердили, закрываем confirmation state');
                 this.state.confirmationShown = false;
-                this.state.currentBattleId = null;
-                if (this.callbacks.onMatchRejected) {
-                    this.callbacks.onMatchRejected(data);
-                }
-            });
+            }
+        });
+        
+        socket.on('match_rejected', (data) => {
+            console.log('❌ Match rejected by opponent', data);
+            this.state.confirmationShown = false;
+            this.state.currentBattleId = null;
+            if (this.callbacks.onMatchRejected) {
+                this.callbacks.onMatchRejected(data);
+            }
+        });
+        
+        socket.on('error', (error) => {
+            console.error('WebSocket error:', error);
+            if (window.addDebugLog) window.addDebugLog(`WebSocket ошибка: ${error}`, 'error');
+        });
+        
+        socket.on('reconnect_attempt', (attempt) => {
+            console.log(`Reconnect attempt ${attempt}`);
+            if (window.addDebugLog) window.addDebugLog(`Попытка переподключения ${attempt}...`, 'info');
+        });
+        
+        socket.on('reconnect', () => {
+            console.log('Reconnected successfully');
+            if (window.addDebugLog) window.addDebugLog('Переподключено!', 'success');
+            if (this.callbacks.onConnected) {
+                this.callbacks.onConnected();
+            }
             
-            socket.on('error', (error) => {
-                console.error('WebSocket error:', error);
-                if (window.addDebugLog) window.addDebugLog(`WebSocket ошибка: ${error}`, 'error');
-            });
-            
-            socket.on('reconnect_attempt', (attempt) => {
-                console.log(`Reconnect attempt ${attempt}`);
-                if (window.addDebugLog) window.addDebugLog(`Попытка переподключения ${attempt}...`, 'info');
-            });
-            
-            socket.on('reconnect', () => {
-                console.log('Reconnected successfully');
-                if (window.addDebugLog) window.addDebugLog('Переподключено!', 'success');
-                if (this.state.battleActive && this.state.currentBattleId) {
-                    socket.emit('check_battle_status', { battleId: this.state.currentBattleId });
-                }
-            });
+            if (this.state.currentBattleId) {
+                this.state.socket.emit('check_battle_status', { battleId: this.state.currentBattleId });
+            } else if (this.state.confirmationShown && this.state.currentBattleId) {
+                this.state.socket.emit('check_battle_status', { battleId: this.state.currentBattleId });
+            } else if (this.state.battleActive && this.state.currentBattleId) {
+                this.state.socket.emit('check_battle_status', { battleId: this.state.currentBattleId });
+            } else if (this.state.isSearching) {
+                this.state.socket.emit('check_battle_status', {});
+            }
+        });
 
-            // Все попытки реконнекта исчерпаны — сообщаем пользователю
-            socket.on('reconnect_failed', () => {
-                console.error('WebSocket: все попытки реконнекта исчерпаны');
-                if (window.addDebugLog) window.addDebugLog('Нет соединения с сервером', 'error');
-                if (this.callbacks.onDisconnected) {
-                    this.callbacks.onDisconnected('reconnect_failed');
-                }
-            });
-
-            // Ручной ping убран: socket.io сам обрабатывает heartbeat (pingInterval/pingTimeout).
-            
-        } catch (err) {
-            console.error('Failed to create WebSocket connection:', err);
-            this.scheduleReconnect(token, apiUrl);
-        }
+        socket.on('reconnect_failed', () => {
+            console.error('WebSocket: все попытки реконнекта исчерпаны');
+            if (window.addDebugLog) window.addDebugLog('Нет соединения с сервером', 'error');
+            if (this.callbacks.onDisconnected) {
+                this.callbacks.onDisconnected('reconnect_failed');
+            }
+        });
+        
+    } catch (err) {
+        console.error('Failed to create WebSocket connection:', err);
     }
+}
     
     scheduleReconnect(token, apiUrl) {
         if (this.timers.reconnectTimer) return;

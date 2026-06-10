@@ -2662,104 +2662,73 @@ async function makeAttack(targetIndex) {
         return; 
     }
 
-    // Глобальный лок — не допускаем двойной атаки пока не пришёл ответ
     if (makeAttack._inProgress) return;
     makeAttack._inProgress = true;
     
-    try {
-    
     const attackBtn = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${targetIndex}"] .arena-attack-btn`);
-    if (attackBtn) {
-        attackBtn.disabled = true;
-        attackBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-    }
     
-    const res = await apiRequest('POST', '/api/arena/move', { battleId, targetIndex });
-    makeAttack._inProgress = false;
-    
-    if (!res?.success) {
-        showToast(res?.message || 'Ошибка атаки', '❌');
+    try {
         if (attackBtn) {
-            attackBtn.disabled = false;
-            attackBtn.innerHTML = '⚔️ Атаковать';
+            attackBtn.disabled = true;
+            attackBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
         }
-        return;
-    }
-
-    if (res.stunSkipped) {
-        showToast('😵 Питомец оглушён и пропускает ход!', '⚡');
-        // Разблокируем кнопку атаки — иначе она остаётся disabled навсегда
-        if (attackBtn) {
-            attackBtn.disabled = false;
-            attackBtn.innerHTML = '⚔️ Атаковать';
-        }
-        const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
-        updateBattleUIFromClient({
-            myTeam: res.myTeam,
-            opponentTeam: res.enemyTeam,
-            currentTurn: res.currentTurn
-        }, isPlayer1);
-        return;
-    }
-
-    if (res.finished) {
-        // Всегда завершаем бой на клиенте по HTTP-ответу — не ждём WebSocket
-        arenaClient?.endBattle(res.winnerId || null, res.prizePool || 0);
-        const isWin = !!res.winnerId && res.winnerId === arenaClient?.getCurrentUserId();
-        showNativeBattleResult(isWin, res.prizePool || 0);
-        renderArenaFightTab();
-    } else {
-        const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
-        if (res.skillResult) {
-            showSkillBanner(res.skillResult.skillName, res.skillResult.description);
-            if (res.skillResult.poisoned) showToast('☠️ Противник отравлен на 3 хода!', '☠️');
-        }
-        if (res.poisonLog && res.poisonLog.length > 0) {
-            const totalDmg = res.poisonLog.reduce((s, p) => s + p.dmg, 0);
-            showToast(`☠️ Яд: -${totalDmg} HP у врагов`, '💀');
-        }
-        updateBattleUIFromClient({
-            myTeam: res.myTeam,
-            opponentTeam: res.enemyTeam,
-            lastMove: res.lastMove,
-            currentTurn: res.currentTurn,
-            turnCount: res.turnCount
-        }, isPlayer1);
         
-        if (res.lastMove && res.lastMove.targetIndex !== undefined) {
-            showDamageAnimation(res.lastMove.targetIndex, res.lastMove.damage, res.lastMove.isCrit, false);
+        const res = await apiRequest('POST', '/api/arena/move', { battleId, targetIndex });
+        
+        if (!res?.success) {
+            showToast(res?.message || 'Ошибка атаки', '❌');
+            return;
         }
-    }
+
+        if (res.stunSkipped) {
+            showToast('😵 Питомец оглушён и пропускает ход!', '⚡');
+            const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
+            updateBattleUIFromClient({
+                myTeam: res.myTeam,
+                opponentTeam: res.enemyTeam,
+                currentTurn: res.currentTurn
+            }, isPlayer1);
+            return;
+        }
+
+        if (res.finished) {
+            arenaClient?.endBattle(res.winnerId || null, res.prizePool || 0);
+            const isWin = !!res.winnerId && res.winnerId === arenaClient?.getCurrentUserId();
+            showNativeBattleResult(isWin, res.prizePool || 0);
+            renderArenaFightTab();
+        } else {
+            const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
+            if (res.skillResult) {
+                showSkillBanner(res.skillResult.skillName, res.skillResult.description);
+                if (res.skillResult.poisoned) showToast('☠️ Противник отравлен на 3 хода!', '☠️');
+            }
+            if (res.poisonLog && res.poisonLog.length > 0) {
+                const totalDmg = res.poisonLog.reduce((s, p) => s + p.dmg, 0);
+                showToast(`☠️ Яд: -${totalDmg} HP у врагов`, '💀');
+            }
+            updateBattleUIFromClient({
+                myTeam: res.myTeam,
+                opponentTeam: res.enemyTeam,
+                lastMove: res.lastMove,
+                currentTurn: res.currentTurn,
+                turnCount: res.turnCount
+            }, isPlayer1);
+            
+            if (res.lastMove && res.lastMove.targetIndex !== undefined) {
+                showDamageAnimation(res.lastMove.targetIndex, res.lastMove.damage, res.lastMove.isCrit, false);
+            }
+        }
     } catch(e) {
-        makeAttack._inProgress = false;
         showToast('Ошибка соединения', '❌');
+    } finally {
+        makeAttack._inProgress = false;
+        if (attackBtn) {
+            attackBtn.disabled = false;
+            attackBtn.innerHTML = '⚔️ Атаковать';
+        }
     }
 }
 makeAttack._inProgress = false;
-
-async function surrenderBattle() {
-    const battleId = arenaClient?.getBattleId();
-    if (!battleId) return;
-    
-    if (window.Telegram?.WebApp) {
-        window.Telegram.WebApp.showPopup({
-            title: '⚠️ Сдаться?',
-            message: 'Вы потеряете MMO за вход в бой.',
-            buttons: [
-                { id: 'confirm', type: 'destructive', text: 'Сдаться' },
-                { id: 'cancel', type: 'cancel', text: 'Отмена' }
-            ]
-        }, async (buttonId) => {
-            if (buttonId !== 'confirm') return;
-            const res = await apiRequest('POST', '/api/arena/surrender', { battleId });
-            if (res?.success) { showToast('Вы сдались', '⚠️'); renderArenaFightTab(); }
-        });
-    } else {
-        if (!confirm('Вы уверены, что хотите сдаться? Вы потеряете MMO за вход.')) return;
-        const res = await apiRequest('POST', '/api/arena/surrender', { battleId });
-        if (res?.success) { showToast('Вы сдались', '⚠️'); renderArenaFightTab(); }
-    }
-}
 
 // ============================================================
 // RENDER ARENA FIGHT TAB
@@ -2803,9 +2772,15 @@ async function renderArenaFightTab() {
             } else if (battleRes.status === 'active') {
                 const justEnded = arenaClient?.state.battleEndedAt && (Date.now() - arenaClient.state.battleEndedAt < 8000);
                 if (!arenaClient?.isBattleActive() && !justEnded) {
-                    arenaClient?.startBattle(battleRes.battleId, battleRes.isPlayer1, battleRes.myTeam, battleRes.opponentTeam);
-                    renderBattleInterface(battleRes);
-                }
+    arenaClient?.startBattle(
+        battleRes.battleId, 
+        battleRes.isPlayer1, 
+        battleRes.myTeam, 
+        battleRes.opponentTeam,
+        battleRes.timeLeft
+    );
+    renderBattleInterface(battleRes);
+}
             } else if (battleRes.status === 'pending_confirmation') {
                 const myConfirmed = battleRes.isPlayer1 ? battleRes.player1Confirmed : battleRes.player2Confirmed;
                 const modalAlreadyOpen = !!document.getElementById('matchFoundModal');
@@ -3791,6 +3766,50 @@ async function claimStaking() {
     }
 }
 
+// ============================================================
+// ВОССТАНОВЛЕНИЕ WEBSOCKET ПОСЛЕ СВОРАЧИВАНИЯ/РАЗВОРАЧИВАНИЯ
+// ============================================================
+
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && arenaClient && state.token) {
+        console.log('👁️ Вкладка активна, проверяем WebSocket...');
+        if (!arenaClient.isConnected()) {
+            console.log('🔄 WebSocket отключён, переподключаемся...');
+            arenaClient.connectSocket(state.token, API_URL);
+        }
+        
+        if (arenaClient.getBattleId()) {
+            setTimeout(() => {
+                arenaClient.checkBattleStatus(arenaClient.getBattleId());
+            }, 500);
+        } else if (arenaClient.isSearching()) {
+            setTimeout(() => {
+                arenaClient.checkBattleStatus();
+            }, 500);
+        }
+    }
+});
+
+window.addEventListener('online', () => {
+    console.log('🌐 Интернет восстановлен');
+    if (arenaClient && state.token && !arenaClient.isConnected()) {
+        arenaClient.connectSocket(state.token, API_URL);
+        if (arenaClient.getBattleId()) {
+            setTimeout(() => {
+                arenaClient.checkBattleStatus(arenaClient.getBattleId());
+            }, 1000);
+        }
+    }
+});
+
+window.addEventListener('offline', () => {
+    console.log('📡 Интернет потерян');
+    if (typeof showToast === 'function') {
+        showToast('Потеряно соединение с интернетом', '⚠️');
+    }
+});
+
+// ========== ЭТИ СТРОКИ УЖЕ БЫЛИ, НИЧЕГО НЕ МЕНЯЙТЕ ==========
 window.selectStakingPlan = selectStakingPlan;
 window.openStakingModal   = openStakingModal;
 window.closeStakingModal  = closeStakingModal;

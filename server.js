@@ -15,7 +15,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 
 const app = express();
-app.set('trust proxy', 1); // Railway проксирует запросы — нужен реальный IP клиента
+app.set('trust proxy', 1);
 
 // ============================================
 // ИМПОРТ МОДУЛЯ АРЕНЫ (WebSocket версия)
@@ -44,7 +44,7 @@ app.options('*', (req, res) => {
 });
 
 // ============================================
-// КОНСТАНТЫ (как в первой версии + защита от фарма)
+// КОНСТАНТЫ
 // ============================================
 const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
 const ADMIN_IDS = process.env.ADMIN_IDS ? process.env.ADMIN_IDS.split(',').map(id => id.trim()) : [];
@@ -55,13 +55,13 @@ const MIN_TRANSACTION_AMOUNT = 10000;
 const MAX_ACTIVE_REQUESTS = 2;
 const MAX_ACTIVE_LISTINGS = 2;
 const MIN_MARKETPLACE_PRICE = 500;
-const MIN_DUST_PRICE = 15; // минимальная цена пыли за штуку
-const MAX_COMMON_PRICE = 1100;  // ЗАЩИТА ОТ ФАРМА
+const MIN_DUST_PRICE = 15;
+const MAX_COMMON_PRICE = 1100;
 const MAX_ADS_AVAILABLE = 10;
 const ADS_REGEN_INTERVAL = 60 * 60 * 1000;
 
 const MAX_ARENA_BATTLES = 10;
-const ARENA_BATTLE_REGEN_INTERVAL = 60 * 60 * 1000; // +1 бой каждый час
+const ARENA_BATTLE_REGEN_INTERVAL = 60 * 60 * 1000;
 const REFERRAL_BONUS_PERCENT = 2;
 
 // ============================================
@@ -176,7 +176,7 @@ const UserSchema = new mongoose.Schema({
     }],
     adsAvailable: { type: Number, default: MAX_ADS_AVAILABLE },
     adsLastRegen: { type: Date, default: Date.now },
-    adsWatchedTotal: { type: Number, default: 0 }, // точный счётчик просмотров рекламы
+    adsWatchedTotal: { type: Number, default: 0 },
     arenaBattlesLeft: { type: Number, default: MAX_ARENA_BATTLES },
     arenaLastBattleRegen: { type: Date, default: Date.now },
     adsCooldownUntil: { type: Date, default: null },
@@ -233,9 +233,9 @@ const MarketplaceSchema = new mongoose.Schema({
     sellerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     sellerTgId: { type: String, required: true },
     sellerName: { type: String, default: '' },
-    creatureId: { type: String, default: null },   // null для пыли
-    isDust: { type: Boolean, default: false },      // true = лот пыли
-    dustAmount: { type: Number, default: 0 },       // кол-во пыли в лоте
+    creatureId: { type: String, default: null },
+    isDust: { type: Boolean, default: false },
+    dustAmount: { type: Number, default: 0 },
     price: { type: Number, required: true },
     active: { type: Boolean, default: true },
     createdAt: { type: Date, default: Date.now }
@@ -337,6 +337,7 @@ const ArenaBattleSchema = new mongoose.Schema({
         skill: { id: String, name: String, chance: Number, description: String } }],
     
     currentTurn: { type: String, enum: ['player1', 'player2', '__processing__'], default: 'player1' },
+    processingStartedAt: { type: Date, default: null },
     turnCount: { type: Number, default: 0 },
     battleLog: [{
         turn: Number, player: String, attackerName: String, attackerIndex: Number,
@@ -380,7 +381,6 @@ const ArenaStatsSchema = new mongoose.Schema({
 });
 const ArenaStats = mongoose.model('ArenaStats', ArenaStatsSchema);
 
-// ── STAKING ──────────────────────────────────────────────────
 const StakingSchema = new mongoose.Schema({
     userId:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
     amount:    { type: Number, required: true },
@@ -416,7 +416,6 @@ setInterval(() => {
     }
 }, 60 * 60 * 1000);
 
-// Очистка истёкших сессий админа
 setInterval(() => {
     const now = Date.now();
     for (const [token, session] of adminSessions.entries()) {
@@ -743,7 +742,6 @@ const lastMergeTimes = new Map();
 const adLocks = new Map();
 const incomeLocks = new Map();
 
-// Очистка rate-limit Map'ов от устаревших записей — предотвращаем утечку памяти
 setInterval(() => {
     const cutoff = Date.now() - 60 * 1000;
     for (const [k, v] of lastOpenTimes.entries()) { if (v < cutoff) lastOpenTimes.delete(k); }
@@ -783,7 +781,7 @@ async function getGameConfig() {
             specialQuests: [],
             limits: { maxInventorySlots: 50, maxMarketplacePrice: 100000, maxLevel: 100 }
         });
-        console.log('✅ Созданы настройки игры по умолчанию (как в первой версии)');
+        console.log('✅ Созданы настройки игры по умолчанию');
     }
     
     cachedConfig = config;
@@ -803,8 +801,6 @@ async function invalidateConfigCache() {
     console.log('🔄 Кэш конфига сброшен');
 }
 
-// Читает specialQuests напрямую через нативный драйвер,
-// обходя CastError Mongoose при несовпадении типов в БД.
 async function getSpecialQuestsRaw() {
     const doc = await GameConfig.collection.findOne({}, { projection: { specialQuests: 1 } });
     const quests = doc?.specialQuests || [];
@@ -881,8 +877,6 @@ async function randomCreatureByRarity(rarity, capsuleType = 'premium') {
     const allByRarity = creaturesCache
         ? creaturesCache.filter(c => c.rarity === rarity && c.isActive)
         : await Creature.find({ rarity, isActive: true });
-    // stakingOnly — только через стейкинг, никогда из капсул
-    // premiumOnly — только из premium капсулы (не из basic)
     const pool = allByRarity.filter(c => {
         if (c.stakingOnly) return false;
         if (capsuleType === 'basic' && c.premiumOnly) return false;
@@ -1090,7 +1084,6 @@ const authMiddleware = async (req, res, next) => {
 // ============================================
 // HEALTH CHECK
 // ============================================
-// Отдаём только фронтенд-файлы — НЕ .env, server.js и т.д.
 const STATIC_WHITELIST = ['index.html', 'style.css', 'script.js', 'arena-client.js',
     'arena-skills.js', 'localization.js', 'admin.html'];
 app.get('/admin.html', (req, res) => res.sendFile(__dirname + '/admin.html'));
@@ -1197,8 +1190,6 @@ app.post('/api/auth/login', async (req, res) => {
         const isNewUser = !user;
 
         if (!user) {
-            // Используем findOneAndUpdate с upsert для защиты от race condition
-            // (одновременные логины одного пользователя не создадут дубликат)
             const newReferralCode = 'REF' + String(userData.id) + Math.random().toString(36).slice(2, 7).toUpperCase();
             const newUserData = {
                 telegramId: String(userData.id),
@@ -1216,13 +1207,11 @@ app.post('/api/auth/login', async (req, res) => {
                 const referrer = await User.findOne({ referralCode });
                 if (referrer && referrer.telegramId !== String(userData.id)) {
                     newUserData.referredBy = referrer.telegramId;
-                    // Атомарно увеличиваем счётчик рефералов
                     await User.findByIdAndUpdate(referrer._id, { $inc: { referralCount: 1 } });
                     referrerInfo = referrer;
                 }
             }
 
-            // $setOnInsert выполняется только при создании новой записи
             const upsertResult = await User.findOneAndUpdate(
                 { telegramId: String(userData.id) },
                 {
@@ -1400,7 +1389,6 @@ app.post('/api/game/claim-friend-reward', authMiddleware, async (req, res) => {
         const { requiredFriends, creatureId } = req.body;
         const user = req.user;
 
-        // Валидация: requiredFriends должен быть одним из допустимых значений
         const ALLOWED_FRIEND_COUNTS = [10, 25, 50, 100];
         if (!ALLOWED_FRIEND_COUNTS.includes(Number(requiredFriends))) {
             return res.status(400).json({ success: false, message: 'Неверное количество друзей' });
@@ -1497,7 +1485,6 @@ app.post('/api/game/open-capsule', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Недостаточно MMO' });
         }
 
-        // Атомарный XP: вычисляем нужный increment с учётом level-up
         {
             const xpGain = type === 'premium' ? 100 : 10;
             const needed = xpNeeded(updatedUser.level);
@@ -1539,8 +1526,6 @@ app.post('/api/game/open-capsule', authMiddleware, async (req, res) => {
             updatedUser.discovered.push(creature.id);
             await User.updateOne({ _id: updatedUser._id }, { $addToSet: { discovered: creature.id } });
         }
-
-        // Убираем небезопасный save() — все изменения уже атомарны выше
         
         invalidateInventoryCache(user.telegramId);
         
@@ -1593,7 +1578,6 @@ app.post('/api/game/merge', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Инвентарь полон' });
         }
 
-        // Dust boost: +50% to merge chance
         const DUST_COST = { common: 400, uncommon: 4000, rare: 50000 };
         const dustCost = useDust ? (DUST_COST[creature.rarity] || 0) : 0;
         if (useDust && dustCost > 0) {
@@ -1601,7 +1585,6 @@ app.post('/api/game/merge', authMiddleware, async (req, res) => {
             if ((freshUser.dust || 0) < dustCost) {
                 return res.status(400).json({ success: false, message: `Недостаточно пыли. Нужно ${dustCost} 🌫️` });
             }
-            // Атомарно списываем пыль
             const dustUpdated = await User.findOneAndUpdate(
                 { _id: user._id, dust: { $gte: dustCost } },
                 { $inc: { dust: -dustCost } },
@@ -1655,7 +1638,6 @@ app.post('/api/game/merge', authMiddleware, async (req, res) => {
             user.discovered.push(resultCreature.id);
         }
 
-        // Атомарно сохраняем mergeCount, discovered, транзакцию
         const xpGain = 20;
         const needed = xpNeeded(user.level);
         const newXp = user.xp + xpGain;
@@ -1673,7 +1655,6 @@ app.post('/api/game/merge', authMiddleware, async (req, res) => {
             },
             { new: true }
         );
-        // Синхронизируем in-memory для formatUser
         if (mergedUser) {
             user.mergeCount = mergedUser.mergeCount;
             user.xp = mergedUser.xp;
@@ -1732,7 +1713,6 @@ app.post('/api/game/upgrade-inventory', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Недостаточно MMO', required: cost });
         }
 
-        // Атомарный XP (addXP убран — дублировал xpGain, давал 60 вместо 30)
         {
             const xpGain = 30;
             const needed = xpNeeded(updatedUser.level);
@@ -1817,7 +1797,6 @@ app.post('/api/game/watch-ad', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Не удалось получить награду. Попробуйте ещё раз.' });
         }
         
-        // Атомарный XP (addXP убран — дублировал xpGain)
         {
             const xpGain = 5;
             const needed = xpNeeded(updatedUser.level);
@@ -1836,7 +1815,6 @@ app.post('/api/game/watch-ad', authMiddleware, async (req, res) => {
         const nextRegenIn = ADS_REGEN_INTERVAL - (now.getTime() - lastRegen);
         const nextRegenMinutes = Math.ceil(nextRegenIn / 60000);
 
-        // Milestone: 200 реклам — выдаём Kangaroo Uncommon (один раз)
         let kangarooUnlocked = false;
         const newTotal = updatedUser.adsWatchedTotal;
         if (newTotal >= 200 && !(updatedUser.discovered || []).includes('kangaroo_u')) {
@@ -2097,7 +2075,6 @@ app.post('/api/game/complete-special-quest', authMiddleware, async (req, res) =>
             return res.status(400).json({ success: false, message: 'Вы уже получили награду за этот квест' });
         }
 
-        // Атомарный XP
         {
             const xpGain = 20;
             const needed = xpNeeded(updatedUser.level);
@@ -2127,7 +2104,6 @@ app.post('/api/marketplace/list', authMiddleware, async (req, res) => {
         const { creatureId, price, isDust, dustAmount } = req.body;
         const user = req.user;
 
-        // Маркет доступен с 5 уровня
         if ((user.level || 1) < 5) {
             return res.status(403).json({ success: false, message: 'Маркет доступен с 5 уровня' });
         }
@@ -2140,7 +2116,6 @@ app.post('/api/marketplace/list', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: `Вы уже выставили ${MAX_ACTIVE_LISTINGS} лотов. Сначала отмените или дождитесь продажи существующих.` });
         }
 
-        // ── ЛОТ ПЫЛИ ──────────────────────────────────────────
         if (isDust) {
             const amount = parseInt(dustAmount, 10);
             if (!amount || amount < 1) {
@@ -2152,7 +2127,6 @@ app.post('/api/marketplace/list', authMiddleware, async (req, res) => {
             if (price > limits.maxMarketplacePrice) {
                 return res.status(400).json({ success: false, message: `Максимальная цена ${limits.maxMarketplacePrice} MMO` });
             }
-            // Атомарно списываем пыль с проверкой наличия
             const dustUpdated = await User.findOneAndUpdate(
                 { _id: user._id, dust: { $gte: amount } },
                 { $inc: { dust: -amount } },
@@ -2173,7 +2147,6 @@ app.post('/api/marketplace/list', authMiddleware, async (req, res) => {
                     active: true
                 });
             } catch (createErr) {
-                // Откат: возвращаем пыль если создание лота упало
                 await User.findByIdAndUpdate(user._id, { $inc: { dust: amount } });
                 throw createErr;
             }
@@ -2181,11 +2154,9 @@ app.post('/api/marketplace/list', authMiddleware, async (req, res) => {
             return res.json({ success: true, listing, dust: dustUpdated.dust });
         }
 
-        // ── ЛОТ СУЩЕСТВА ──────────────────────────────────────
         const creature = await getCreature(creatureId);
         if (!creature) return res.status(400).json({ success: false, message: 'Существо не найдено' });
 
-        // Защита от фарма
         if (creature.rarity === 'common' && price > MAX_COMMON_PRICE) {
             return res.status(400).json({ success: false, message: `Common существ нельзя продавать дороже ${MAX_COMMON_PRICE} MMO` });
         }
@@ -2217,7 +2188,6 @@ app.post('/api/marketplace/list', authMiddleware, async (req, res) => {
             active: true
         });
 
-        // Убираем существо из арена-команды если больше нет в инвентаре
         if (invItem.count <= 0 && user.arenaTeam && user.arenaTeam.includes(creatureId)) {
             const newTeam = user.arenaTeam.filter(id => id !== creatureId);
             await User.updateOne({ _id: user._id }, { $set: { arenaTeam: newTeam } });
@@ -2251,7 +2221,6 @@ app.post('/api/marketplace/buy', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Нельзя купить свой лот' });
         }
 
-        // Маркет доступен с 5 уровня
         if ((buyer.level || 1) < 5) {
             return res.status(403).json({ success: false, message: 'Маркет доступен с 5 уровня' });
         }
@@ -2262,7 +2231,6 @@ app.post('/api/marketplace/buy', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Инвентарь покупателя полон' });
         }
 
-        // Атомарно закрываем лот
         const closedListing = await Marketplace.findOneAndUpdate(
             { _id: listingId, active: true },
             { $set: { active: false } },
@@ -2275,7 +2243,6 @@ app.post('/api/marketplace/buy', authMiddleware, async (req, res) => {
         const fee = Math.floor(listing.price * 0.1);
         const sellerEarns = listing.price - fee;
 
-        // ── ПОКУПКА ПЫЛИ ──────────────────────────────────────
         if (listing.isDust) {
             const updatedBuyer = await User.findOneAndUpdate(
                 { _id: buyer._id, balance: { $gte: listing.price } },
@@ -2290,7 +2257,6 @@ app.post('/api/marketplace/buy', authMiddleware, async (req, res) => {
             if (seller) {
                 await User.findByIdAndUpdate(seller._id, { $inc: { balance: sellerEarns } });
             }
-            // Записываем в историю продаж (dust)
             MarketSaleHistory.create({
                 listingId: closedListing._id,
                 creatureId: 'DUST',
@@ -2315,7 +2281,6 @@ app.post('/api/marketplace/buy', authMiddleware, async (req, res) => {
             });
         }
 
-        // ── ПОКУПКА СУЩЕСТВА ──────────────────────────────────
         const creature = await getCreature(listing.creatureId);
         if (!creature) {
             await Marketplace.findByIdAndUpdate(listingId, { $set: { active: true } });
@@ -2367,7 +2332,6 @@ app.post('/api/marketplace/buy', authMiddleware, async (req, res) => {
             await Inventory.create({ userId: buyer._id, telegramId: buyer.telegramId, creatureId: listing.creatureId, count: 1 });
         }
 
-        // Атомарно: XP + discovered
         {
             const xpGain = 5;
             const needed = xpNeeded(updatedBuyer.level);
@@ -2435,7 +2399,6 @@ app.post('/api/marketplace/cancel', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Неверный listingId' });
         }
 
-        // Атомарно деактивируем лот — защита от двойной отмены, проверяем владельца
         const listing = await Marketplace.findOneAndUpdate(
             { _id: listingId, active: true, sellerTgId: user.telegramId },
             { $set: { active: false } },
@@ -2445,19 +2408,16 @@ app.post('/api/marketplace/cancel', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Лот не найден, уже отменён или не принадлежит вам' });
         }
 
-        // Проверка слотов только для существ (пыль не занимает инвентарь)
         if (!listing.isDust) {
             const inventory = await Inventory.find({ telegramId: user.telegramId });
             const usedSlots = inventory.reduce((sum, i) => sum + i.count, 0);
             if (usedSlots >= user.inventorySlots) {
-                // Откатываем — возвращаем лот активным
                 await Marketplace.findByIdAndUpdate(listingId, { $set: { active: true } });
                 return res.status(400).json({ success: false, message: 'Нет свободных слотов в инвентаре. Продайте или объедините существа.' });
             }
         }
 
         if (listing.isDust) {
-            // Возвращаем пыль продавцу
             const dustRefunded = await User.findByIdAndUpdate(
                 user._id, { $inc: { dust: listing.dustAmount } }, { new: true }
             );
@@ -2527,7 +2487,7 @@ app.get('/api/user/leaderboard', authMiddleware, async (req, res) => {
 });
 
 // ============================================
-// АРЕНА - ЭНДПОИНТЫ (сохранены из второй версии)
+// АРЕНА - ЭНДПОИНТЫ
 // ============================================
 
 let arenaSocketManager = null;
@@ -2598,14 +2558,12 @@ app.post('/api/arena/cancel-search', authMiddleware, async (req, res) => {
     try {
         const user = req.user;
         if (user.currentBattleId) {
-            // Атомарно меняем статус — защита от двойной отмены
             const battle = await ArenaBattle.findOneAndUpdate(
                 { _id: user.currentBattleId, status: 'waiting' },
                 { $set: { status: 'expired' } },
                 { new: false }
             );
             if (battle) {
-                // Возвращаем взнос И попытку — бой так и не начался
                 await User.findByIdAndUpdate(user._id, {
                     $inc: { balance: battle.entryFee },
                     $set: { currentBattleId: null }
@@ -2650,15 +2608,12 @@ app.post('/api/arena/find-match', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: `Подождите ${secondsLeft} секунд перед следующим боем` });
         }
 
-        // --- ЛИМИТ БОЁВ АРЕНЫ ОТКЛЮЧЁН (безлимитные бои) ---
         const battlesLeft = 999;
 
-        // Проверяем что все существа команды реально есть в инвентаре
         const inventory = await Inventory.find({ telegramId: user.telegramId }).lean();
         const inventoryMap = new Map(inventory.map(i => [i.creatureId, i.count]));
         const missingCreatures = arenaTeam.filter(id => !inventoryMap.get(id) || inventoryMap.get(id) < 1);
         if (missingCreatures.length > 0) {
-            // Чистим команду от отсутствующих существ
             const newTeam = arenaTeam.filter(id => inventoryMap.get(id) >= 1);
             await User.updateOne({ _id: user._id }, { $set: { arenaTeam: newTeam } });
             return res.status(400).json({ 
@@ -2674,7 +2629,6 @@ app.post('/api/arena/find-match', authMiddleware, async (req, res) => {
             return res.status(400).json(result);
         }
 
-        // Попытки не списываем (безлимитная арена)
         let battlesLeftAfter = 999;
         
         if (!result.isNew) {
@@ -2731,7 +2685,6 @@ app.get('/api/arena/battle/status', authMiddleware, async (req, res) => {
         if (['waiting', 'pending_confirmation'].includes(battle.status) && battle.expiresAt < new Date()) {
             battle.status = 'expired';
             await battle.save();
-            // Возвращаем попытку — бой истёк до начала
             await User.updateOne({ _id: user._id }, {
                 $set: { currentBattleId: null, arenaCooldownUntil: null }
             });
@@ -2743,7 +2696,6 @@ app.get('/api/arena/battle/status', authMiddleware, async (req, res) => {
         }
         
         const isPlayer1 = battle.player1Id.toString() === user._id.toString();
-        
         const isActive = battle.status === 'active';
 
         const response = {
@@ -2761,7 +2713,6 @@ app.get('/api/arena/battle/status', authMiddleware, async (req, res) => {
             turnCount: battle.turnCount,
             lastMoveAt: battle.lastMoveAt,
             myTeam: isPlayer1 ? battle.player1Team : battle.player2Team,
-            // opponentTeam и opponent раскрываем только когда бой активен
             opponentTeam: isActive ? (isPlayer1 ? battle.player2Team : battle.player1Team) : undefined,
             battleLog: battle.battleLog ? battle.battleLog.slice(-20) : []
         };
@@ -2769,7 +2720,6 @@ app.get('/api/arena/battle/status', authMiddleware, async (req, res) => {
         if (isActive) {
             const timeSinceLastMove = (Date.now() - new Date(battle.lastMoveAt).getTime()) / 1000;
             response.timeLeft = Math.max(0, 30 - Math.floor(timeSinceLastMove));
-            // Имя соперника только в активном бою
             const opponentId = isPlayer1 ? battle.player2Id : battle.player1Id;
             if (opponentId) {
                 const opp = await User.findById(opponentId).select('username firstName level').lean();
@@ -2867,7 +2817,6 @@ app.post('/api/arena/reject-match', authMiddleware, async (req, res) => {
             const otherId = battleBefore.player1Id.toString() === rejecterId
                 ? battleBefore.player2Id
                 : battleBefore.player1Id;
-            // Уведомляем обоих: соперника и самого реджектящего
             if (otherId) {
                 arenaSocketManager?.send(otherId, 'match_rejected', {
                     battleId: battleId,
@@ -2933,8 +2882,6 @@ app.post('/api/arena/move', authMiddleware, async (req, res) => {
                     serverTimestamp: result.serverTimestamp || Date.now()
                 };
                 
-                // Отправляем move_update только сопернику.
-                // Мувующий игрок уже получил полный результат через HTTP-ответ.
                 arenaSocketManager?.send(opponentId, 'move_update', moveUpdatePayload);
             }
         }
@@ -3137,14 +3084,12 @@ app.post('/api/staking/start', authMiddleware, async (req, res) => {
 app.post('/api/staking/claim', authMiddleware, async (req, res) => {
     try {
         const user = req.user;
-        // Атомарно помечаем claimed=true — защита от двойной выплаты при параллельных запросах
         const staking = await Staking.findOneAndUpdate(
             { userId: user._id, claimed: false, endsAt: { $lte: new Date() } },
             { $set: { claimed: true } },
             { new: false }
         );
         if (!staking) {
-            // Проверяем — может стейкинг есть, но ещё не завершён
             const active = await Staking.findOne({ userId: user._id, claimed: false });
             if (active) return res.status(400).json({ success: false, message: 'Стейкинг ещё не завершён' });
             return res.status(400).json({ success: false, message: 'Нет активного стейкинга' });
@@ -3161,7 +3106,6 @@ app.post('/api/staking/claim', authMiddleware, async (req, res) => {
             { new: true }
         );
 
-        // 10-дневный план — дополнительно выдаём Capybara Rare
         if (plan && plan.capybara) {
             let inv = await Inventory.findOne({ telegramId: user.telegramId, creatureId: 'capybara_r' });
             if (inv) { inv.count += 1; await inv.save(); }
@@ -3444,7 +3388,6 @@ app.post('/api/admin/transaction-request/:id', adminAuthMiddleware, async (req, 
         const { id } = req.params;
         const { action, note } = req.body;
         
-        // Атомарно меняем статус — защита от двойной обработки при параллельных нажатиях
         const request = await TransactionRequest.findOneAndUpdate(
             { _id: id, status: 'pending' },
             { $set: { status: action === 'approve' ? 'approved' : 'rejected',
@@ -3463,7 +3406,6 @@ app.post('/api/admin/transaction-request/:id', adminAuthMiddleware, async (req, 
 
         if (action === 'approve') {
             if (request.type === 'deposit') {
-                // Атомарно начисляем баланс
                 const updatedUser = await User.findByIdAndUpdate(
                     user._id,
                     {
@@ -3472,7 +3414,6 @@ app.post('/api/admin/transaction-request/:id', adminAuthMiddleware, async (req, 
                     },
                     { new: true }
                 );
-                // Реферальный бонус (2%) — только если реферал достиг 5 уровня
                 if (user.referredBy && (user.level || 1) >= 5) {
                     const referrer = await User.findOne({ telegramId: user.referredBy });
                     if (referrer) {
@@ -3902,7 +3843,6 @@ app.post('/api/admin/special-quests', adminAuthMiddleware, async (req, res) => {
             isActive: isActive !== false
         };
         
-        // Нативный драйвер — обходит CastError Mongoose при несовпадении схемы в БД
         const col = GameConfig.collection;
         await col.updateOne(
             {},
@@ -3978,7 +3918,6 @@ app.delete('/api/admin/special-quests/:questId', adminAuthMiddleware, async (req
         res.status(500).json({ success: false, message: e.message });
     }
 });
-
 
 // ============================================
 // АДМИН: АРЕНА — МОНИТОРИНГ
@@ -4115,9 +4054,6 @@ app.post('/api/admin/refresh-cache', adminAuthMiddleware, async (req, res) => {
     }
 });
 
-// ============================================
-// АДМИН: АРЕНА
-// ============================================
 app.get('/api/admin/arena/stats', adminAuthMiddleware, async (req, res) => {
     try {
         const [
@@ -4168,9 +4104,6 @@ app.get('/api/admin/arena/stats', adminAuthMiddleware, async (req, res) => {
     }
 });
 
-// Дублирующиеся роуты /api/admin/arena/battles и /api/admin/arena/leaderboard удалены — используются версии выше (с полной статистикой)
-
-// Сброс рейтинга игрока
 app.post('/api/admin/arena/reset-player/:telegramId', adminAuthMiddleware, async (req, res) => {
     try {
         const user = await User.findOne({ telegramId: req.params.telegramId });
@@ -4288,14 +4221,12 @@ app.post('/api/admin/broadcast/create', adminAuthMiddleware, async (req, res) =>
             return res.status(400).json({ success: false, message: 'Введите текст сообщения' });
         }
 
-        // Валидация imageUrl: только публичные https URL
         if (imageUrl) {
             try {
                 const parsed = new URL(imageUrl);
                 if (parsed.protocol !== 'https:') {
                     return res.status(400).json({ success: false, message: 'imageUrl должен быть https://' });
                 }
-                // Блокируем приватные диапазоны
                 const host = parsed.hostname.toLowerCase();
                 if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.') ||
                     host.startsWith('10.') || host.startsWith('172.') || host.endsWith('.internal') ||
@@ -4391,16 +4322,10 @@ app.get('/api/admin/broadcast/status/:id', adminAuthMiddleware, async (req, res)
     }
 });
 
-// Дублирующиеся роуты /api/admin/arena/battles и /api/admin/arena/leaderboard (3-я копия) удалены
-
-// ============================================
-// АДМИН: АРЕНА — принудительное завершение зависших боёв
-// ============================================
 app.post('/api/admin/arena/force-expire', adminAuthMiddleware, async (req, res) => {
     try {
         let expiredCount = 0;
 
-        // Бои active, в которых нет хода > 5 минут
         const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
         const staleBattles = await ArenaBattle.find({
             status: 'active',
@@ -4408,7 +4333,6 @@ app.post('/api/admin/arena/force-expire', adminAuthMiddleware, async (req, res) 
         });
 
         for (const battle of staleBattles) {
-            // Победитель — тот кто ходил последним (противоположный currentTurn)
             battle.winnerId = battle.currentTurn === 'player1' ? battle.player2Id : battle.player1Id;
             battle.status = 'finished';
             if (arenaManager) {
@@ -4419,7 +4343,6 @@ app.post('/api/admin/arena/force-expire', adminAuthMiddleware, async (req, res) 
             expiredCount++;
         }
 
-        // Также истёкшие waiting/pending
         if (arenaManager) {
             const extra = await arenaManager.expireOldBattles();
             expiredCount += extra;
@@ -4431,7 +4354,6 @@ app.post('/api/admin/arena/force-expire', adminAuthMiddleware, async (req, res) 
         res.status(500).json({ success: false, message: e.message });
     }
 });
-
 
 setInterval(async () => {
     try {
@@ -4460,7 +4382,7 @@ setInterval(() => {
 }, CLEANUP_INTERVAL);
 
 // ============================================
-// ИНИЦИАЛИЗАЦИЯ СУЩЕСТВ (с повышенным incomeBase как в первой версии)
+// ИНИЦИАЛИЗАЦИЯ СУЩЕСТВ
 // ============================================
 async function initCreatures() {
     const staticCreatures = [
@@ -4507,7 +4429,6 @@ async function initCreatures() {
             await Creature.create(creature);
             console.log(`✅ Добавлено существо: ${creature.name}`);
         } else {
-            // Обновляем флаги stakingOnly/premiumOnly если изменились
             await Creature.updateOne({ id: creature.id }, {
                 $set: {
                     stakingOnly: creature.stakingOnly || false,
@@ -4528,7 +4449,6 @@ const io = socketIo(server, {
     cors: {
         origin: '*',
         methods: ['GET', 'POST']
-        // credentials: true несовместим с origin: '*' по CORS-спецификации
     },
     allowEIO3: true,
     pingTimeout: 60000,
@@ -4572,13 +4492,14 @@ io.on('connection', (socket) => {
     const user = socket.user;
     console.log(`🔌 Новое WebSocket соединение: ${user.telegramId} (${socket.id})`);
 
-    // Простой rate limiter для WS событий — не более 20 за 10 секунд
+    // Усиленный rate limiter: 10 событий за 10 секунд
     let wsEventCount = 0;
-    const wsRateLimitReset = setInterval(() => { wsEventCount = 0; }, 10 * 1000);
+    const wsRateLimitReset = setInterval(() => { wsEventCount = 0; }, 10000);
+    
     const wsRateCheck = () => {
         wsEventCount++;
-        if (wsEventCount > 20) {
-            console.warn(`⚠️ WS rate limit: ${user.telegramId}`);
+        if (wsEventCount > 10) {
+            console.warn(`⚠️ WS rate limit exceeded for ${user.telegramId}`);
             return false;
         }
         return true;
@@ -4586,33 +4507,98 @@ io.on('connection', (socket) => {
     
     socket.emit('connected', { ok: true, timestamp: Date.now() });
     
+    // Проверка бана при подключении
+    (async () => {
+        try {
+            const freshUser = await User.findById(user._id).select('isBanned').lean();
+            if (freshUser?.isBanned) {
+                console.log(`🚫 Забаненный пользователь отключён при подключении: ${user.telegramId}`);
+                socket.disconnect(true);
+                return;
+            }
+        } catch (e) {}
+    })();
+    
     if (arenaSocketManager) {
         arenaSocketManager.add(user._id, socket.id);
     } else {
-        // arenaSocketManager ещё не готов — ждём открытия БД.
-        // Используем on+removeListener вместо once чтобы не накапливать слушатели.
         const onDbOpen = () => {
             if (arenaSocketManager) arenaSocketManager.add(user._id, socket.id);
         };
         mongoose.connection.once('open', onDbOpen);
-        // Если соединение уже открылось пока мы ждали — снимаем слушатель
         socket.once('disconnect', () => mongoose.connection.removeListener('open', onDbOpen));
     }
     
     socket.on('check_battle_status', async (data) => {
         if (!wsRateCheck()) return;
         try {
-            // Валидация battleId
-            if (!data?.battleId || !mongoose.Types.ObjectId.isValid(data.battleId)) return;
+            // Если battleId не передан, проверяем по user.currentBattleId
+            let battleId = data?.battleId;
+            if (!battleId && user.currentBattleId) {
+                battleId = user.currentBattleId;
+            }
+            
+            if (!battleId || !mongoose.Types.ObjectId.isValid(battleId)) {
+                if (user.currentBattleId) {
+                    await User.updateOne({ _id: user._id }, { $set: { currentBattleId: null } });
+                }
+                socket.emit('battle_status', { hasBattle: false });
+                return;
+            }
 
-            const battle = await ArenaBattle.findById(data.battleId);
-            if (!battle || battle.status !== 'active') return;
+            const battle = await ArenaBattle.findById(battleId);
+            if (!battle) {
+                await User.updateOne({ _id: user._id }, { $set: { currentBattleId: null } });
+                socket.emit('battle_status', { hasBattle: false });
+                return;
+            }
+            
+            // ── ОБРАБОТКА waiting СТАТУСА ──
+            if (battle.status === 'waiting') {
+                const isPlayer1 = battle.player1Id.toString() === user._id.toString();
+                if (isPlayer1) {
+                    socket.emit('battle_status', {
+                        hasBattle: true,
+                        battleId: battle._id,
+                        status: battle.status,
+                        isPlayer1: true,
+                        entryFee: battle.entryFee,
+                        prizePool: battle.prizePool,
+                        expiresAt: battle.expiresAt
+                    });
+                }
+                return;
+            }
+            
+            // ── ОБРАБОТКА pending_confirmation ──
+            if (battle.status === 'pending_confirmation') {
+                const isPlayer1 = battle.player1Id.toString() === user._id.toString();
+                socket.emit('battle_status', {
+                    hasBattle: true,
+                    battleId: battle._id,
+                    status: battle.status,
+                    isPlayer1: isPlayer1,
+                    player1Confirmed: battle.player1Confirmed,
+                    player2Confirmed: battle.player2Confirmed,
+                    entryFee: battle.entryFee,
+                    prizePool: battle.prizePool
+                });
+                return;
+            }
+            
+            // ── ОБРАБОТКА active ──
+            if (battle.status !== 'active') {
+                socket.emit('battle_status', { hasBattle: false });
+                return;
+            }
 
-            // Только участники боя получают данные
             const isPlayer1 = battle.player1Id.toString() === user._id.toString();
             const isPlayer2 = battle.player2Id?.toString() === user._id.toString();
             if (!isPlayer1 && !isPlayer2) return;
 
+            const timeSinceLastMove = (Date.now() - new Date(battle.lastMoveAt).getTime()) / 1000;
+            const timeLeft = Math.max(0, 30 - Math.floor(timeSinceLastMove));
+            
             socket.emit('battle_status', {
                 hasBattle: true,
                 battleId: battle._id,
@@ -4621,17 +4607,16 @@ io.on('connection', (socket) => {
                 currentTurn: battle.currentTurn,
                 myTeam: isPlayer1 ? battle.player1Team : battle.player2Team,
                 opponentTeam: isPlayer1 ? battle.player2Team : battle.player1Team,
-                battleLog: battle.battleLog.slice(-20)
+                battleLog: battle.battleLog.slice(-20),
+                timeLeft: timeLeft,
+                serverTimestamp: Date.now()
             });
         } catch (err) {
             console.error('check_battle_status error:', err);
         }
     });
-    
-    // Ping/pong не нужен вручную: socket.io сам пингует каждые pingInterval=25s
-    // и дисконнектит при отсутствии pong за pingTimeout=60s.
 
-    // Периодически проверяем не забанен ли пользователь (раз в 5 минут)
+    // Периодическая проверка бана (раз в 5 минут)
     const banCheckInterval = setInterval(async () => {
         try {
             const freshUser = await User.findById(user._id).select('isBanned').lean();
@@ -4647,8 +4632,6 @@ io.on('connection', (socket) => {
         clearInterval(banCheckInterval);
         clearInterval(wsRateLimitReset);
         if (arenaSocketManager) {
-            // Передаём socket.id чтобы не удалить запись нового сокета,
-            // если пользователь успел переподключиться до этого события.
             arenaSocketManager.remove(user._id, socket.id);
         }
     });
@@ -4700,9 +4683,6 @@ mongoose.connection.once('open', async () => {
 
     // ============================================
     // УВЕДОМЛЕНИЯ ОБ АРЕНЕ (UTC+3)
-    // Расписание: 10:00–12:00 и 20:00–22:00
-    // За 30 минут: 9:30 и 19:30
-    // При открытии: 10:00 и 20:00
     // ============================================
     async function sendArenaNotificationToAll(message) {
         const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -4743,7 +4723,6 @@ mongoose.connection.once('open', async () => {
 
         if (minuteKey === lastArenaNotiMinute) return;
 
-        // За 30 минут до открытия
         if ((utc3Hour === 9 && utc3Min === 30) || (utc3Hour === 19 && utc3Min === 30)) {
             lastArenaNotiMinute = minuteKey;
             const openTime = utc3Hour === 9 ? '10:00' : '20:00';
@@ -4754,7 +4733,6 @@ mongoose.connection.once('open', async () => {
             );
         }
 
-        // Арена открывается (10:00 и 20:00)
         if ((utc3Hour === 10 && utc3Min === 0) || (utc3Hour === 20 && utc3Min === 0)) {
             lastArenaNotiMinute = minuteKey;
             const closeTime = utc3Hour === 10 ? '12:00' : '22:00';

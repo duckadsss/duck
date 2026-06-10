@@ -131,7 +131,6 @@ class ArenaSocketManager {
     add(userId, socketId) {
         const userIdStr = userId.toString();
         const oldSocketId = this.connectedUsers.get(userIdStr);
-        // Закрываем старое соединение если оно отличается от нового
         if (oldSocketId && oldSocketId !== socketId) {
             const oldSocket = this.io.sockets.sockets.get(oldSocketId);
             if (oldSocket) {
@@ -144,13 +143,21 @@ class ArenaSocketManager {
 
     remove(userId, socketId) {
         const userIdStr = userId.toString();
-        // Удаляем только если socketId совпадает с текущим зарегистрированным.
-        // Без этой проверки: add() регистрирует новый сокет, дисконнектит старый,
-        // старый вызывает disconnect → remove() → удаляет запись НОВОГО сокета.
-        if (!socketId || this.connectedUsers.get(userIdStr) === socketId) {
+        const storedSocketId = this.connectedUsers.get(userIdStr);
+        
+        // Если socketId не передан (полный дисконнект сервера) — удаляем запись
+        if (!socketId) {
             this.connectedUsers.delete(userIdStr);
-            console.log(`🔌 WebSocket отключён: ${userId} (всего: ${this.connectedUsers.size})`);
+            console.log(`🔌 WebSocket отключён: ${userId} (полный дисконнект)`);
+            return;
         }
+        
+        // Удаляем только если socketId совпадает с зарегистрированным
+        if (storedSocketId === socketId) {
+            this.connectedUsers.delete(userIdStr);
+            console.log(`🔌 WebSocket отключён: ${userId} (сокет ${socketId.slice(-5)})`);
+        }
+        // Иначе игнорируем — это старый дисконнект
     }
 
     send(userId, event, data) {
@@ -185,7 +192,6 @@ class ArenaBattleManager {
         this.getCreature = getCreatureFn;
         this.sendNotification = sendNotificationFn;
         this.socketManager = arenaSocketManager;
-        // activeBattles / searchQueue удалены — матчмейкинг через MongoDB, не in-memory
     }
 
     async createBattle(player1Id, teamIds, userLevel, league) {
@@ -216,7 +222,6 @@ class ArenaBattleManager {
         const userLeague = userStats.league;
         const leagueConfig = LEAGUE_CONFIG[userLeague];
         
-        // Списываем взнос только если он > 0
         if (leagueConfig.entryFee > 0) {
             if (user.balance < leagueConfig.entryFee) {
                 return { success: false, message: `Недостаточно MMO. Нужно ${leagueConfig.entryFee} MMO для участия в ${leagueConfig.name} лиге` };
@@ -231,19 +236,16 @@ class ArenaBattleManager {
             }
         }
 
-        // Анти-повтор: исключаем себя и последнего соперника
         const excludeIds = [user._id];
         if (user.lastOpponentId) excludeIds.push(user.lastOpponentId);
 
-        // Атомарно захватываем waiting-бой: устанавливаем player2Id только если поле ещё null.
-        // Защита от race condition: два игрока одновременно не смогут захватить одну позицию.
         const player2TeamData = await buildTeamFromIds(teamIds, userLevel, user._id, this.getCreature);
         const claimedBattle = await this.Battle.findOneAndUpdate(
             {
                 status: 'waiting',
                 league: userLeague,
                 player1Id: { $nin: excludeIds },
-                player2Id: null, // гарантируем что ещё не занят
+                player2Id: null,
                 expiresAt: { $gt: new Date() }
             },
             {
@@ -266,7 +268,6 @@ class ArenaBattleManager {
                 ]);
                 return { success: true, battle: waitingBattle, isNew: false, entryFee: leagueConfig.entryFee };
             } else {
-                // Не вставать дважды в очередь
                 const alreadyWaiting = await this.Battle.findOne({
                     status: 'waiting',
                     player1Id: user._id,
@@ -281,7 +282,6 @@ class ArenaBattleManager {
                 return { success: true, battle: newBattle, isNew: true, entryFee: leagueConfig.entryFee };
             }
         } catch (err) {
-            // Откатываем взнос если создание боя провалилось
             if (leagueConfig.entryFee > 0) {
                 await this.User.findByIdAndUpdate(user._id, {
                     $inc: { balance: leagueConfig.entryFee },
@@ -293,7 +293,6 @@ class ArenaBattleManager {
     }
 
     async acceptMatch(battleId, userId) {
-        // Читаем бой для базовых проверок участника
         const battleCheck = await this.Battle.findById(battleId);
         if (!battleCheck) {
             return { success: false, message: 'Бой не найден' };
@@ -308,8 +307,6 @@ class ArenaBattleManager {
             return { success: false, message: 'Вы не участник этого боя' };
         }
 
-        // Атомарное подтверждение: флаг ставится только если он ещё false.
-        // Исключает race condition двух одновременных acceptMatch.
         const confirmField = isPlayer1 ? 'player1Confirmed' : 'player2Confirmed';
         const updated = await this.Battle.findOneAndUpdate(
             { _id: battleId, status: 'pending_confirmation', [confirmField]: false },
@@ -320,8 +317,16 @@ class ArenaBattleManager {
             return { success: false, message: 'Вы уже подтвердили' };
         }
 
-        // Если оба подтвердили — активируем бой атомарно
         if (updated.player1Confirmed && updated.player2Confirmed) {
+            // Защита от двойной активации
+            const alreadyActive = await this.Battle.findOne({
+                _id: battleId,
+                status: { $in: ['active', 'finished'] }
+            });
+            if (alreadyActive) {
+                return { success: false, message: 'Бой уже активирован' };
+            }
+            
             const startTurn = Math.random() < 0.5 ? 'player1' : 'player2';
             const battle = await this.Battle.findOneAndUpdate(
                 { _id: battleId, status: 'pending_confirmation' },
@@ -335,12 +340,10 @@ class ArenaBattleManager {
     }
 
     async rejectMatch(battleId, userId) {
-        // Атомарная смена статуса: если двое одновременно вызвали rejectMatch,
-        // только один получит документ — второй получит null и не сделает двойной refund.
         const battle = await this.Battle.findOneAndUpdate(
             { _id: battleId, status: 'pending_confirmation' },
             { $set: { status: 'expired' } },
-            { new: false } // берём старый документ чтобы убедиться что были участником
+            { new: false }
         );
         if (!battle) {
             return { success: false, message: 'Бой не найден или уже не ожидает подтверждения' };
@@ -349,12 +352,10 @@ class ArenaBattleManager {
         const isPlayer1 = battle.player1Id.toString() === userId.toString();
         const isPlayer2 = battle.player2Id && battle.player2Id.toString() === userId.toString();
         if (!isPlayer1 && !isPlayer2) {
-            // Откатываем статус обратно — чужой пытался отклонить
             await this.Battle.updateOne({ _id: battleId }, { $set: { status: 'pending_confirmation' } });
             return { success: false, message: 'Вы не участник этого боя' };
         }
 
-        // Возвращаем взносы обоим игрокам
         await this.User.findByIdAndUpdate(battle.player1Id, {
             $inc: { balance: battle.entryFee },
             $set: { currentBattleId: null, arenaCooldownUntil: null }
@@ -370,399 +371,398 @@ class ArenaBattleManager {
     }
 
     async processMove(battleId, userId, requestedTargetIndex) {
-    const battle = await this.Battle.findById(battleId);
-    if (!battle) {
-        return { success: false, message: 'Бой не найден' };
-    }
-    
-    if (battle.status !== 'active') {
-        return { success: false, message: 'Бой не активен' };
-    }
-    
-    const isPlayer1 = battle.player1Id.toString() === userId.toString();
-    const isMyTurn = (battle.currentTurn === 'player1' && isPlayer1) || 
-                     (battle.currentTurn === 'player2' && !isPlayer1);
-    
-    if (!isMyTurn) {
-        return { success: false, message: 'Сейчас не ваш ход' };
-    }
-
-    // Атомарная блокировка от race condition — помечаем что ход обрабатывается
-    const expectedTurn = battle.currentTurn;
-    const locked = await this.Battle.findOneAndUpdate(
-        { _id: battleId, status: 'active', currentTurn: expectedTurn },
-        { $set: { currentTurn: '__processing__' } }
-    );
-    if (!locked) {
-        return { success: false, message: 'Ход уже обрабатывается, подождите' };
-    }
-
-    try {
-    const myTeam = isPlayer1 ? battle.player1Team : battle.player2Team;
-    const enemyTeam = isPlayer1 ? battle.player2Team : battle.player1Team;
-
-    // ── ЯД: тик в начале хода ──────────────────────────────
-    const poisonLog = [];
-    myTeam.forEach(p => {
-        if (p.isAlive && p.poisonTurns > 0) {
-            const dmg = Math.max(1, Math.floor(p.maxHp * 0.10));
-            p.currentHp = Math.max(0, p.currentHp - dmg);
-            p.poisonTurns--;
-            if (p.currentHp <= 0) p.isAlive = false;
-            poisonLog.push({ name: p.name, dmg });
+        const battle = await this.Battle.findById(battleId);
+        if (!battle) {
+            return { success: false, message: 'Бой не найден' };
         }
-    });
-    // Если яд убил всех наших — враг победил
-    if (myTeam.every(p => !p.isAlive)) {
-        battle.status = 'finished';
-        battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
-        battle.markModified('player1Team');
-        battle.markModified('player2Team');
-        await this.finishBattle(battle);
-        return { success: true, finished: true, winnerId: battle.winnerId, poisonLog };
-    }
-    
-    let attackerIndex = -1;
-    let attacker = null;
-    for (let i = 0; i < myTeam.length; i++) {
-        if (myTeam[i].isAlive) {
-            attackerIndex = i;
-            attacker = myTeam[i];
-            break;
-        }
-    }
-    
-    if (!attacker) {
-        battle.status = 'finished';
-        battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
-        battle.markModified('player1Team');
-        battle.markModified('player2Team');
-        await this.finishBattle(battle);
-        return { success: true, finished: true, winnerId: battle.winnerId };
-    }
-    
-    let targetIndex = -1;
-    if (requestedTargetIndex !== undefined && requestedTargetIndex >= 0 && requestedTargetIndex < enemyTeam.length && enemyTeam[requestedTargetIndex]?.isAlive) {
-        targetIndex = requestedTargetIndex;
-    } else {
-        for (let i = 0; i < enemyTeam.length; i++) {
-            if (enemyTeam[i].isAlive) { targetIndex = i; break; }
-        }
-    }
-    
-    if (targetIndex === -1) {
-        battle.status = 'finished';
-        battle.winnerId = isPlayer1 ? battle.player1Id : battle.player2Id;
-        await this.finishBattle(battle);
-        return { success: true, finished: true, winnerId: battle.winnerId };
-    }
-    
-    const target = enemyTeam[targetIndex];
-    // Проверяем оглушение атакующего
-    if (ArenaSkills.checkAndClearStun(attacker)) {
-        battle.currentTurn = battle.currentTurn === 'player1' ? 'player2' : 'player1';
-        battle.turnCount++;
-        battle.lastMoveAt = new Date();
-        if (isPlayer1) { battle.markModified('player1Team'); } else { battle.markModified('player2Team'); }
-        await battle.save();
-        return { success: true, finished: false, stunSkipped: true, currentTurn: battle.currentTurn, turnCount: battle.turnCount, myTeam, enemyTeam, timeLeft: 30, serverTimestamp: Date.now() };
-    }
-
-    const isCrit = Math.random() < attacker.critChance;
-    let damage = Math.max(1, attacker.attack - target.defense);
-    if (isCrit) damage = Math.floor(damage * 1.5);
-
-    // Применяем скилл атакующего (если не отключён капибарой)
-    let skillResult = { triggered: false };
-    if (attacker.skill) {
-        if (attacker.skillDisabledTurns > 0) {
-            attacker.skillDisabledTurns--;
-        } else {
-            skillResult = ArenaSkills.applySkill(attacker.skill.id, attacker, target, myTeam, enemyTeam, damage);
-            if (skillResult.triggered) damage = skillResult.damage;
-        }
-    }
-
-    // Проверяем щит цели (puddle_dodge)
-    if (!skillResult.missTarget && ArenaSkills.checkAndClearShield(target)) {
-        damage = 0;
-    }
-
-    // Применяем урон к цели
-    target.currentHp = Math.max(0, target.currentHp - damage);
-
-    // Помечаем цель мёртвой ДО применения скилла — чтобы сплеш не бил мёртвых
-    if (target.currentHp <= 0) {
-        target.isAlive = false;
-    }
-
-    // Применяем все эффекты скилла (хил, сплеш, стан, щит)
-    const skillSummary = ArenaSkills.applySkillResult(skillResult, attackerIndex, targetIndex, myTeam, enemyTeam);
-
-    // Проверяем не умер ли кто-то из своей команды (самоурон не предусмотрен, но на всякий случай)
-    myTeam.forEach(p => { if (p.currentHp <= 0) p.isAlive = false; });
-    // Убеждаемся что все враги с 0 HP помечены мёртвыми (могли быть убиты сплешем)
-    enemyTeam.forEach(p => { if (p.currentHp <= 0) p.isAlive = false; });
-
-    // Проверяем победные условия ПОСЛЕ всех эффектов
-    const allEnemyDead = enemyTeam.every(p => !p.isAlive);
-    const allMyDead    = myTeam.every(p => !p.isAlive);
-    
-    if (allMyDead && allEnemyDead) {
-        // Ничья — оба мертвы (редко, возможно при сплеш-скилле)
-        battle.status = 'finished';
-        battle.winnerId = null;
-        battle.turnCount++;
-        battle.markModified('player1Team');
-        battle.markModified('player2Team');
-        await this.finishBattle(battle);
-        return { success: true, finished: true, draw: true, winnerId: null };
-    }
-
-    if (allMyDead) {
-        // Все мои мертвы — враг победил
-        battle.status = 'finished';
-        battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
-        battle.turnCount++;
-        battle.markModified('player1Team');
-        battle.markModified('player2Team');
-        await this.finishBattle(battle);
-        return { success: true, finished: true, winnerId: battle.winnerId, lastMove: { damage, isCrit, targetIndex, targetHp: target.currentHp, targetDead: true } };
-    }
-
-    if (allEnemyDead) {
-        battle.status = 'finished';
-        battle.winnerId = isPlayer1 ? battle.player1Id : battle.player2Id;
-        battle.turnCount++;
-        battle.markModified('player1Team');
-        battle.markModified('player2Team');
-        await this.finishBattle(battle);
         
-        return {
-            success: true,
-            finished: true,
-            winnerId: battle.winnerId,
-            lastMove: { damage, isCrit, targetIndex, targetHp: target.currentHp, targetDead: true }
-        };
-    }
-    
-    battle.currentTurn = battle.currentTurn === 'player1' ? 'player2' : 'player1';
-    battle.turnCount++;
-    const moveTimestamp = Date.now();
-    battle.lastMoveAt = new Date(moveTimestamp);
-    
-    if (isPlayer1) {
-        battle.player1LastMoveAt = new Date(moveTimestamp);
-    } else {
-        battle.player2LastMoveAt = new Date(moveTimestamp);
-    }
-    
-    if (isPlayer1) {
-        battle.markModified('player1Team');
-        battle.markModified('player2Team');
-    } else {
-        battle.markModified('player2Team');
-        battle.markModified('player1Team');
-    }
-    
-    await battle.save();
-    
-    const timeLeft = 30;
-    
-    return {
-        success: true,
-        finished: false,
-        lastMove: { 
-            damage, 
-            isCrit, 
-            targetIndex: targetIndex,
-            targetHp: target.currentHp, 
-            targetDead: false,
-            attackerIndex: attackerIndex
-        },
-        skillResult: skillResult.triggered ? {
-            skillId: skillResult.skillId,
-            skillName: skillResult.skillName,
-            description: skillResult.description,
-            splashHits: skillSummary.splashHits,
-            healedSelf: skillSummary.healedSelf,
-            healedAllies: skillSummary.healedAllies,
-            stunned: skillSummary.stunned,
-            shielded: skillSummary.shielded,
-            missed: skillSummary.missed,
-            skillDisabled: skillSummary.skillDisabled,
-            poisoned: skillSummary.poisoned
-        } : null,
-        currentTurn: battle.currentTurn,
-        turnCount: battle.turnCount,
-        myTeam: myTeam,
-        enemyTeam: enemyTeam,
-        battleLog: battle.battleLog.slice(-1),
-        timeLeft: timeLeft,
-        serverTimestamp: moveTimestamp
-    };
-    } catch(err) {
-        // Восстанавливаем ход если что-то пошло не так
-        await this.Battle.findOneAndUpdate(
-            { _id: battleId, currentTurn: '__processing__' },
-            { $set: { currentTurn: expectedTurn } }
+        if (battle.status !== 'active') {
+            return { success: false, message: 'Бой не активен' };
+        }
+        
+        const isPlayer1 = battle.player1Id.toString() === userId.toString();
+        const isMyTurn = (battle.currentTurn === 'player1' && isPlayer1) || 
+                         (battle.currentTurn === 'player2' && !isPlayer1);
+        
+        if (!isMyTurn) {
+            return { success: false, message: 'Сейчас не ваш ход' };
+        }
+
+        const expectedTurn = battle.currentTurn;
+        const locked = await this.Battle.findOneAndUpdate(
+            { _id: battleId, status: 'active', currentTurn: expectedTurn },
+            { $set: { currentTurn: '__processing__', processingStartedAt: new Date() } }
         );
-        throw err;
+        if (!locked) {
+            return { success: false, message: 'Ход уже обрабатывается, подождите' };
+        }
+
+        try {
+            const myTeam = isPlayer1 ? battle.player1Team : battle.player2Team;
+            const enemyTeam = isPlayer1 ? battle.player2Team : battle.player1Team;
+
+            // ── ЯД: тик в начале хода ──────────────────────────────
+            const poisonLog = [];
+            myTeam.forEach(p => {
+                if (p.isAlive && p.poisonTurns > 0) {
+                    const dmg = Math.max(1, Math.floor(p.maxHp * 0.10));
+                    p.currentHp = Math.max(0, p.currentHp - dmg);
+                    p.poisonTurns--;
+                    if (p.currentHp <= 0) p.isAlive = false;
+                    poisonLog.push({ name: p.name, dmg });
+                }
+            });
+            if (myTeam.every(p => !p.isAlive)) {
+                battle.status = 'finished';
+                battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
+                battle.markModified('player1Team');
+                battle.markModified('player2Team');
+                await this.finishBattle(battle);
+                return { success: true, finished: true, winnerId: battle.winnerId, poisonLog };
+            }
+            
+            let attackerIndex = -1;
+            let attacker = null;
+            for (let i = 0; i < myTeam.length; i++) {
+                if (myTeam[i].isAlive) {
+                    attackerIndex = i;
+                    attacker = myTeam[i];
+                    break;
+                }
+            }
+            
+            if (!attacker) {
+                battle.status = 'finished';
+                battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
+                battle.markModified('player1Team');
+                battle.markModified('player2Team');
+                await this.finishBattle(battle);
+                return { success: true, finished: true, winnerId: battle.winnerId };
+            }
+            
+            let targetIndex = -1;
+            if (requestedTargetIndex !== undefined && requestedTargetIndex >= 0 && requestedTargetIndex < enemyTeam.length && 
+                enemyTeam[requestedTargetIndex]?.isAlive) {
+                targetIndex = requestedTargetIndex;
+            } else {
+                for (let i = 0; i < enemyTeam.length; i++) {
+                    if (enemyTeam[i].isAlive) { targetIndex = i; break; }
+                }
+            }
+            
+            if (targetIndex === -1) {
+                battle.status = 'finished';
+                battle.winnerId = isPlayer1 ? battle.player1Id : battle.player2Id;
+                await this.finishBattle(battle);
+                return { success: true, finished: true, winnerId: battle.winnerId };
+            }
+            
+            const target = enemyTeam[targetIndex];
+            
+            if (ArenaSkills.checkAndClearStun(attacker)) {
+                battle.currentTurn = battle.currentTurn === 'player1' ? 'player2' : 'player1';
+                battle.turnCount++;
+                battle.lastMoveAt = new Date();
+                if (isPlayer1) { battle.markModified('player1Team'); } else { battle.markModified('player2Team'); }
+                await battle.save();
+                return { success: true, finished: false, stunSkipped: true, currentTurn: battle.currentTurn, turnCount: battle.turnCount, myTeam, enemyTeam, timeLeft: 30, serverTimestamp: Date.now() };
+            }
+
+            const isCrit = Math.random() < attacker.critChance;
+            let damage = Math.max(1, attacker.attack - target.defense);
+            if (isCrit) damage = Math.floor(damage * 1.5);
+
+            let skillResult = { triggered: false };
+            if (attacker.skill) {
+                if (attacker.skillDisabledTurns > 0) {
+                    attacker.skillDisabledTurns--;
+                } else {
+                    skillResult = ArenaSkills.applySkill(attacker.skill.id, attacker, target, myTeam, enemyTeam, damage);
+                    if (skillResult.triggered) damage = skillResult.damage;
+                }
+            }
+
+            if (!skillResult.missTarget && ArenaSkills.checkAndClearShield(target)) {
+                damage = 0;
+            }
+
+            target.currentHp = Math.max(0, target.currentHp - damage);
+            if (target.currentHp <= 0) {
+                target.isAlive = false;
+            }
+
+            const skillSummary = ArenaSkills.applySkillResult(skillResult, attackerIndex, targetIndex, myTeam, enemyTeam);
+
+            // ── ЗАПИСЬ В BATTLE LOG ──────────────────────────────────
+            const logEntry = {
+                turn: battle.turnCount,
+                player: isPlayer1 ? 'player1' : 'player2',
+                attackerName: attacker.name,
+                attackerIndex: attackerIndex,
+                targetName: target.name,
+                targetIndex: targetIndex,
+                damage: damage,
+                isCrit: isCrit,
+                remainingHp: target.currentHp,
+                timestamp: new Date()
+            };
+            battle.battleLog.push(logEntry);
+            if (battle.battleLog.length > 50) {
+                battle.battleLog = battle.battleLog.slice(-50);
+            }
+
+            myTeam.forEach(p => { if (p.currentHp <= 0) p.isAlive = false; });
+            enemyTeam.forEach(p => { if (p.currentHp <= 0) p.isAlive = false; });
+
+            const allEnemyDead = enemyTeam.every(p => !p.isAlive);
+            const allMyDead    = myTeam.every(p => !p.isAlive);
+            
+            if (allMyDead && allEnemyDead) {
+                battle.status = 'finished';
+                battle.winnerId = null;
+                battle.turnCount++;
+                battle.markModified('player1Team');
+                battle.markModified('player2Team');
+                await this.finishBattle(battle);
+                return { success: true, finished: true, draw: true, winnerId: null };
+            }
+
+            if (allMyDead) {
+                battle.status = 'finished';
+                battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
+                battle.turnCount++;
+                battle.markModified('player1Team');
+                battle.markModified('player2Team');
+                await this.finishBattle(battle);
+                return { success: true, finished: true, winnerId: battle.winnerId, lastMove: { damage, isCrit, targetIndex, targetHp: target.currentHp, targetDead: true } };
+            }
+
+            if (allEnemyDead) {
+                battle.status = 'finished';
+                battle.winnerId = isPlayer1 ? battle.player1Id : battle.player2Id;
+                battle.turnCount++;
+                battle.markModified('player1Team');
+                battle.markModified('player2Team');
+                await this.finishBattle(battle);
+                
+                return {
+                    success: true,
+                    finished: true,
+                    winnerId: battle.winnerId,
+                    lastMove: { damage, isCrit, targetIndex, targetHp: target.currentHp, targetDead: true }
+                };
+            }
+            
+            battle.currentTurn = battle.currentTurn === 'player1' ? 'player2' : 'player1';
+            battle.turnCount++;
+            const moveTimestamp = Date.now();
+            battle.lastMoveAt = new Date(moveTimestamp);
+            
+            if (isPlayer1) {
+                battle.player1LastMoveAt = new Date(moveTimestamp);
+            } else {
+                battle.player2LastMoveAt = new Date(moveTimestamp);
+            }
+            
+            if (isPlayer1) {
+                battle.markModified('player1Team');
+                battle.markModified('player2Team');
+            } else {
+                battle.markModified('player2Team');
+                battle.markModified('player1Team');
+            }
+            
+            await battle.save();
+            
+            const timeLeft = 30;
+            
+            return {
+                success: true,
+                finished: false,
+                lastMove: { 
+                    damage, 
+                    isCrit, 
+                    targetIndex: targetIndex,
+                    targetHp: target.currentHp, 
+                    targetDead: false,
+                    attackerIndex: attackerIndex
+                },
+                skillResult: skillResult.triggered ? {
+                    skillId: skillResult.skillId,
+                    skillName: skillResult.skillName,
+                    description: skillResult.description,
+                    splashHits: skillSummary.splashHits,
+                    healedSelf: skillSummary.healedSelf,
+                    healedAllies: skillSummary.healedAllies,
+                    stunned: skillSummary.stunned,
+                    shielded: skillSummary.shielded,
+                    missed: skillSummary.missed,
+                    skillDisabled: skillSummary.skillDisabled,
+                    poisoned: skillSummary.poisoned
+                } : null,
+                currentTurn: battle.currentTurn,
+                turnCount: battle.turnCount,
+                myTeam: myTeam,
+                enemyTeam: enemyTeam,
+                battleLog: battle.battleLog.slice(-1),
+                timeLeft: timeLeft,
+                serverTimestamp: moveTimestamp
+            };
+        } catch(err) {
+            await this.Battle.findOneAndUpdate(
+                { _id: battleId, currentTurn: '__processing__' },
+                { $set: { currentTurn: expectedTurn } }
+            );
+            throw err;
+        }
     }
-}
+
     async finishBattle(battle) {
-    const winnerId = battle.winnerId;
-    const cooldown = new Date(Date.now() + 30 * 1000);
-    const ids = [battle.player1Id, battle.player2Id].filter(Boolean);
+        const winnerId = battle.winnerId;
+        const cooldown = new Date(Date.now() + 30 * 1000);
+        const ids = [battle.player1Id, battle.player2Id].filter(Boolean);
 
-    // Если нет победителя (ничья) — возвращаем взносы обоим атомарно
-    if (!winnerId) {
-        await this.User.updateMany(
-            { _id: { $in: ids } },
-            { $inc: { balance: battle.entryFee }, $set: { currentBattleId: null, arenaCooldownUntil: cooldown } }
-        );
+        if (!winnerId) {
+            await this.User.updateMany(
+                { _id: { $in: ids } },
+                { $inc: { balance: battle.entryFee }, $set: { currentBattleId: null, arenaCooldownUntil: cooldown } }
+            );
+            await battle.save();
+            return { winnerId: null, loserId: null };
+        }
+
+        const loserId = winnerId.toString() === battle.player1Id.toString() ? battle.player2Id : battle.player1Id;
+        const leagueCfg = LEAGUE_CONFIG[battle.league] || LEAGUE_CONFIG.bronze;
+        const xpCalc = (level) => level <= 15 ? level * 100 : 1500 + (level - 15) * 1000;
+
+        const balanceOps = [
+            this.User.findByIdAndUpdate(winnerId, { $inc: { balance: battle.prizePool, dust: leagueCfg.dustWin || 0 } }, { new: true })
+        ];
+        if ((leagueCfg.dustLose || 0) > 0) {
+            balanceOps.push(this.User.findByIdAndUpdate(loserId, { $inc: { dust: leagueCfg.dustLose } }, { new: true }));
+        }
+
+        let [winnerUser, loserUser, winnerStats, loserStats] = await Promise.all([
+            this.User.findById(winnerId),
+            this.User.findById(loserId),
+            this.ArenaStats.findOne({ userId: winnerId }),
+            this.ArenaStats.findOne({ userId: loserId }),
+            ...balanceOps
+        ]);
+
+        if (!winnerStats) winnerStats = await this.ArenaStats.create({ userId: winnerId });
+        if (!loserStats)  loserStats  = await this.ArenaStats.create({ userId: loserId });
+
+        const ratingChange = calculateEloChange(winnerStats.rating, loserStats.rating);
+
+        let newWinnerRating = winnerStats.rating + ratingChange;
+        const oldWinnerLeague = winnerStats.league;
+        let newWinnerLeague = getLeagueByRating(newWinnerRating);
+
+        let newLoserRating = Math.max(0, loserStats.rating - ratingChange);
+        const oldLoserLeague = loserStats.league;
+        let newLoserLeague = getLeagueByRating(newLoserRating);
+
+        let promotionMessage = null;
+        let demotionMessage = null;
+
+        if (newWinnerLeague !== oldWinnerLeague && newWinnerRating >= LEAGUE_CONFIG[newWinnerLeague].minRating) {
+            promotionMessage = `🎉 ПОВЫШЕНИЕ! Вы перешли в ${LEAGUE_CONFIG[newWinnerLeague].name} лигу!`;
+            winnerStats.promotions += 1;
+            winnerStats.promotionProtection = true;
+        }
+
+        if (newLoserLeague !== oldLoserLeague && !loserStats.promotionProtection) {
+            const shouldDemote = newLoserRating < (LEAGUE_CONFIG[oldLoserLeague].minRating - 100);
+            if (shouldDemote) {
+                demotionMessage = `⚠️ ПОНИЖЕНИЕ! Вы вылетели в ${LEAGUE_CONFIG[newLoserLeague].name} лигу. Вернитесь, побеждая сильных!`;
+                loserStats.demotions += 1;
+            } else {
+                newLoserLeague = oldLoserLeague;
+                newLoserRating = LEAGUE_CONFIG[oldLoserLeague].minRating - 50;
+            }
+        } else if (loserStats.promotionProtection && newLoserRating < LEAGUE_CONFIG[oldLoserLeague].minRating) {
+            newLoserRating = LEAGUE_CONFIG[oldLoserLeague].minRating;
+            loserStats.promotionProtection = false;
+        }
+        if (loserStats.promotionProtection && !(newLoserRating >= LEAGUE_CONFIG[oldLoserLeague].minRating)) {
+            loserStats.promotionProtection = false;
+        }
+
+        winnerStats.rating = newWinnerRating;
+        winnerStats.league = newWinnerLeague;
+        winnerStats.peakRating = Math.max(winnerStats.peakRating, newWinnerRating);
+        winnerStats.wins += 1;
+        winnerStats.streak += 1;
+        winnerStats.bestStreak = Math.max(winnerStats.bestStreak, winnerStats.streak);
+        winnerStats.totalBattles += 1;
+        winnerStats.totalEarned += battle.prizePool;
+        winnerStats.lastBattleAt = new Date();
+
+        loserStats.rating = newLoserRating;
+        loserStats.league = newLoserLeague;
+        loserStats.losses += 1;
+        loserStats.streak = 0;
+        loserStats.totalBattles += 1;
+        loserStats.totalLost = (loserStats.totalLost || 0) + battle.entryFee;
+        loserStats.lastBattleAt = new Date();
+
+        const xpOps = [];
+        if (battle.league !== 'bronze' && winnerUser && loserUser) {
+            const winXp = winnerUser.xp + 20;
+            xpOps.push(winXp >= xpCalc(winnerUser.level)
+                ? this.User.updateOne({ _id: winnerId }, { $inc: { level: 1 }, $set: { xp: winXp - xpCalc(winnerUser.level) } })
+                : this.User.updateOne({ _id: winnerId }, { $inc: { xp: 20 } }));
+            const loseXp = loserUser.xp + 5;
+            xpOps.push(loseXp >= xpCalc(loserUser.level)
+                ? this.User.updateOne({ _id: loserId }, { $inc: { level: 1 }, $set: { xp: loseXp - xpCalc(loserUser.level) } })
+                : this.User.updateOne({ _id: loserId }, { $inc: { xp: 5 } }));
+        }
+
+        const lastOpOps = (battle.player1Id && battle.player2Id) ? [
+            this.User.updateOne({ _id: battle.player1Id }, { $set: { lastOpponentId: battle.player2Id } }),
+            this.User.updateOne({ _id: battle.player2Id }, { $set: { lastOpponentId: battle.player1Id } })
+        ] : [];
+
+        await Promise.all([
+            winnerStats.save(),
+            loserStats.save(),
+            this.User.updateMany({ _id: { $in: ids } }, { $set: { currentBattleId: null, arenaCooldownUntil: cooldown } }),
+            ...lastOpOps,
+            ...xpOps
+        ]);
+
+        if (this.sendNotification) {
+            const dustStr = (leagueCfg.dustWin || 0) > 0 ? `\n🌫️ Пыль: +${leagueCfg.dustWin}` : '';
+            if (winnerUser) {
+                this.sendNotification(winnerUser.telegramId,
+                    `🏆 <b>ПОБЕДА В АРЕНЕ!</b>\n\n` +
+                    `Вы победили ${loserUser?.username || loserUser?.firstName || 'игрока'}!\n` +
+                    `💰 Выигрыш: +${battle.prizePool.toLocaleString()} MMO${dustStr}\n` +
+                    `📊 Рейтинг: ${winnerStats.rating} (+${ratingChange})\n` +
+                    `🔥 Серия побед: ${winnerStats.streak}\n` +
+                    `${promotionMessage ? `\n${promotionMessage}` : ''}\n` +
+                    `🏅 Лига: ${LEAGUE_CONFIG[winnerStats.league].name}`
+                ).catch(() => {});
+            }
+            if (loserUser) {
+                this.sendNotification(loserUser.telegramId,
+                    `💀 <b>ПОРАЖЕНИЕ В АРЕНЕ</b>\n\n` +
+                    `Вы проиграли ${winnerUser?.username || winnerUser?.firstName || 'игроку'}.\n` +
+                    `📊 Рейтинг: ${loserStats.rating} (-${ratingChange})\n` +
+                    `${demotionMessage ? `\n${demotionMessage}` : ''}\n` +
+                    `💪 Следующий бой будет лучше!`
+                ).catch(() => {});
+            }
+        }
+
         await battle.save();
-        return { winnerId: null, loserId: null };
+        return { winnerId, loserId };
     }
-
-    const loserId = winnerId.toString() === battle.player1Id.toString() ? battle.player2Id : battle.player1Id;
-    const leagueCfg = LEAGUE_CONFIG[battle.league] || LEAGUE_CONFIG.bronze;
-    const xpCalc = (level) => level <= 15 ? level * 100 : 1500 + (level - 15) * 1000;
-
-    // ── Параллельно: выплата + загрузка users + stats ──
-    const balanceOps = [
-        this.User.findByIdAndUpdate(winnerId, { $inc: { balance: battle.prizePool, dust: leagueCfg.dustWin || 0 } }, { new: true })
-    ];
-    if ((leagueCfg.dustLose || 0) > 0) {
-        balanceOps.push(this.User.findByIdAndUpdate(loserId, { $inc: { dust: leagueCfg.dustLose } }, { new: true }));
-    }
-
-    let [winnerUser, loserUser, winnerStats, loserStats] = await Promise.all([
-        this.User.findById(winnerId),
-        this.User.findById(loserId),
-        this.ArenaStats.findOne({ userId: winnerId }),
-        this.ArenaStats.findOne({ userId: loserId }),
-        ...balanceOps
-    ]);
-
-    if (!winnerStats) winnerStats = await this.ArenaStats.create({ userId: winnerId });
-    if (!loserStats)  loserStats  = await this.ArenaStats.create({ userId: loserId });
-
-    // ── Рейтинг и лига ──
-    const ratingChange = calculateEloChange(winnerStats.rating, loserStats.rating);
-
-    let newWinnerRating = winnerStats.rating + ratingChange;
-    const oldWinnerLeague = winnerStats.league;
-    let newWinnerLeague = getLeagueByRating(newWinnerRating);
-
-    let newLoserRating = Math.max(0, loserStats.rating - ratingChange);
-    const oldLoserLeague = loserStats.league;
-    let newLoserLeague = getLeagueByRating(newLoserRating);
-
-    let promotionMessage = null;
-    let demotionMessage = null;
-
-    if (newWinnerLeague !== oldWinnerLeague && newWinnerRating >= LEAGUE_CONFIG[newWinnerLeague].minRating) {
-        promotionMessage = `🎉 ПОВЫШЕНИЕ! Вы перешли в ${LEAGUE_CONFIG[newWinnerLeague].name} лигу!`;
-        winnerStats.promotions += 1;
-        winnerStats.promotionProtection = true;
-    }
-
-    if (newLoserLeague !== oldLoserLeague && !loserStats.promotionProtection) {
-        const shouldDemote = newLoserRating < (LEAGUE_CONFIG[oldLoserLeague].minRating - 100);
-        if (shouldDemote) {
-            demotionMessage = `⚠️ ПОНИЖЕНИЕ! Вы вылетели в ${LEAGUE_CONFIG[newLoserLeague].name} лигу. Вернитесь, побеждая сильных!`;
-            loserStats.demotions += 1;
-        } else {
-            newLoserLeague = oldLoserLeague;
-            newLoserRating = LEAGUE_CONFIG[oldLoserLeague].minRating - 50;
-        }
-    } else if (loserStats.promotionProtection && newLoserRating < LEAGUE_CONFIG[oldLoserLeague].minRating) {
-        newLoserRating = LEAGUE_CONFIG[oldLoserLeague].minRating;
-        loserStats.promotionProtection = false;
-    }
-    if (loserStats.promotionProtection && !(newLoserRating >= LEAGUE_CONFIG[oldLoserLeague].minRating)) {
-        loserStats.promotionProtection = false;
-    }
-
-    winnerStats.rating = newWinnerRating;
-    winnerStats.league = newWinnerLeague;
-    winnerStats.peakRating = Math.max(winnerStats.peakRating, newWinnerRating);
-    winnerStats.wins += 1;
-    winnerStats.streak += 1;
-    winnerStats.bestStreak = Math.max(winnerStats.bestStreak, winnerStats.streak);
-    winnerStats.totalBattles += 1;
-    winnerStats.totalEarned += battle.prizePool;
-    winnerStats.lastBattleAt = new Date();
-
-    loserStats.rating = newLoserRating;
-    loserStats.league = newLoserLeague;
-    loserStats.losses += 1;
-    loserStats.streak = 0;
-    loserStats.totalBattles += 1;
-    loserStats.totalLost = (loserStats.totalLost || 0) + battle.entryFee;
-    loserStats.lastBattleAt = new Date();
-
-    // ── XP: только не в бронзе ──
-    const xpOps = [];
-    if (battle.league !== 'bronze' && winnerUser && loserUser) {
-        const winXp = winnerUser.xp + 20;
-        xpOps.push(winXp >= xpCalc(winnerUser.level)
-            ? this.User.updateOne({ _id: winnerId }, { $inc: { level: 1 }, $set: { xp: winXp - xpCalc(winnerUser.level) } })
-            : this.User.updateOne({ _id: winnerId }, { $inc: { xp: 20 } }));
-        const loseXp = loserUser.xp + 5;
-        xpOps.push(loseXp >= xpCalc(loserUser.level)
-            ? this.User.updateOne({ _id: loserId }, { $inc: { level: 1 }, $set: { xp: loseXp - xpCalc(loserUser.level) } })
-            : this.User.updateOne({ _id: loserId }, { $inc: { xp: 5 } }));
-    }
-
-    // ── Параллельно: stats + сброс battleId + lastOpponent + XP ──
-    const lastOpOps = (battle.player1Id && battle.player2Id) ? [
-        this.User.updateOne({ _id: battle.player1Id }, { $set: { lastOpponentId: battle.player2Id } }),
-        this.User.updateOne({ _id: battle.player2Id }, { $set: { lastOpponentId: battle.player1Id } })
-    ] : [];
-
-    await Promise.all([
-        winnerStats.save(),
-        loserStats.save(),
-        this.User.updateMany({ _id: { $in: ids } }, { $set: { currentBattleId: null, arenaCooldownUntil: cooldown } }),
-        ...lastOpOps,
-        ...xpOps
-    ]);
-
-    // ── Уведомления (fire & forget — не блокируем ответ клиенту) ──
-    if (this.sendNotification) {
-        const dustStr = (leagueCfg.dustWin || 0) > 0 ? `\n🌫️ Пыль: +${leagueCfg.dustWin}` : '';
-        if (winnerUser) {
-            this.sendNotification(winnerUser.telegramId,
-                `🏆 <b>ПОБЕДА В АРЕНЕ!</b>\n\n` +
-                `Вы победили ${loserUser?.username || loserUser?.firstName || 'игрока'}!\n` +
-                `💰 Выигрыш: +${battle.prizePool.toLocaleString()} MMO${dustStr}\n` +
-                `📊 Рейтинг: ${winnerStats.rating} (+${ratingChange})\n` +
-                `🔥 Серия побед: ${winnerStats.streak}\n` +
-                `${promotionMessage ? `\n${promotionMessage}` : ''}\n` +
-                `🏅 Лига: ${LEAGUE_CONFIG[winnerStats.league].name}`
-            ).catch(() => {});
-        }
-        if (loserUser) {
-            this.sendNotification(loserUser.telegramId,
-                `💀 <b>ПОРАЖЕНИЕ В АРЕНЕ</b>\n\n` +
-                `Вы проиграли ${winnerUser?.username || winnerUser?.firstName || 'игроку'}.\n` +
-                `📊 Рейтинг: ${loserStats.rating} (-${ratingChange})\n` +
-                `${demotionMessage ? `\n${demotionMessage}` : ''}\n` +
-                `💪 Следующий бой будет лучше!`
-            ).catch(() => {});
-        }
-    }
-
-    await battle.save();
-    return { winnerId, loserId };
-}
 
     async surrenderBattle(battleId, userId) {
-        // Атомарно завершаем бой — защита от гонки с processMove
         const battle = await this.Battle.findOneAndUpdate(
-            { _id: battleId, status: 'active' },
+            { _id: battleId, status: 'active', winnerId: null },
             { $set: { status: 'finished' } },
             { new: false }
         );
@@ -771,7 +771,7 @@ class ArenaBattleManager {
         }
 
         const isPlayer1 = battle.player1Id.toString() === userId.toString();
-        battle.status = 'finished'; // синхронизируем in-memory для finishBattle
+        battle.status = 'finished';
         battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
         battle.markModified('player1Team');
         battle.markModified('player2Team');
@@ -790,14 +790,12 @@ class ArenaBattleManager {
         });
         
         for (const battle of expiredWaiting) {
-            // Атомарно меняем статус: если два вызова expireOldBattles совпадут —
-            // только один обработает каждый бой и вернёт взнос.
             const atomicExpire = await this.Battle.findOneAndUpdate(
                 { _id: battle._id, status: { $in: ['waiting', 'pending_confirmation'] } },
                 { $set: { status: 'expired' } },
                 { new: false }
             );
-            if (!atomicExpire) continue; // уже обработан другим вызовом
+            if (!atomicExpire) continue;
 
             const entryFee = atomicExpire.entryFee;
             const player1Id = atomicExpire.player1Id;
@@ -805,20 +803,17 @@ class ArenaBattleManager {
             const wasPendingConfirmation = atomicExpire.status === 'pending_confirmation';
             expiredCount++;
             
-            // Возвращаем взнос + попытку player1 (бой не начался)
             if (player1Id) {
                 await this.User.findByIdAndUpdate(player1Id, {
                     $inc: { balance: entryFee },
                     $set: { currentBattleId: null, arenaCooldownUntil: null }
                 });
-                // Возвращаем попытку не превышая максимум
                 await this.User.updateOne(
                     { _id: player1Id, arenaBattlesLeft: { $lt: 10 } },
                     { $inc: { arenaBattlesLeft: 1 } }
                 );
             }
             
-            // Возвращаем взнос + попытку player2 если он уже был найден (pending_confirmation)
             if (player2Id && wasPendingConfirmation) {
                 await this.User.findByIdAndUpdate(player2Id, {
                     $inc: { balance: entryFee },
@@ -833,7 +828,7 @@ class ArenaBattleManager {
             }
         }
         
-        const timeoutSeconds = 30;
+        const timeoutSeconds = 35;
         const timeoutAgo = new Date(now.getTime() - timeoutSeconds * 1000);
         
         const stalledBattles = await this.Battle.find({
@@ -852,6 +847,22 @@ class ArenaBattleManager {
                 prizePool: battle.prizePool,
                 reason: 'timeout'
             });
+            expiredCount++;
+        }
+
+        // ── Восстановление зависших __processing__ ──
+        const stuckProcessing = await this.Battle.find({
+            status: 'active',
+            currentTurn: '__processing__',
+            processingStartedAt: { $lt: new Date(Date.now() - 15000) }
+        });
+        for (const battle of stuckProcessing) {
+            console.log(`⚠️ Разблокировка зависшего боя ${battle._id}`);
+            const expectedRestore = battle.currentTurn === 'player1' ? 'player2' : 'player1';
+            await this.Battle.updateOne(
+                { _id: battle._id, currentTurn: '__processing__' },
+                { $set: { currentTurn: expectedRestore, processingStartedAt: null } }
+            );
             expiredCount++;
         }
         
@@ -883,9 +894,9 @@ class ArenaBattleManager {
             }
             
             const isPlayer1 = battle.player1Id.toString() === userId.toString();
-            
             const isActive = battle.status === 'active';
-            return {
+            
+            const response = {
                 hasBattle: true,
                 battleId: battle._id,
                 status: battle.status,
@@ -899,10 +910,21 @@ class ArenaBattleManager {
                 turnCount: battle.turnCount,
                 lastMoveAt: battle.lastMoveAt,
                 myTeam: isPlayer1 ? battle.player1Team : battle.player2Team,
-                // Команду соперника раскрываем только в активном бою
                 opponentTeam: isActive ? (isPlayer1 ? battle.player2Team : battle.player1Team) : undefined,
                 battleLog: battle.battleLog ? battle.battleLog.slice(-20) : []
             };
+
+            if (isActive) {
+                const timeSinceLastMove = (Date.now() - new Date(battle.lastMoveAt).getTime()) / 1000;
+                response.timeLeft = Math.max(0, 30 - Math.floor(timeSinceLastMove));
+                const opponentId = isPlayer1 ? battle.player2Id : battle.player1Id;
+                if (opponentId) {
+                    const opp = await this.User.findById(opponentId).select('username firstName level').lean();
+                    response.opponent = { name: opp?.username || opp?.firstName || 'Соперник', level: opp?.level };
+                }
+            }
+            
+            return response;
         } catch (err) {
             console.error('getBattleStatus error:', err);
             return { hasBattle: false, error: err.message };
