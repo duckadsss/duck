@@ -469,9 +469,6 @@ function applySkill(skillId, attacker, target, myTeam, enemyTeam, baseDamage) {
             // Отравляет всех живых врагов на 3 хода — каждый ход -10% maxHP
             result.poisonAllTurns = 3;
             break;
-            // Отключает умение врага на 3 хода (базовый урон без изменений)
-            result.disableSkillTurns = 3;
-            break;
 
         // ── MYTHIC ──────────────────────────────────────
         case 'king_roar':

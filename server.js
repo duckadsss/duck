@@ -136,6 +136,10 @@ async function createIndexes() {
         await User.collection.createIndex({ level: -1, xp: -1, balance: -1 });
         await ArenaBattle.collection.createIndex({ status: 1, league: 1, expiresAt: 1 });
         await ArenaBattle.collection.createIndex({ player1Id: 1, player2Id: 1 });
+        await ArenaBattle.collection.createIndex({ status: 1, lastMoveAt: 1 });
+        await ArenaBattle.collection.createIndex({ player1Id: 1, status: 1, createdAt: -1 });
+        await ArenaBattle.collection.createIndex({ player2Id: 1, status: 1, createdAt: -1 });
+        await ArenaStats.collection.createIndex({ rating: -1 });
         console.log('✅ Индексы созданы');
     } catch (e) {
         console.warn('⚠️ Индексы:', e.message);
@@ -319,10 +323,14 @@ const ArenaBattleSchema = new mongoose.Schema({
     player1Team: [{ creatureId: String, name: String, icon: String, rarity: String,
         maxHp: Number, currentHp: Number, attack: Number, defense: Number, critChance: Number, isAlive: Boolean,
         stunned: Boolean, shielded: Boolean,
+        skillDisabledTurns: { type: Number, default: 0 },
+        poisonTurns: { type: Number, default: 0 },
         skill: { id: String, name: String, chance: Number, description: String } }],
     player2Team: [{ creatureId: String, name: String, icon: String, rarity: String,
         maxHp: Number, currentHp: Number, attack: Number, defense: Number, critChance: Number, isAlive: Boolean,
         stunned: Boolean, shielded: Boolean,
+        skillDisabledTurns: { type: Number, default: 0 },
+        poisonTurns: { type: Number, default: 0 },
         skill: { id: String, name: String, chance: Number, description: String } }],
     
     currentTurn: { type: String, enum: ['player1', 'player2', '__processing__'], default: 'player1' },
@@ -2654,6 +2662,9 @@ app.post('/api/arena/accept-match', authMiddleware, async (req, res) => {
     if (!arenaManager) return res.status(503).json({ success: false, message: 'Арена не готова' });
     try {
         const { battleId } = req.body;
+        if (!battleId || !mongoose.Types.ObjectId.isValid(battleId)) {
+            return res.status(400).json({ success: false, message: 'Неверный battleId' });
+        }
         const result = await arenaManager.acceptMatch(battleId, req.user._id);
         
         if (!result.success) {
@@ -2711,8 +2722,12 @@ app.post('/api/arena/accept-match', authMiddleware, async (req, res) => {
 });
 
 app.post('/api/arena/reject-match', authMiddleware, async (req, res) => {
+    if (!arenaManager) return res.status(503).json({ success: false, message: 'Арена не готова' });
     try {
         const { battleId } = req.body;
+        if (!battleId || !mongoose.Types.ObjectId.isValid(battleId)) {
+            return res.status(400).json({ success: false, message: 'Неверный battleId' });
+        }
         const battleBefore = await ArenaBattle.findById(battleId);
         const result = await arenaManager.rejectMatch(battleId, req.user._id);
         
@@ -2749,7 +2764,14 @@ app.post('/api/arena/move', authMiddleware, async (req, res) => {
     if (!arenaManager) return res.status(503).json({ success: false, message: 'Арена не готова' });
     try {
         const { battleId, targetIndex } = req.body;
-        const result = await arenaManager.processMove(battleId, req.user._id, targetIndex);
+        if (!battleId || !mongoose.Types.ObjectId.isValid(battleId)) {
+            return res.status(400).json({ success: false, message: 'Неверный battleId' });
+        }
+        const ti = parseInt(targetIndex, 10);
+        if (isNaN(ti) || ti < 0 || ti > 2) {
+            return res.status(400).json({ success: false, message: 'Неверный targetIndex (0-2)' });
+        }
+        const result = await arenaManager.processMove(battleId, req.user._id, ti);
         
         if (!result.success) {
             return res.status(400).json(result);
@@ -2797,8 +2819,12 @@ app.post('/api/arena/move', authMiddleware, async (req, res) => {
 });
 
 app.post('/api/arena/surrender', authMiddleware, async (req, res) => {
+    if (!arenaManager) return res.status(503).json({ success: false, message: 'Арена не готова' });
     try {
         const { battleId } = req.body;
+        if (!battleId || !mongoose.Types.ObjectId.isValid(battleId)) {
+            return res.status(400).json({ success: false, message: 'Неверный battleId' });
+        }
         const result = await arenaManager.surrenderBattle(battleId, req.user._id);
         
         if (result.success) {
@@ -4022,82 +4048,7 @@ app.get('/api/admin/arena/stats', adminAuthMiddleware, async (req, res) => {
     }
 });
 
-app.get('/api/admin/arena/battles', adminAuthMiddleware, async (req, res) => {
-    try {
-        const { status = 'all', limit = 50, skip = 0 } = req.query;
-        const query = status !== 'all' ? { status } : {};
-
-        const [battles, total] = await Promise.all([
-            ArenaBattle.find(query)
-                .sort({ createdAt: -1 })
-                .skip(parseInt(skip))
-                .limit(parseInt(limit))
-                .populate('player1Id', 'username firstName telegramId')
-                .populate('player2Id', 'username firstName telegramId')
-                .populate('winnerId', 'username firstName telegramId')
-                .lean(),
-            ArenaBattle.countDocuments(query)
-        ]);
-
-        const result = battles.map(b => ({
-            id: b._id,
-            status: b.status,
-            league: b.league,
-            entryFee: b.entryFee,
-            prizePool: b.prizePool,
-            turnCount: b.turnCount,
-            player1: b.player1Id?.username || b.player1Id?.firstName || b.player1Id?.telegramId || '?',
-            player1Id: b.player1Id?.telegramId,
-            player2: b.player2Id?.username || b.player2Id?.firstName || b.player2Id?.telegramId || '—',
-            player2Id: b.player2Id?.telegramId,
-            winner: b.winnerId?.username || b.winnerId?.firstName || b.winnerId?.telegramId || null,
-            player1Confirmed: b.player1Confirmed,
-            player2Confirmed: b.player2Confirmed,
-            createdAt: b.createdAt,
-            lastMoveAt: b.lastMoveAt
-        }));
-
-        res.json({ success: true, battles: result, total });
-    } catch (e) {
-        console.error('admin arena battles error:', e);
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
-
-app.get('/api/admin/arena/leaderboard', adminAuthMiddleware, async (req, res) => {
-    try {
-        const { limit = 100 } = req.query;
-        const leaders = await ArenaStats.find()
-            .sort({ rating: -1 })
-            .limit(parseInt(limit))
-            .populate('userId', 'username firstName telegramId level')
-            .lean();
-
-        res.json({
-            success: true,
-            leaders: leaders.map((s, i) => ({
-                rank: i + 1,
-                name: s.userId?.username || s.userId?.firstName || '?',
-                telegramId: s.userId?.telegramId,
-                level: s.userId?.level || 1,
-                rating: s.rating,
-                league: s.league,
-                wins: s.wins,
-                losses: s.losses,
-                draws: s.draws,
-                streak: s.streak,
-                bestStreak: s.bestStreak,
-                totalEarned: s.totalEarned,
-                totalLost: s.totalLost,
-                peakRating: s.peakRating,
-                lastBattleAt: s.lastBattleAt
-            }))
-        });
-    } catch (e) {
-        console.error('admin arena leaderboard error:', e);
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
+// Дублирующиеся роуты /api/admin/arena/battles и /api/admin/arena/leaderboard удалены — используются версии выше (с полной статистикой)
 
 // Сброс рейтинга игрока
 app.post('/api/admin/arena/reset-player/:telegramId', adminAuthMiddleware, async (req, res) => {
@@ -4320,87 +4271,7 @@ app.get('/api/admin/broadcast/status/:id', adminAuthMiddleware, async (req, res)
     }
 });
 
-// ============================================
-// АДМИН: АРЕНА — бои
-// ============================================
-app.get('/api/admin/arena/battles', adminAuthMiddleware, async (req, res) => {
-    try {
-        const { limit = 100, status } = req.query;
-        const query = status && status !== 'all' ? { status } : {};
-
-        const battles = await ArenaBattle.find(query)
-            .sort({ createdAt: -1 })
-            .limit(parseInt(limit))
-            .lean();
-
-        // Собираем все уникальные userId из боёв
-        const userIds = new Set();
-        battles.forEach(b => {
-            if (b.player1Id) userIds.add(b.player1Id.toString());
-            if (b.player2Id) userIds.add(b.player2Id.toString());
-            if (b.winnerId)  userIds.add(b.winnerId.toString());
-        });
-
-        const users = await User.find({ _id: { $in: [...userIds] } })
-            .select('_id username firstName')
-            .lean();
-
-        const userMap = new Map(users.map(u => [
-            u._id.toString(),
-            u.username || u.firstName || `User${u._id.toString().slice(-4)}`
-        ]));
-
-        const enriched = battles.map(b => ({
-            ...b,
-            player1Name: b.player1Id ? userMap.get(b.player1Id.toString()) : null,
-            player2Name: b.player2Id ? userMap.get(b.player2Id.toString()) : null,
-            winnerName:  b.winnerId  ? userMap.get(b.winnerId.toString())  : null,
-        }));
-
-        res.json({ success: true, battles: enriched });
-    } catch (e) {
-        console.error('admin arena/battles error:', e);
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
-
-// ============================================
-// АДМИН: АРЕНА — рейтинг
-// ============================================
-app.get('/api/admin/arena/leaderboard', adminAuthMiddleware, async (req, res) => {
-    try {
-        const { limit = 50 } = req.query;
-
-        const stats = await ArenaStats.find()
-            .sort({ rating: -1 })
-            .limit(parseInt(limit))
-            .populate('userId', 'username firstName level')
-            .lean();
-
-        const enriched = stats.map((s, i) => ({
-            rank: i + 1,
-            name: s.userId?.username || s.userId?.firstName || 'Unknown',
-            level: s.userId?.level || 1,
-            rating: s.rating,
-            league: s.league,
-            wins: s.wins,
-            losses: s.losses,
-            draws: s.draws,
-            streak: s.streak,
-            bestStreak: s.bestStreak,
-            totalBattles: s.totalBattles,
-            totalEarned: s.totalEarned,
-            totalLost: s.totalLost,
-            peakRating: s.peakRating,
-            lastBattleAt: s.lastBattleAt,
-        }));
-
-        res.json({ success: true, stats: enriched });
-    } catch (e) {
-        console.error('admin arena/leaderboard error:', e);
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
+// Дублирующиеся роуты /api/admin/arena/battles и /api/admin/arena/leaderboard (3-я копия) удалены
 
 // ============================================
 // АДМИН: АРЕНА — принудительное завершение зависших боёв
@@ -4613,19 +4484,15 @@ io.on('connection', (socket) => {
         }
     });
     
-    const pingInterval = setInterval(() => {
-        if (socket.connected) {
-            socket.emit('ping');
-        }
-    }, 20000);
-    
-    socket.on('pong', () => {});
-    
+    // Ping/pong не нужен вручную: socket.io сам пингует каждые pingInterval=25s
+    // и дисконнектит при отсутствии pong за pingTimeout=60s.
+
     socket.on('disconnect', (reason) => {
         console.log(`🔌 WebSocket отключён: ${user.telegramId}, причина: ${reason}`);
-        clearInterval(pingInterval);
         if (arenaSocketManager) {
-            arenaSocketManager.remove(user._id);
+            // Передаём socket.id чтобы не удалить запись нового сокета,
+            // если пользователь успел переподключиться до этого события.
+            arenaSocketManager.remove(user._id, socket.id);
         }
     });
 });

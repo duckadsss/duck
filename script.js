@@ -2552,6 +2552,11 @@ async function makeAttack(targetIndex) {
 
     if (res.stunSkipped) {
         showToast('😵 Питомец оглушён и пропускает ход!', '⚡');
+        // Разблокируем кнопку атаки — иначе она остаётся disabled навсегда
+        if (attackBtn) {
+            attackBtn.disabled = false;
+            attackBtn.innerHTML = '⚔️ Атаковать';
+        }
         const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
         updateBattleUIFromClient({
             myTeam: res.myTeam,
@@ -2629,7 +2634,8 @@ async function renderArenaFightTab() {
     
     if (arenaClient && state.token && !arenaClient.isConnected()) {
         arenaClient.connectSocket(state.token, API_URL);
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Не ждём подключения — сокет поднимется асинхронно.
+        // Данные для рендера берём через HTTP ниже, сокет нужен только для push-событий.
     }
     
     if (arenaClient?.isBattleActive()) {
@@ -3341,6 +3347,8 @@ await loadCreaturesFromServer();
     if (arenaClient) {
         arenaClient.stopSearch();
         arenaClient.loadTeamFromStorage();
+        // Устанавливаем userId явно, чтобы endBattle корректно определял победителя
+        if (state.user) arenaClient.setCurrentUserId(state.user.id || state.user._id);
         arenaClient.connectSocket(state.token, API_URL);
         arenaClient.on('onMatchFound', (data) => showNativeBattleConfirmation(data));
         arenaClient.on('onBattleStartUI', (data) => {
@@ -3389,7 +3397,12 @@ await loadCreaturesFromServer();
             } 
         });
         arenaClient.on('onConnected', () => console.log('✅ WebSocket соединение установлено'));
-        arenaClient.on('onDisconnected', (reason) => console.log(`❌ WebSocket отключён: ${reason}`));
+        arenaClient.on('onDisconnected', (reason) => {
+            console.log(`❌ WebSocket отключён: ${reason}`);
+            if (reason === 'reconnect_failed' && (arenaClient?.isBattleActive() || arenaClient?.isSearching())) {
+                showToast('Потеряно соединение с сервером. Обновите страницу.', '⚠️');
+            }
+        });
         arenaClient.on('onConfirmationUpdate', (data) => { updateConfirmationModal(data); });
         arenaClient.on('onMatchRejected', (data) => {
             const modal = document.getElementById('matchFoundModal');

@@ -262,9 +262,10 @@ class ArenaClient {
     // ============================================================
     
     connectSocket(token, apiUrl) {
-        // Если сокет уже подключён к тому же серверу — не переподключаемся
-        if (this.state.socket && this.state.socket.connected) {
-            console.log('🔌 WebSocket уже подключён, пропускаем');
+        // Если сокет уже подключён или активно подключается — не создаём дубль.
+        // .active = true когда socket.io находится в состоянии connecting/reconnecting.
+        if (this.state.socket && (this.state.socket.connected || this.state.socket.active)) {
+            console.log('🔌 WebSocket уже подключён/подключается, пропускаем');
             return;
         }
         this.disconnectSocket();
@@ -283,7 +284,7 @@ class ArenaClient {
                 reconnection: true,
                 reconnectionAttempts: this.maxReconnectAttempts,
                 reconnectionDelay: 1000,
-                reconnectionDelayMax: 10000,
+                reconnectionDelayMax: 30000,
                 timeout: 30000,
                 upgrade: true,
                 forceNew: false,
@@ -436,14 +437,17 @@ class ArenaClient {
                     socket.emit('check_battle_status', { battleId: this.state.currentBattleId });
                 }
             });
-            
-            socket.on('ping', () => {
-                if (socket.connected) {
-                    socket.emit('pong');
+
+            // Все попытки реконнекта исчерпаны — сообщаем пользователю
+            socket.on('reconnect_failed', () => {
+                console.error('WebSocket: все попытки реконнекта исчерпаны');
+                if (window.addDebugLog) window.addDebugLog('Нет соединения с сервером', 'error');
+                if (this.callbacks.onDisconnected) {
+                    this.callbacks.onDisconnected('reconnect_failed');
                 }
             });
-            
-            socket.on('pong', () => {});
+
+            // Ручной ping убран: socket.io сам обрабатывает heartbeat (pingInterval/pingTimeout).
             
         } catch (err) {
             console.error('Failed to create WebSocket connection:', err);
@@ -502,9 +506,13 @@ class ArenaClient {
     // UTILS
     // ============================================================
     
+    setCurrentUserId(id) {
+        this._currentUserId = id ? id.toString() : null;
+    }
+
     getCurrentUserId() {
-        // winnerId от сервера — это MongoDB ObjectId (_id), поэтому используем только его
-        // telegramId не используем — это разные значения
+        // Приоритет: явно установленный id > window.state
+        if (this._currentUserId) return this._currentUserId;
         if (window.state && window.state.user) {
             if (window.state.user.id) return window.state.user.id.toString();
             if (window.state.user._id) return window.state.user._id.toString();
@@ -530,6 +538,7 @@ class ArenaClient {
             enemyTeam: []
         };
         this.reconnectAttempts = 0;
+        // _currentUserId не сбрасываем — пользователь не меняется между боями
     }
     
     checkBattleStatus(battleId) {

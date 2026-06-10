@@ -142,9 +142,15 @@ class ArenaSocketManager {
         console.log(`🔌 WebSocket подключён: ${userIdStr} (всего: ${this.connectedUsers.size})`);
     }
 
-    remove(userId) {
-        this.connectedUsers.delete(userId.toString());
-        console.log(`🔌 WebSocket отключён: ${userId} (всего: ${this.connectedUsers.size})`);
+    remove(userId, socketId) {
+        const userIdStr = userId.toString();
+        // Удаляем только если socketId совпадает с текущим зарегистрированным.
+        // Без этой проверки: add() регистрирует новый сокет, дисконнектит старый,
+        // старый вызывает disconnect → remove() → удаляет запись НОВОГО сокета.
+        if (!socketId || this.connectedUsers.get(userIdStr) === socketId) {
+            this.connectedUsers.delete(userIdStr);
+            console.log(`🔌 WebSocket отключён: ${userId} (всего: ${this.connectedUsers.size})`);
+        }
     }
 
     send(userId, event, data) {
@@ -238,108 +244,113 @@ class ArenaBattleManager {
         }).sort({ createdAt: 1 });
 
         // Если никого нет кроме последнего соперника — встаём в очередь
-        if (waitingBattle) {
-            const player2Team = await buildTeamFromIds(teamIds, userLevel, user._id, this.getCreature);
-            
-            waitingBattle.player2Id = user._id;
-            waitingBattle.player2Team = player2Team;
-            waitingBattle.status = 'pending_confirmation';
-            waitingBattle.expiresAt = new Date(Date.now() + 60 * 1000);
-            
-            waitingBattle.markModified('player2Team');
-            await waitingBattle.save();
-            
-            await this.User.updateOne(
-                { _id: user._id },
-                { $set: { currentBattleId: waitingBattle._id } }
-            );
-            await this.User.updateOne(
-                { _id: waitingBattle.player1Id },
-                { $set: { currentBattleId: waitingBattle._id } }
-            );
-            
-            return { success: true, battle: waitingBattle, isNew: false, entryFee: leagueConfig.entryFee };
-        } else {
-            // Не вставать дважды в очередь
-            const alreadyWaiting = await this.Battle.findOne({
-                status: 'waiting',
-                player1Id: user._id,
-                expiresAt: { $gt: new Date() }
-            });
-            if (alreadyWaiting) {
-                return { success: true, battle: alreadyWaiting, isNew: true, entryFee: leagueConfig.entryFee };
-            }
+        try {
+            if (waitingBattle) {
+                const player2Team = await buildTeamFromIds(teamIds, userLevel, user._id, this.getCreature);
 
-            const newBattle = await this.createBattle(user._id, teamIds, userLevel, userLeague);
-            await this.User.updateOne(
-                { _id: user._id },
-                { $set: { currentBattleId: newBattle._id } }
-            );
-            return { success: true, battle: newBattle, isNew: true, entryFee: leagueConfig.entryFee };
+                waitingBattle.player2Id = user._id;
+                waitingBattle.player2Team = player2Team;
+                waitingBattle.status = 'pending_confirmation';
+                waitingBattle.expiresAt = new Date(Date.now() + 60 * 1000);
+
+                waitingBattle.markModified('player2Team');
+                await waitingBattle.save();
+
+                await Promise.all([
+                    this.User.updateOne({ _id: user._id }, { $set: { currentBattleId: waitingBattle._id } }),
+                    this.User.updateOne({ _id: waitingBattle.player1Id }, { $set: { currentBattleId: waitingBattle._id } })
+                ]);
+
+                return { success: true, battle: waitingBattle, isNew: false, entryFee: leagueConfig.entryFee };
+            } else {
+                // Не вставать дважды в очередь
+                const alreadyWaiting = await this.Battle.findOne({
+                    status: 'waiting',
+                    player1Id: user._id,
+                    expiresAt: { $gt: new Date() }
+                });
+                if (alreadyWaiting) {
+                    return { success: true, battle: alreadyWaiting, isNew: true, entryFee: leagueConfig.entryFee };
+                }
+
+                const newBattle = await this.createBattle(user._id, teamIds, userLevel, userLeague);
+                await this.User.updateOne({ _id: user._id }, { $set: { currentBattleId: newBattle._id } });
+                return { success: true, battle: newBattle, isNew: true, entryFee: leagueConfig.entryFee };
+            }
+        } catch (err) {
+            // Откатываем взнос если создание боя провалилось
+            if (leagueConfig.entryFee > 0) {
+                await this.User.findByIdAndUpdate(user._id, {
+                    $inc: { balance: leagueConfig.entryFee },
+                    $set: { currentBattleId: null }
+                }).catch(() => {});
+            }
+            throw err;
         }
     }
 
     async acceptMatch(battleId, userId) {
-        const battle = await this.Battle.findById(battleId);
-        if (!battle) {
+        // Читаем бой для базовых проверок участника
+        const battleCheck = await this.Battle.findById(battleId);
+        if (!battleCheck) {
             return { success: false, message: 'Бой не найден' };
         }
-        
-        if (battle.status !== 'pending_confirmation') {
+        if (battleCheck.status !== 'pending_confirmation') {
             return { success: false, message: 'Бой уже не в статусе ожидания подтверждения' };
         }
-        
-        const isPlayer1 = battle.player1Id.toString() === userId.toString();
-        const isPlayer2 = battle.player2Id && battle.player2Id.toString() === userId.toString();
-        
+
+        const isPlayer1 = battleCheck.player1Id.toString() === userId.toString();
+        const isPlayer2 = battleCheck.player2Id && battleCheck.player2Id.toString() === userId.toString();
         if (!isPlayer1 && !isPlayer2) {
             return { success: false, message: 'Вы не участник этого боя' };
         }
-        
-        if (isPlayer1) {
-            if (battle.player1Confirmed) {
-                return { success: false, message: 'Вы уже подтвердили' };
-            }
-            battle.player1Confirmed = true;
-        } else {
-            if (battle.player2Confirmed) {
-                return { success: false, message: 'Вы уже подтвердили' };
-            }
-            battle.player2Confirmed = true;
+
+        // Атомарное подтверждение: флаг ставится только если он ещё false.
+        // Исключает race condition двух одновременных acceptMatch.
+        const confirmField = isPlayer1 ? 'player1Confirmed' : 'player2Confirmed';
+        const updated = await this.Battle.findOneAndUpdate(
+            { _id: battleId, status: 'pending_confirmation', [confirmField]: false },
+            { $set: { [confirmField]: true } },
+            { new: true }
+        );
+        if (!updated) {
+            return { success: false, message: 'Вы уже подтвердили' };
         }
-        
-        if (battle.player1Confirmed && battle.player2Confirmed) {
-            battle.status = 'active';
-            battle.currentTurn = Math.random() < 0.5 ? 'player1' : 'player2';
-            battle.lastMoveAt = new Date();
-            battle.expiresAt = null;
+
+        // Если оба подтвердили — активируем бой атомарно
+        if (updated.player1Confirmed && updated.player2Confirmed) {
+            const startTurn = Math.random() < 0.5 ? 'player1' : 'player2';
+            const battle = await this.Battle.findOneAndUpdate(
+                { _id: battleId, status: 'pending_confirmation' },
+                { $set: { status: 'active', currentTurn: startTurn, lastMoveAt: new Date(), expiresAt: null } },
+                { new: true }
+            );
+            return { success: true, battle, bothConfirmed: true };
         }
-        
-        await battle.save();
-        
-        return { success: true, battle, bothConfirmed: battle.status === 'active' };
+
+        return { success: true, battle: updated, bothConfirmed: false };
     }
 
     async rejectMatch(battleId, userId) {
-        const battle = await this.Battle.findById(battleId);
+        // Атомарная смена статуса: если двое одновременно вызвали rejectMatch,
+        // только один получит документ — второй получит null и не сделает двойной refund.
+        const battle = await this.Battle.findOneAndUpdate(
+            { _id: battleId, status: 'pending_confirmation' },
+            { $set: { status: 'expired' } },
+            { new: false } // берём старый документ чтобы убедиться что были участником
+        );
         if (!battle) {
-            return { success: false, message: 'Бой не найден' };
+            return { success: false, message: 'Бой не найден или уже не ожидает подтверждения' };
         }
-        
-        if (battle.status !== 'pending_confirmation') {
-            return { success: false, message: 'Можно отклонить только бой в ожидании подтверждения' };
-        }
-        
+
         const isPlayer1 = battle.player1Id.toString() === userId.toString();
         const isPlayer2 = battle.player2Id && battle.player2Id.toString() === userId.toString();
-        
         if (!isPlayer1 && !isPlayer2) {
+            // Откатываем статус обратно — чужой пытался отклонить
+            await this.Battle.updateOne({ _id: battleId }, { $set: { status: 'pending_confirmation' } });
             return { success: false, message: 'Вы не участник этого боя' };
         }
-        
-        battle.status = 'expired';
-        await battle.save();
-        
+
         // Возвращаем взносы обоим игрокам
         await this.User.findByIdAndUpdate(battle.player1Id, {
             $inc: { balance: battle.entryFee },
@@ -351,7 +362,7 @@ class ArenaBattleManager {
                 $set: { currentBattleId: null, arenaCooldownUntil: null }
             });
         }
-        
+
         return { success: true, message: 'Бой отклонён, взносы возвращены' };
     }
 
@@ -598,166 +609,149 @@ class ArenaBattleManager {
 }
     async finishBattle(battle) {
     const winnerId = battle.winnerId;
-    
-    // Если нет победителя (ничья или ошибка) - возвращаем взносы
+    const cooldown = new Date(Date.now() + 30 * 1000);
+    const ids = [battle.player1Id, battle.player2Id].filter(Boolean);
+
+    // Если нет победителя (ничья) — возвращаем взносы обоим атомарно
     if (!winnerId) {
-        await this.User.findByIdAndUpdate(battle.player1Id, { $inc: { balance: battle.entryFee }, $set: { currentBattleId: null, arenaCooldownUntil: new Date(Date.now() + 30 * 1000) } });
-        if (battle.player2Id) {
-            await this.User.findByIdAndUpdate(battle.player2Id, { $inc: { balance: battle.entryFee }, $set: { currentBattleId: null, arenaCooldownUntil: new Date(Date.now() + 30 * 1000) } });
-        }
+        await this.User.updateMany(
+            { _id: { $in: ids } },
+            { $inc: { balance: battle.entryFee }, $set: { currentBattleId: null, arenaCooldownUntil: cooldown } }
+        );
+        await battle.save();
         return { winnerId: null, loserId: null };
     }
-    
+
     const loserId = winnerId.toString() === battle.player1Id.toString() ? battle.player2Id : battle.player1Id;
-    
-    if (winnerId && loserId) {
-        const leagueCfg = LEAGUE_CONFIG[battle.league] || LEAGUE_CONFIG.bronze;
-        await this.User.findByIdAndUpdate(winnerId, { $inc: { balance: battle.prizePool, dust: leagueCfg.dustWin || 0 } });
-        if ((leagueCfg.dustLose || 0) > 0) {
-            await this.User.findByIdAndUpdate(loserId, { $inc: { dust: leagueCfg.dustLose } });
-        }
-        
-        let winnerStats = await this.ArenaStats.findOne({ userId: winnerId });
-        let loserStats = await this.ArenaStats.findOne({ userId: loserId });
-        
-        if (!winnerStats) winnerStats = await this.ArenaStats.create({ userId: winnerId });
-        if (!loserStats) loserStats = await this.ArenaStats.create({ userId: loserId });
-        
-        const ratingChange = calculateEloChange(winnerStats.rating, loserStats.rating);
-        
-        let newWinnerRating = winnerStats.rating + ratingChange;
-        let oldWinnerLeague = winnerStats.league;
-        let newWinnerLeague = getLeagueByRating(newWinnerRating);
-        
-        let newLoserRating = Math.max(0, loserStats.rating - ratingChange);
-        let oldLoserLeague = loserStats.league;
-        let newLoserLeague = getLeagueByRating(newLoserRating);
-        
-        let promotionMessage = null;
-        let demotionMessage = null;
-        
-        // Защита от падения для победителя
-        if (newWinnerLeague !== oldWinnerLeague && newWinnerRating >= LEAGUE_CONFIG[newWinnerLeague].minRating) {
-            promotionMessage = `🎉 ПОВЫШЕНИЕ! Вы перешли в ${LEAGUE_CONFIG[newWinnerLeague].name} лигу!`;
-            winnerStats.promotions += 1;
-            winnerStats.promotionProtection = true;
-            
-            if (this.sendNotification) {
-                const user = await this.User.findById(winnerId);
-                if (user) await this.sendNotification(user.telegramId, promotionMessage);
-            }
-        }
-        
-        // Защита от падения для проигравшего
-        if (newLoserLeague !== oldLoserLeague && !loserStats.promotionProtection) {
-            const shouldDemote = newLoserRating < (LEAGUE_CONFIG[oldLoserLeague].minRating - 100);
-            if (shouldDemote) {
-                demotionMessage = `⚠️ ПОНИЖЕНИЕ! Вы вылетели в ${LEAGUE_CONFIG[newLoserLeague].name} лигу. Вернитесь, побеждая сильных!`;
-                loserStats.demotions += 1;
-                
-                if (this.sendNotification) {
-                    const user = await this.User.findById(loserId);
-                    if (user) await this.sendNotification(user.telegramId, demotionMessage);
-                }
-            } else {
-                newLoserLeague = oldLoserLeague;
-                newLoserRating = LEAGUE_CONFIG[oldLoserLeague].minRating - 50;
-            }
-        } else if (loserStats.promotionProtection && newLoserRating < LEAGUE_CONFIG[oldLoserLeague].minRating) {
-            // Защита от падения активна - не даём упасть ниже порога лиги
-            newLoserRating = LEAGUE_CONFIG[oldLoserLeague].minRating;
-            loserStats.promotionProtection = false;
-        }
-        
-        // Сбрасываем promotionProtection проигравшего (защита использована)
-        if (loserStats.promotionProtection && !(newLoserRating >= LEAGUE_CONFIG[oldLoserLeague].minRating)) {
-            loserStats.promotionProtection = false;
-        }
-        
-        winnerStats.rating = newWinnerRating;
-        winnerStats.league = newWinnerLeague;
-        winnerStats.peakRating = Math.max(winnerStats.peakRating, newWinnerRating);
-        winnerStats.wins += 1;
-        winnerStats.streak += 1;
-        winnerStats.bestStreak = Math.max(winnerStats.bestStreak, winnerStats.streak);
-        winnerStats.totalBattles += 1;
-        winnerStats.totalEarned += battle.prizePool;
-        winnerStats.lastBattleAt = new Date();
-        
-        loserStats.rating = newLoserRating;
-        loserStats.league = newLoserLeague;
-        loserStats.losses += 1;
-        loserStats.streak = 0;
-        loserStats.totalBattles += 1;
-        loserStats.totalLost = (loserStats.totalLost || 0) + battle.entryFee;
-        loserStats.lastBattleAt = new Date();
-        
-        await winnerStats.save();
-        await loserStats.save();
-        
-        if (this.sendNotification) {
-            const winner = await this.User.findById(winnerId);
-            const loser = await this.User.findById(loserId);
-            
-            if (winner) {
-                const leagueCfgNotif = LEAGUE_CONFIG[battle.league] || LEAGUE_CONFIG.bronze;
-                const dustNotifStr = (leagueCfgNotif.dustWin || 0) > 0 ? `\n🌫️ Пыль: +${leagueCfgNotif.dustWin}` : '';
-                await this.sendNotification(winner.telegramId,
-                    `🏆 <b>ПОБЕДА В АРЕНЕ!</b>\n\n` +
-                    `Вы победили ${loser?.username || loser?.firstName || 'игрока'}!\n` +
-                    `💰 Выигрыш: +${battle.prizePool.toLocaleString()} MMO${dustNotifStr}\n` +
-                    `📊 Рейтинг: ${winnerStats.rating} ${ratingChange > 0 ? `(+${ratingChange})` : `(${ratingChange})`}\n` +
-                    `🔥 Серия побед: ${winnerStats.streak}\n` +
-                    `${promotionMessage ? `\n${promotionMessage}` : ''}\n` +
-                    `🏅 Лига: ${LEAGUE_CONFIG[winnerStats.league].name}`
-                );
-            }
-            
-            if (loser) {
-                await this.sendNotification(loser.telegramId,
-                    `💀 <b>ПОРАЖЕНИЕ В АРЕНЕ</b>\n\n` +
-                    `Вы проиграли ${winner?.username || winner?.firstName || 'игроку'}.\n` +
-                    `📊 Рейтинг: ${loserStats.rating} (${ratingChange > 0 ? `-${ratingChange}` : `-${Math.abs(ratingChange)}`})\n` +
-                    `${demotionMessage ? `\n${demotionMessage}` : ''}\n` +
-                    `💪 Следующий бой будет лучше!`
-                );
-            }
-        }
-    }
-    
-    await this.User.updateMany(
-        { _id: { $in: [battle.player1Id, battle.player2Id].filter(id => id) } },
-        { $set: { currentBattleId: null, arenaCooldownUntil: new Date(Date.now() + 30 * 1000) } }
-    );
+    const leagueCfg = LEAGUE_CONFIG[battle.league] || LEAGUE_CONFIG.bronze;
+    const xpCalc = (level) => level <= 15 ? level * 100 : 1500 + (level - 15) * 1000;
 
-    // Сохраняем lastOpponentId для анти-повтора
-    if (battle.player1Id && battle.player2Id) {
-        await this.User.updateOne({ _id: battle.player1Id }, { $set: { lastOpponentId: battle.player2Id } });
-        await this.User.updateOne({ _id: battle.player2Id }, { $set: { lastOpponentId: battle.player1Id } });
+    // ── Параллельно: выплата + загрузка users + stats ──
+    const balanceOps = [
+        this.User.findByIdAndUpdate(winnerId, { $inc: { balance: battle.prizePool, dust: leagueCfg.dustWin || 0 } }, { new: true })
+    ];
+    if ((leagueCfg.dustLose || 0) > 0) {
+        balanceOps.push(this.User.findByIdAndUpdate(loserId, { $inc: { dust: leagueCfg.dustLose } }, { new: true }));
     }
 
-    // ============================================================
-    // XP: победитель +20, проигравший +5 (ТОЛЬКО НЕ В БРОНЗЕ)
-    // ============================================================
-    if (winnerId && loserId && battle.league !== 'bronze') {   // ← ИЗМЕНЕНО: добавлено условие
-        const xpCalc = (level) => level <= 15 ? level * 100 : 1500 + (level - 15) * 1000;
-        const winner = await this.User.findById(winnerId);
-        const loser  = await this.User.findById(loserId);
-        if (winner) {
-            const newXp = winner.xp + 20;
-            newXp >= xpCalc(winner.level)
-                ? await this.User.updateOne({ _id: winnerId }, { $inc: { level: 1 }, $set: { xp: newXp - xpCalc(winner.level) } })
-                : await this.User.updateOne({ _id: winnerId }, { $inc: { xp: 20 } });
+    let [winnerUser, loserUser, winnerStats, loserStats] = await Promise.all([
+        this.User.findById(winnerId),
+        this.User.findById(loserId),
+        this.ArenaStats.findOne({ userId: winnerId }),
+        this.ArenaStats.findOne({ userId: loserId }),
+        ...balanceOps
+    ]);
+
+    if (!winnerStats) winnerStats = await this.ArenaStats.create({ userId: winnerId });
+    if (!loserStats)  loserStats  = await this.ArenaStats.create({ userId: loserId });
+
+    // ── Рейтинг и лига ──
+    const ratingChange = calculateEloChange(winnerStats.rating, loserStats.rating);
+
+    let newWinnerRating = winnerStats.rating + ratingChange;
+    const oldWinnerLeague = winnerStats.league;
+    let newWinnerLeague = getLeagueByRating(newWinnerRating);
+
+    let newLoserRating = Math.max(0, loserStats.rating - ratingChange);
+    const oldLoserLeague = loserStats.league;
+    let newLoserLeague = getLeagueByRating(newLoserRating);
+
+    let promotionMessage = null;
+    let demotionMessage = null;
+
+    if (newWinnerLeague !== oldWinnerLeague && newWinnerRating >= LEAGUE_CONFIG[newWinnerLeague].minRating) {
+        promotionMessage = `🎉 ПОВЫШЕНИЕ! Вы перешли в ${LEAGUE_CONFIG[newWinnerLeague].name} лигу!`;
+        winnerStats.promotions += 1;
+        winnerStats.promotionProtection = true;
+    }
+
+    if (newLoserLeague !== oldLoserLeague && !loserStats.promotionProtection) {
+        const shouldDemote = newLoserRating < (LEAGUE_CONFIG[oldLoserLeague].minRating - 100);
+        if (shouldDemote) {
+            demotionMessage = `⚠️ ПОНИЖЕНИЕ! Вы вылетели в ${LEAGUE_CONFIG[newLoserLeague].name} лигу. Вернитесь, побеждая сильных!`;
+            loserStats.demotions += 1;
+        } else {
+            newLoserLeague = oldLoserLeague;
+            newLoserRating = LEAGUE_CONFIG[oldLoserLeague].minRating - 50;
         }
-        if (loser) {
-            const newXp = loser.xp + 5;
-            newXp >= xpCalc(loser.level)
-                ? await this.User.updateOne({ _id: loserId }, { $inc: { level: 1 }, $set: { xp: newXp - xpCalc(loser.level) } })
-                : await this.User.updateOne({ _id: loserId }, { $inc: { xp: 5 } });
+    } else if (loserStats.promotionProtection && newLoserRating < LEAGUE_CONFIG[oldLoserLeague].minRating) {
+        newLoserRating = LEAGUE_CONFIG[oldLoserLeague].minRating;
+        loserStats.promotionProtection = false;
+    }
+    if (loserStats.promotionProtection && !(newLoserRating >= LEAGUE_CONFIG[oldLoserLeague].minRating)) {
+        loserStats.promotionProtection = false;
+    }
+
+    winnerStats.rating = newWinnerRating;
+    winnerStats.league = newWinnerLeague;
+    winnerStats.peakRating = Math.max(winnerStats.peakRating, newWinnerRating);
+    winnerStats.wins += 1;
+    winnerStats.streak += 1;
+    winnerStats.bestStreak = Math.max(winnerStats.bestStreak, winnerStats.streak);
+    winnerStats.totalBattles += 1;
+    winnerStats.totalEarned += battle.prizePool;
+    winnerStats.lastBattleAt = new Date();
+
+    loserStats.rating = newLoserRating;
+    loserStats.league = newLoserLeague;
+    loserStats.losses += 1;
+    loserStats.streak = 0;
+    loserStats.totalBattles += 1;
+    loserStats.totalLost = (loserStats.totalLost || 0) + battle.entryFee;
+    loserStats.lastBattleAt = new Date();
+
+    // ── XP: только не в бронзе ──
+    const xpOps = [];
+    if (battle.league !== 'bronze' && winnerUser && loserUser) {
+        const winXp = winnerUser.xp + 20;
+        xpOps.push(winXp >= xpCalc(winnerUser.level)
+            ? this.User.updateOne({ _id: winnerId }, { $inc: { level: 1 }, $set: { xp: winXp - xpCalc(winnerUser.level) } })
+            : this.User.updateOne({ _id: winnerId }, { $inc: { xp: 20 } }));
+        const loseXp = loserUser.xp + 5;
+        xpOps.push(loseXp >= xpCalc(loserUser.level)
+            ? this.User.updateOne({ _id: loserId }, { $inc: { level: 1 }, $set: { xp: loseXp - xpCalc(loserUser.level) } })
+            : this.User.updateOne({ _id: loserId }, { $inc: { xp: 5 } }));
+    }
+
+    // ── Параллельно: stats + сброс battleId + lastOpponent + XP ──
+    const lastOpOps = (battle.player1Id && battle.player2Id) ? [
+        this.User.updateOne({ _id: battle.player1Id }, { $set: { lastOpponentId: battle.player2Id } }),
+        this.User.updateOne({ _id: battle.player2Id }, { $set: { lastOpponentId: battle.player1Id } })
+    ] : [];
+
+    await Promise.all([
+        winnerStats.save(),
+        loserStats.save(),
+        this.User.updateMany({ _id: { $in: ids } }, { $set: { currentBattleId: null, arenaCooldownUntil: cooldown } }),
+        ...lastOpOps,
+        ...xpOps
+    ]);
+
+    // ── Уведомления (fire & forget — не блокируем ответ клиенту) ──
+    if (this.sendNotification) {
+        const dustStr = (leagueCfg.dustWin || 0) > 0 ? `\n🌫️ Пыль: +${leagueCfg.dustWin}` : '';
+        if (winnerUser) {
+            this.sendNotification(winnerUser.telegramId,
+                `🏆 <b>ПОБЕДА В АРЕНЕ!</b>\n\n` +
+                `Вы победили ${loserUser?.username || loserUser?.firstName || 'игрока'}!\n` +
+                `💰 Выигрыш: +${battle.prizePool.toLocaleString()} MMO${dustStr}\n` +
+                `📊 Рейтинг: ${winnerStats.rating} (+${ratingChange})\n` +
+                `🔥 Серия побед: ${winnerStats.streak}\n` +
+                `${promotionMessage ? `\n${promotionMessage}` : ''}\n` +
+                `🏅 Лига: ${LEAGUE_CONFIG[winnerStats.league].name}`
+            ).catch(() => {});
+        }
+        if (loserUser) {
+            this.sendNotification(loserUser.telegramId,
+                `💀 <b>ПОРАЖЕНИЕ В АРЕНЕ</b>\n\n` +
+                `Вы проиграли ${winnerUser?.username || winnerUser?.firstName || 'игроку'}.\n` +
+                `📊 Рейтинг: ${loserStats.rating} (-${ratingChange})\n` +
+                `${demotionMessage ? `\n${demotionMessage}` : ''}\n` +
+                `💪 Следующий бой будет лучше!`
+            ).catch(() => {});
         }
     }
-    // Если лига bronze — XP НЕ НАЧИСЛЯЕТСЯ
-    
+
     await battle.save();
     return { winnerId, loserId };
 }
