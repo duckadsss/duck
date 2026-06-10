@@ -743,6 +743,13 @@ const lastMergeTimes = new Map();
 const adLocks = new Map();
 const incomeLocks = new Map();
 
+// Очистка rate-limit Map'ов от устаревших записей — предотвращаем утечку памяти
+setInterval(() => {
+    const cutoff = Date.now() - 60 * 1000;
+    for (const [k, v] of lastOpenTimes.entries()) { if (v < cutoff) lastOpenTimes.delete(k); }
+    for (const [k, v] of lastMergeTimes.entries()) { if (v < cutoff) lastMergeTimes.delete(k); }
+}, 5 * 60 * 1000);
+
 async function getCreature(id) {
     if (creaturesCache) {
         return creaturesCache.find(c => c.id === id) || null;
@@ -1083,7 +1090,15 @@ const authMiddleware = async (req, res, next) => {
 // ============================================
 // HEALTH CHECK
 // ============================================
-app.use(express.static(__dirname));
+// Отдаём только фронтенд-файлы — НЕ .env, server.js и т.д.
+const STATIC_WHITELIST = ['index.html', 'style.css', 'script.js', 'arena-client.js',
+    'arena-skills.js', 'localization.js', 'admin.html'];
+app.get('/admin.html', (req, res) => res.sendFile(__dirname + '/admin.html'));
+app.get('/style.css', (req, res) => res.sendFile(__dirname + '/style.css'));
+app.get('/script.js', (req, res) => res.sendFile(__dirname + '/script.js'));
+app.get('/arena-client.js', (req, res) => res.sendFile(__dirname + '/arena-client.js'));
+app.get('/arena-skills.js', (req, res) => res.sendFile(__dirname + '/arena-skills.js'));
+app.get('/localization.js', (req, res) => res.sendFile(__dirname + '/localization.js'));
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString(), db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' });
 });
@@ -1323,8 +1338,7 @@ app.get('/api/user/referrals', authMiddleware, async (req, res) => {
         const qualifiedCount = qualifiedReferrals.length;
         
         if (user.referralCount !== qualifiedCount) {
-            user.referralCount = qualifiedCount;
-            await user.save();
+            await User.updateOne({ _id: user._id }, { $set: { referralCount: qualifiedCount } });
         }
 
         res.json({
@@ -1385,9 +1399,15 @@ app.post('/api/game/claim-friend-reward', authMiddleware, async (req, res) => {
     try {
         const { requiredFriends, creatureId } = req.body;
         const user = req.user;
-        
+
+        // Валидация: requiredFriends должен быть одним из допустимых значений
+        const ALLOWED_FRIEND_COUNTS = [10, 25, 50, 100];
+        if (!ALLOWED_FRIEND_COUNTS.includes(Number(requiredFriends))) {
+            return res.status(400).json({ success: false, message: 'Неверное количество друзей' });
+        }
+
         const qualifiedCount = await getQualifiedReferralsCount(user.telegramId);
-        
+
         if (qualifiedCount < requiredFriends) {
             return res.status(400).json({ success: false, message: `Нужно ${requiredFriends} друзей 5+ уровня (у вас ${qualifiedCount})` });
         }
@@ -1712,8 +1732,7 @@ app.post('/api/game/upgrade-inventory', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Недостаточно MMO', required: cost });
         }
 
-        addXP(updatedUser, 30); // обновляем in-memory для formatUser (атомарный блок ниже записывает в БД)
-        // Атомарный XP
+        // Атомарный XP (addXP убран — дублировал xpGain, давал 60 вместо 30)
         {
             const xpGain = 30;
             const needed = xpNeeded(updatedUser.level);
@@ -1798,8 +1817,7 @@ app.post('/api/game/watch-ad', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Не удалось получить награду. Попробуйте ещё раз.' });
         }
         
-        addXP(updatedUser, 5); // обновляем in-memory для formatUser (атомарный блок ниже записывает в БД)
-        // Атомарный XP
+        // Атомарный XP (addXP убран — дублировал xpGain)
         {
             const xpGain = 5;
             const needed = xpNeeded(updatedUser.level);
@@ -2134,21 +2152,33 @@ app.post('/api/marketplace/list', authMiddleware, async (req, res) => {
             if (price > limits.maxMarketplacePrice) {
                 return res.status(400).json({ success: false, message: `Максимальная цена ${limits.maxMarketplacePrice} MMO` });
             }
-            if ((user.dust || 0) < amount) {
+            // Атомарно списываем пыль с проверкой наличия
+            const dustUpdated = await User.findOneAndUpdate(
+                { _id: user._id, dust: { $gte: amount } },
+                { $inc: { dust: -amount } },
+                { new: true }
+            );
+            if (!dustUpdated) {
                 return res.status(400).json({ success: false, message: `Недостаточно пыли (у вас: ${user.dust || 0})` });
             }
-            await User.findByIdAndUpdate(user._id, { $inc: { dust: -amount } });
-            const listing = await Marketplace.create({
-                sellerId: user._id,
-                sellerTgId: user.telegramId,
-                sellerName: user.username || user.firstName || `User${user.telegramId.slice(-4)}`,
-                isDust: true,
-                dustAmount: amount,
-                price,
-                active: true
-            });
+            let listing;
+            try {
+                listing = await Marketplace.create({
+                    sellerId: user._id,
+                    sellerTgId: user.telegramId,
+                    sellerName: user.username || user.firstName || `User${user.telegramId.slice(-4)}`,
+                    isDust: true,
+                    dustAmount: amount,
+                    price,
+                    active: true
+                });
+            } catch (createErr) {
+                // Откат: возвращаем пыль если создание лота упало
+                await User.findByIdAndUpdate(user._id, { $inc: { dust: amount } });
+                throw createErr;
+            }
             marketplaceListingsCache = { data: null, expiresAt: 0 };
-            return res.json({ success: true, listing, dust: (user.dust || 0) - amount });
+            return res.json({ success: true, listing, dust: dustUpdated.dust });
         }
 
         // ── ЛОТ СУЩЕСТВА ──────────────────────────────────────
@@ -2209,6 +2239,9 @@ app.post('/api/marketplace/buy', authMiddleware, async (req, res) => {
         const { listingId } = req.body;
         const buyer = req.user;
 
+        if (!listingId || !mongoose.Types.ObjectId.isValid(listingId)) {
+            return res.status(400).json({ success: false, message: 'Неверный listingId' });
+        }
         const listing = await Marketplace.findById(listingId);
         if (!listing || !listing.active) {
             return res.status(400).json({ success: false, message: 'Лот не найден или уже продан' });
@@ -2257,6 +2290,21 @@ app.post('/api/marketplace/buy', authMiddleware, async (req, res) => {
             if (seller) {
                 await User.findByIdAndUpdate(seller._id, { $inc: { balance: sellerEarns } });
             }
+            // Записываем в историю продаж (dust)
+            MarketSaleHistory.create({
+                listingId: closedListing._id,
+                creatureId: 'DUST',
+                sellerId: listing.sellerId,
+                sellerTgId: listing.sellerTgId,
+                sellerName: listing.sellerName,
+                buyerId: updatedBuyer._id,
+                buyerTgId: updatedBuyer.telegramId,
+                buyerName: updatedBuyer.username || updatedBuyer.firstName || 'Аноним',
+                price: listing.price,
+                fee: fee,
+                sellerEarns: sellerEarns,
+                soldAt: new Date()
+            }).catch(() => {});
             marketplaceListingsCache = { data: null, expiresAt: 0 };
             return res.json({
                 success: true,
@@ -2383,30 +2431,38 @@ app.post('/api/marketplace/cancel', authMiddleware, async (req, res) => {
         const { listingId } = req.body;
         const user = req.user;
 
-        const listing = await Marketplace.findById(listingId);
-        if (!listing || !listing.active) {
-            return res.status(400).json({ success: false, message: 'Лот не найден' });
+        if (!listingId || !mongoose.Types.ObjectId.isValid(listingId)) {
+            return res.status(400).json({ success: false, message: 'Неверный listingId' });
         }
 
-        if (listing.sellerTgId !== user.telegramId) {
-            return res.status(403).json({ success: false, message: 'Это не ваш лот' });
+        // Атомарно деактивируем лот — защита от двойной отмены, проверяем владельца
+        const listing = await Marketplace.findOneAndUpdate(
+            { _id: listingId, active: true, sellerTgId: user.telegramId },
+            { $set: { active: false } },
+            { new: false }
+        );
+        if (!listing) {
+            return res.status(400).json({ success: false, message: 'Лот не найден, уже отменён или не принадлежит вам' });
         }
 
-        const inventory = await Inventory.find({ telegramId: user.telegramId });
-        const usedSlots = inventory.reduce((sum, i) => sum + i.count, 0);
-        
-        if (usedSlots >= user.inventorySlots) {
-            return res.status(400).json({ success: false, message: 'Нет свободных слотов в инвентаре. Продайте или объедините существа.' });
+        // Проверка слотов только для существ (пыль не занимает инвентарь)
+        if (!listing.isDust) {
+            const inventory = await Inventory.find({ telegramId: user.telegramId });
+            const usedSlots = inventory.reduce((sum, i) => sum + i.count, 0);
+            if (usedSlots >= user.inventorySlots) {
+                // Откатываем — возвращаем лот активным
+                await Marketplace.findByIdAndUpdate(listingId, { $set: { active: true } });
+                return res.status(400).json({ success: false, message: 'Нет свободных слотов в инвентаре. Продайте или объедините существа.' });
+            }
         }
-
-        listing.active = false;
-        await listing.save();
 
         if (listing.isDust) {
             // Возвращаем пыль продавцу
-            await User.findByIdAndUpdate(user._id, { $inc: { dust: listing.dustAmount } });
+            const dustRefunded = await User.findByIdAndUpdate(
+                user._id, { $inc: { dust: listing.dustAmount } }, { new: true }
+            );
             marketplaceListingsCache = { data: null, expiresAt: 0 };
-            return res.json({ success: true, dust: (user.dust || 0) + listing.dustAmount });
+            return res.json({ success: true, dust: dustRefunded?.dust ?? ((user.dust || 0) + listing.dustAmount) });
         }
 
         let invItem = await Inventory.findOne({ telegramId: user.telegramId, creatureId: listing.creatureId });
@@ -2542,8 +2598,13 @@ app.post('/api/arena/cancel-search', authMiddleware, async (req, res) => {
     try {
         const user = req.user;
         if (user.currentBattleId) {
-            const battle = await ArenaBattle.findById(user.currentBattleId);
-            if (battle && battle.status === 'waiting') {
+            // Атомарно меняем статус — защита от двойной отмены
+            const battle = await ArenaBattle.findOneAndUpdate(
+                { _id: user.currentBattleId, status: 'waiting' },
+                { $set: { status: 'expired' } },
+                { new: false }
+            );
+            if (battle) {
                 // Возвращаем взнос И попытку — бой так и не начался
                 await User.findByIdAndUpdate(user._id, {
                     $inc: { balance: battle.entryFee },
@@ -2553,8 +2614,6 @@ app.post('/api/arena/cancel-search', authMiddleware, async (req, res) => {
                     { _id: user._id, arenaBattlesLeft: { $lt: MAX_ARENA_BATTLES } },
                     { $inc: { arenaBattlesLeft: 1 } }
                 );
-                battle.status = 'expired';
-                await battle.save();
             } else {
                 await User.updateOne({ _id: user._id }, { $set: { currentBattleId: null } });
             }
@@ -2576,8 +2635,8 @@ app.post('/api/arena/find-match', authMiddleware, async (req, res) => {
         }
 
         if ((user.level || 1) < 3) {
-    return res.status(403).json({ success: false, message: 'Арена доступна с 3 уровня' });
-}
+            return res.status(403).json({ success: false, message: 'Арена доступна с 3 уровня' });
+        }
         
         if (user.currentBattleId) {
             const existingBattle = await ArenaBattle.findById(user.currentBattleId);
@@ -3076,13 +3135,19 @@ app.post('/api/staking/start', authMiddleware, async (req, res) => {
 
 app.post('/api/staking/claim', authMiddleware, async (req, res) => {
     try {
-        const user    = req.user;
-        const staking = await Staking.findOne({ userId: user._id, claimed: false });
-        if (!staking) return res.status(400).json({ success: false, message: 'Нет активного стейкинга' });
-        if (new Date() < staking.endsAt) return res.status(400).json({ success: false, message: 'Стейкинг ещё не завершён' });
-
-        staking.claimed = true;
-        await staking.save();
+        const user = req.user;
+        // Атомарно помечаем claimed=true — защита от двойной выплаты при параллельных запросах
+        const staking = await Staking.findOneAndUpdate(
+            { userId: user._id, claimed: false, endsAt: { $lte: new Date() } },
+            { $set: { claimed: true } },
+            { new: false }
+        );
+        if (!staking) {
+            // Проверяем — может стейкинг есть, но ещё не завершён
+            const active = await Staking.findOne({ userId: user._id, claimed: false });
+            if (active) return res.status(400).json({ success: false, message: 'Стейкинг ещё не завершён' });
+            return res.status(400).json({ success: false, message: 'Нет активного стейкинга' });
+        }
 
         const total   = staking.amount + staking.reward;
         const plan    = STAKING_PLANS[staking.days];
@@ -3378,100 +3443,86 @@ app.post('/api/admin/transaction-request/:id', adminAuthMiddleware, async (req, 
         const { id } = req.params;
         const { action, note } = req.body;
         
-        const request = await TransactionRequest.findById(id);
+        // Атомарно меняем статус — защита от двойной обработки при параллельных нажатиях
+        const request = await TransactionRequest.findOneAndUpdate(
+            { _id: id, status: 'pending' },
+            { $set: { status: action === 'approve' ? 'approved' : 'rejected',
+                       adminNote: note || '',
+                       processedAt: new Date() } },
+            { new: false }
+        );
         if (!request) {
-            return res.status(404).json({ success: false, message: 'Заявка не найдена' });
+            return res.status(400).json({ success: false, message: 'Заявка не найдена или уже обработана' });
         }
-        
-        if (request.status !== 'pending') {
-            return res.status(400).json({ success: false, message: 'Заявка уже обработана' });
-        }
-        
+
         const user = await User.findById(request.userId);
         if (!user) {
             return res.status(404).json({ success: false, message: 'Пользователь не найден' });
         }
-        
+
         if (action === 'approve') {
             if (request.type === 'deposit') {
-                user.balance += request.amount;
-                addTransaction(user, `Deposit (Подтвержден)`, request.amount);
-                await user.save();
-                
-                // Реферальный бонус (2%)
-                if (user.referredBy) {
+                // Атомарно начисляем баланс
+                const updatedUser = await User.findByIdAndUpdate(
+                    user._id,
+                    {
+                        $inc: { balance: request.amount },
+                        $push: { transactions: { $each: [{ name: 'Deposit (Подтвержден)', amount: request.amount, time: new Date() }], $position: 0, $slice: 30 } }
+                    },
+                    { new: true }
+                );
+                // Реферальный бонус (2%) — только если реферал достиг 5 уровня
+                if (user.referredBy && (user.level || 1) >= 5) {
                     const referrer = await User.findOne({ telegramId: user.referredBy });
                     if (referrer) {
                         const referralBonus = Math.floor(request.amount * REFERRAL_BONUS_PERCENT / 100);
                         if (referralBonus > 0) {
-                            referrer.balance += referralBonus;
-                            referrer.totalReferralBonus = (referrer.totalReferralBonus || 0) + referralBonus;
-                            addTransaction(referrer, `Referral bonus from ${user.username || user.firstName || user.telegramId} (${REFERRAL_BONUS_PERCENT}% of deposit)`, referralBonus);
-                            await referrer.save();
-                            
-                            await sendNotificationToUser(referrer.telegramId, 
+                            await User.findByIdAndUpdate(referrer._id, {
+                                $inc: { balance: referralBonus, totalReferralBonus: referralBonus },
+                                $push: { transactions: { $each: [{ name: `Referral bonus from ${user.username || user.firstName || user.telegramId} (${REFERRAL_BONUS_PERCENT}% of deposit)`, amount: referralBonus, time: new Date() }], $position: 0, $slice: 30 } }
+                            });
+                            const freshReferrer = await User.findById(referrer._id).select('balance totalReferralBonus telegramId');
+                            sendNotificationToUser(referrer.telegramId,
                                 `🎉 <b>Реферальный бонус!</b>\n\n` +
                                 `Ваш друг ${user.username || user.firstName || 'игрок'} пополнил баланс на ${request.amount.toLocaleString()} MMO\n` +
                                 `Вы получили ${REFERRAL_BONUS_PERCENT}%: +${referralBonus.toLocaleString()} MMO\n\n` +
-                                `💰 Ваш баланс: ${referrer.balance.toLocaleString()} MMO\n` +
-                                `🏆 Всего получено бонусов: ${referrer.totalReferralBonus.toLocaleString()} MMO`
-                            );
+                                `💰 Ваш баланс: ${(freshReferrer?.balance || 0).toLocaleString()} MMO\n` +
+                                `🏆 Всего получено бонусов: ${(freshReferrer?.totalReferralBonus || 0).toLocaleString()} MMO`
+                            ).catch(() => {});
                         }
                     }
                 }
-                
-                const successMessage = `✅ <b>Депозит подтвержден!</b>\n\n` +
+                const newBalance = updatedUser?.balance ?? (user.balance + request.amount);
+                sendNotificationToUser(user.telegramId,
+                    `✅ <b>Депозит подтвержден!</b>\n\n` +
                     `💰 Сумма: +${request.amount.toLocaleString()} MMO\n` +
-                    `💳 Баланс: ${user.balance.toLocaleString()} MMO\n\n` +
-                    `Спасибо за пополнение! 🎉`;
-                await sendNotificationToUser(user.telegramId, successMessage);
-                
+                    `💳 Баланс: ${newBalance.toLocaleString()} MMO\n\n` +
+                    `Спасибо за пополнение! 🎉`
+                ).catch(() => {});
             } else if (request.type === 'withdraw') {
-                const successMessage = `✅ <b>Вывод подтвержден!</b>\n\n` +
+                sendNotificationToUser(user.telegramId,
+                    `✅ <b>Вывод подтвержден!</b>\n\n` +
                     `💰 Сумма: -${request.amount.toLocaleString()} MMO\n` +
-                    `💳 Баланс: ${user.balance.toLocaleString()} MMO\n` +
                     `🏦 Кошелек: ${request.wallet}\n\n` +
-                    `⏱ Средства поступят в течение 1-30 минут.`;
-                await sendNotificationToUser(user.telegramId, successMessage);
+                    `⏱ Средства поступят в течение 1-30 минут.`
+                ).catch(() => {});
             }
-            
-            request.status = 'approved';
-            
         } else if (action === 'reject') {
-            
             if (request.type === 'withdraw') {
                 await User.findByIdAndUpdate(user._id, {
                     $inc: { balance: request.amount },
-                    $push: {
-                        transactions: {
-                            $each: [{ 
-                                name: `Withdraw rejected: refund ${request.amount} MMO`, 
-                                amount: request.amount, 
-                                time: new Date() 
-                            }],
-                            $position: 0,
-                            $slice: 30
-                        }
-                    }
+                    $push: { transactions: { $each: [{ name: `Withdraw rejected: refund ${request.amount} MMO`, amount: request.amount, time: new Date() }], $position: 0, $slice: 30 } }
                 });
-                
-                const rejectMessage = `❌ <b>Вывод отклонен</b>\n\nСредства возвращены на баланс.`;
-                await sendNotificationToUser(user.telegramId, rejectMessage);
-                
+                sendNotificationToUser(user.telegramId, `❌ <b>Вывод отклонен</b>\n\nСредства возвращены на баланс.`).catch(() => {});
             } else if (request.type === 'deposit') {
-                const rejectMessage = `❌ Депозит отклонен\n\n` +
+                sendNotificationToUser(user.telegramId,
+                    `❌ Депозит отклонен\n\n` +
                     `💰 Сумма: ${request.amount.toLocaleString()} MMO\n` +
                     `📝 Причина: ${note || 'Свяжитесь с администратором'}\n\n` +
-                    `Если вы отправляли средства, обратитесь к администратору.`;
-                await sendNotificationToUser(user.telegramId, rejectMessage);
+                    `Если вы отправляли средства, обратитесь к администратору.`
+                ).catch(() => {});
             }
-            
-            request.status = 'rejected';
         }
-        
-        request.adminNote = note || request.adminNote;
-        request.processedAt = new Date();
-        await request.save();
         
         await notifyAdmins(`🔄 <b>ЗАЯВКА ОБРАБОТАНА</b>\n\n` +
             `🆔 #${request._id.toString().slice(-8)}\n` +
