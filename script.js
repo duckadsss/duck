@@ -2687,12 +2687,12 @@ async function renderArenaFightTab() {
                 if (leaderboardRes?.success && leaderboardRes.myStats) {
                     const myLeague = leaderboardRes.myStats.league || 'bronze';
                     const leagueConfigs = {
-                        bronze: { entryFee: 0, prizePool: 0, name: '🥉 Бронзовая' },
-                        silver: { entryFee: 500, prizePool: 800, name: '🥈 Серебряная' },
-                        gold: { entryFee: 1000, prizePool: 1600, name: '🥇 Золотая' },
-                        platinum: { entryFee: 2000, prizePool: 3200, name: '💎 Платиновая' },
-                        diamond: { entryFee: 5000, prizePool: 8000, name: '🏆 Алмазная' }
-                    };
+    bronze: { entryFee: 10, prizePool: 15, dustWin: 1, name: '🥉 Бронзовая' },
+    silver: { entryFee: 50, prizePool: 80, dustWin: 5, name: '🥈 Серебряная' },
+    gold: { entryFee: 500, prizePool: 800, dustWin: 50, name: '🥇 Золотая' },
+    platinum: { entryFee: 2000, prizePool: 3200, dustWin: 100, name: '💎 Платиновая' },
+    diamond: { entryFee: 5000, prizePool: 8000, dustWin: 200, name: '🏆 Алмазная' }
+};
                     const config = leagueConfigs[myLeague] || leagueConfigs.bronze;
                     
                     const entryFeeEl = document.getElementById('arenaEntryFee');
