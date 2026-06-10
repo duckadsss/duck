@@ -66,6 +66,9 @@ body {
     border-bottom: 1px solid var(--border);
     padding-top: 60px;
     flex-shrink: 0;
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
 }
 
 .header-top {
@@ -73,14 +76,18 @@ body {
     align-items: center;
     justify-content: space-between;
     margin-bottom: 8px;
-    gap: 10px;
+    gap: 8px;
     flex-wrap: nowrap;
+    width: 100%;
 }
 
 .player-info {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .avatar {
@@ -100,125 +107,153 @@ body {
     font-weight: 600;
     color: var(--text);
     font-family: 'Orbitron', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100px;
 }
 
 .player-level {
     font-size: 10px;
     color: var(--accent2);
     font-weight: 500;
+    white-space: nowrap;
 }
 
 /* ============================================
-   БАЛАНС - ВАРИАНТ 2: СТЕК (два ряда)
+   БАЛАНС - 2 строки: MMO сверху, пыль и доход в одной строке
    ============================================ */
 .balance-area.stacked {
     background: rgba(124, 58, 237, 0.12);
     border: 1px solid rgba(124, 58, 237, 0.25);
     border-radius: 16px;
-    padding: 8px 14px;
-    min-width: 110px;
+    padding: 6px 10px;
     backdrop-filter: blur(4px);
+    flex-shrink: 0;
 }
 
-.balance-row {
+/* Первая строка - MMO */
+.balance-row.main {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 6px;
     font-family: 'Orbitron', monospace;
-    font-size: 12px;
-    padding: 4px 0;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.balance-row i, 
-.balance-row span:first-child {
-    width: 20px;
+.balance-row.main i {
     font-size: 12px;
     color: #a855f7;
+    width: 18px;
 }
 
-.balance-row.dust span:first-child {
-    color: #a78bfa;
-}
-
-.balance-row span:nth-child(2) {
+.balance-row.main span:nth-child(2) {
     flex: 1;
     text-align: right;
     font-weight: 700;
     color: #fff;
-    font-variant-numeric: tabular-nums;
     font-size: 13px;
+    font-variant-numeric: tabular-nums;
     letter-spacing: -0.3px;
 }
 
 .balance-suffix {
     font-size: 8px;
     color: #94a3b8;
-    min-width: 35px;
+    min-width: 28px;
     text-align: right;
-    font-weight: 500;
 }
 
-.balance-row.income {
-    color: #22c55e;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    margin-top: 4px;
-    padding-top: 6px;
-}
-
-.balance-row.income span:nth-child(2) {
-    color: #22c55e;
-}
-
-.balance-row.income i {
-    color: #22c55e;
-}
-
-/* Адаптация для узких экранов */
-@media (max-width: 420px) {
-    .balance-area.stacked {
-        padding: 5px 10px;
-        min-width: 95px;
-    }
-    .balance-row {
-        font-size: 10px;
-        padding: 3px 0;
-    }
-    .balance-row span:nth-child(2) {
-        font-size: 11px;
-    }
-    .balance-suffix {
-        font-size: 7px;
-        min-width: 30px;
-    }
-}
-
-.xp-bar-wrap {
+/* Вторая строка - пыль и доход */
+.balance-row.stats {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 8px;
+    padding-top: 4px;
 }
 
-.xp-label {
+.stats-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.stats-item.dust span:first-child {
+    color: #a78bfa;
     font-size: 10px;
-    color: var(--text3);
-    white-space: nowrap;
-    min-width: 60px;
 }
 
-.xp-bar {
-    flex: 1;
+.stats-item.dust span:last-child {
+    color: #fff;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.stats-item.income {
+    color: #22c55e;
+    background: rgba(34, 197, 94, 0.1);
+    padding: 2px 8px;
+    border-radius: 20px;
+}
+
+.stats-item.income i {
+    font-size: 9px;
+}
+
+.stats-item.income span:first-of-type {
+    font-weight: 700;
+}
+
+.income-unit {
+    font-size: 8px;
+    opacity: 0.8;
+}
+
+.stats-divider {
+    width: 1px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+./* Компактный индикатор опыта под именем */
+.player-xp-compact {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.xp-bar-compact {
+    width: 80px;
     height: 4px;
-    background: var(--border);
+    background: rgba(255, 255, 255, 0.1);
     border-radius: 2px;
     overflow: hidden;
 }
 
-.xp-fill {
+.xp-fill-compact {
     height: 100%;
     background: linear-gradient(90deg, var(--accent), var(--accent2));
     border-radius: 2px;
-    transition: width 0.5s ease;
+    transition: width 0.3s ease;
+}
+
+.xp-text-compact {
+    font-size: 8px;
+    color: var(--text2);
+    font-family: 'Orbitron', monospace;
+    white-space: nowrap;
+}
+
+/* Скрываем старую полоску опыта */
+.xp-bar-wrap {
+    display: none;
 }
 
 .main-content {
@@ -1494,6 +1529,42 @@ body {
 }
 
 @media (max-width: 420px) {
+    .balance-area.stacked {
+        padding: 4px 8px;
+    }
+    
+    .balance-row.main span:nth-child(2) {
+        font-size: 11px;
+    }
+    
+    .balance-suffix {
+        font-size: 7px;
+        min-width: 24px;
+    }
+    
+    .stats-item {
+        font-size: 9px;
+    }
+    
+    .stats-item.income {
+        padding: 2px 6px;
+    }
+    
+    .player-name {
+        font-size: 10px;
+        max-width: 70px;
+    }
+    
+    .player-level {
+        font-size: 8px;
+    }
+    
+    .avatar {
+        width: 28px;
+        height: 28px;
+        font-size: 11px;
+    }
+    
     .lang-btn {
         min-width: 32px;
         padding: 3px 6px;
@@ -2590,49 +2661,3 @@ img {
     gap: 8px;
 }
 .arena-reset-btn:active { transform: scale(0.97); }
-
-
-
-
-/* Фиксируем ширину header, чтобы не расширялся */
-.header {
-    width: 100%;
-    max-width: 480px;
-    margin: 0 auto;
-}
-
-.header-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-    width: 100%;
-    flex-wrap: nowrap;
-}
-
-/* Ограничиваем ширину блока баланса */
-.balance-area.stacked {
-    flex-shrink: 1;
-    min-width: 85px;
-    max-width: 100px;
-}
-
-/* Ограничиваем информацию об игроке */
-.player-info {
-    flex-shrink: 1;
-    min-width: 0; /* Позволяет сжиматься */
-    overflow: hidden;
-}
-
-.player-name {
-    font-size: 12px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 100px;
-}
-
-.player-level {
-    font-size: 9px;
-    white-space: nowrap;
-}

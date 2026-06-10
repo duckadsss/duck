@@ -53,36 +53,38 @@
             <div>
                 <div class="player-name">GENOME_X</div>
                 <div class="player-level" id="playerLevelLabel">LVL 1 · Researcher</div>
+                <!-- Компактная полоска опыта -->
+                <div class="player-xp-compact">
+                    <div class="xp-bar-compact">
+                        <div class="xp-fill-compact" id="xpFillCompact" style="width:0%"></div>
+                    </div>
+                    <div class="xp-text-compact" id="xpTextCompact">0/100</div>
+                </div>
             </div>
         </div>
         
-        <!-- ОБЪЕДИНЁННЫЙ БЛОК БАЛАНСА (СТЕК - ДВА РЯДА) -->
-<div class="balance-area stacked">
-    <div class="balance-row main">
-        <i class="fa-solid fa-dna"></i>
-        <span id="balanceDisplay">0</span>
-        <span class="balance-suffix">MMO</span>
-    </div>
-    <div class="balance-row stats">
-        <div class="stats-item dust">
-            <span>🌫️</span>
-            <span id="dustDisplay">0</span>
-        </div>
-        <div class="stats-divider"></div>
-        <div class="stats-item income">
-            <i class="fa-solid fa-bolt"></i>
-            <span id="incomeInline">0</span>
-            <span class="income-unit">/ч</span>
+        <!-- Блок баланса -->
+        <div class="balance-area stacked">
+            <div class="balance-row main">
+                <i class="fa-solid fa-dna"></i>
+                <span id="balanceDisplay">0</span>
+                <span class="balance-suffix">MMO</span>
+            </div>
+            <div class="balance-row stats">
+                <div class="stats-item dust">
+                    <span>🌫️</span>
+                    <span id="dustDisplay">0</span>
+                </div>
+                <div class="stats-divider"></div>
+                <div class="stats-item income">
+                    <i class="fa-solid fa-bolt"></i>
+                    <span id="incomeInline">0</span>
+                    <span class="income-unit">/ч</span>
+                </div>
+            </div>
         </div>
     </div>
 </div>
-    <div class="xp-bar-wrap">
-        <div class="xp-label" id="xpLabel">XP 0/100</div>
-        <div class="xp-bar">
-            <div class="xp-fill" id="xpFill" style="width:0%"></div>
-        </div>
-    </div>
-</div>  <!-- Закрытие header -->
 
 <!-- MAIN CONTENT -->
 <div class="main-content" id="mainContent">

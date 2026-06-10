@@ -499,7 +499,6 @@ function updateHeader() {
     if (!state.user) return;
     const u = state.user;
 
-    // Пересчёт дохода если нужно
     if (!state.incomePerHour) {
         let income = 0;
         state.inventory.forEach(item => { 
@@ -523,16 +522,34 @@ function updateHeader() {
     const incomeInline = document.getElementById('incomeInline');
     if (incomeInline) incomeInline.textContent = formatNum(state.incomePerHour);
     
-    // Остальной код без изменений...
+    // Обновляем компактный XP индикатор
     const needed = u.level * 100;
-    const xpLabel = document.getElementById('xpLabel');
-    if (xpLabel) xpLabel.textContent = `XP ${u.xp}/${needed}`;
+    const xpPercent = Math.min(100, (u.xp / needed) * 100);
+    const xpFill = document.getElementById('xpFillCompact');
+    const xpText = document.getElementById('xpTextCompact');
     
-    const xpFill = document.getElementById('xpFill');
-    if (xpFill) xpFill.style.width = `${Math.min(100, (u.xp / needed) * 100)}%`;
+    if (xpFill) xpFill.style.width = `${xpPercent}%`;
+    if (xpText) xpText.textContent = `${u.xp}/${needed}`;
     
+    // Обновляем уровень
     const levelLabel = document.getElementById('playerLevelLabel');
     if (levelLabel) levelLabel.textContent = `LVL ${u.level} · ${getLevelTitle(u.level)}`;
+    
+    // Остальные обновления...
+    const walletBalanceEl = document.getElementById('walletBalance');
+    if (walletBalanceEl) walletBalanceEl.textContent = formatBalance(visualBalance);
+    
+    const walletDustEl = document.getElementById('walletDust');
+    if (walletDustEl) walletDustEl.textContent = formatNum(u.dust || 0);
+    
+    const inventorySlots = document.getElementById('inventorySlots');
+    if (inventorySlots) inventorySlots.textContent = `${getUsedSlots()}/${u.inventorySlots || 10}`;
+    
+    const upgradeCostEl = document.getElementById('upgradeSlotCost');
+    if (upgradeCostEl) upgradeCostEl.textContent = getUpgradeCost();
+    
+    const friendCountDisplay = document.getElementById('friendCountDisplay');
+    if (friendCountDisplay) friendCountDisplay.textContent = `${u.referralCount || 0} друзей 5+ уровня`;
 }
 
 function updateUpgradeButton() {
