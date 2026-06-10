@@ -2933,8 +2933,9 @@ app.post('/api/arena/move', authMiddleware, async (req, res) => {
                     serverTimestamp: result.serverTimestamp || Date.now()
                 };
                 
+                // Отправляем move_update только сопернику.
+                // Мувующий игрок уже получил полный результат через HTTP-ответ.
                 arenaSocketManager?.send(opponentId, 'move_update', moveUpdatePayload);
-                arenaSocketManager?.send(moverId, 'move_update', { ...moveUpdatePayload, isSelf: true });
             }
         }
         
@@ -4570,34 +4571,58 @@ io.use(async (socket, next) => {
 io.on('connection', (socket) => {
     const user = socket.user;
     console.log(`🔌 Новое WebSocket соединение: ${user.telegramId} (${socket.id})`);
+
+    // Простой rate limiter для WS событий — не более 20 за 10 секунд
+    let wsEventCount = 0;
+    const wsRateLimitReset = setInterval(() => { wsEventCount = 0; }, 10 * 1000);
+    const wsRateCheck = () => {
+        wsEventCount++;
+        if (wsEventCount > 20) {
+            console.warn(`⚠️ WS rate limit: ${user.telegramId}`);
+            return false;
+        }
+        return true;
+    };
     
     socket.emit('connected', { ok: true, timestamp: Date.now() });
     
     if (arenaSocketManager) {
         arenaSocketManager.add(user._id, socket.id);
     } else {
-        // arenaSocketManager ещё не готов — ждём открытия БД и регистрируем
-        mongoose.connection.once('open', () => {
+        // arenaSocketManager ещё не готов — ждём открытия БД.
+        // Используем on+removeListener вместо once чтобы не накапливать слушатели.
+        const onDbOpen = () => {
             if (arenaSocketManager) arenaSocketManager.add(user._id, socket.id);
-        });
+        };
+        mongoose.connection.once('open', onDbOpen);
+        // Если соединение уже открылось пока мы ждали — снимаем слушатель
+        socket.once('disconnect', () => mongoose.connection.removeListener('open', onDbOpen));
     }
     
     socket.on('check_battle_status', async (data) => {
+        if (!wsRateCheck()) return;
         try {
+            // Валидация battleId
+            if (!data?.battleId || !mongoose.Types.ObjectId.isValid(data.battleId)) return;
+
             const battle = await ArenaBattle.findById(data.battleId);
-            if (battle && battle.status === 'active') {
-                const isPlayer1 = battle.player1Id.toString() === user._id.toString();
-                socket.emit('battle_status', {
-                    hasBattle: true,
-                    battleId: battle._id,
-                    status: battle.status,
-                    isPlayer1: isPlayer1,
-                    currentTurn: battle.currentTurn,
-                    myTeam: isPlayer1 ? battle.player1Team : battle.player2Team,
-                    opponentTeam: isPlayer1 ? battle.player2Team : battle.player1Team,
-                    battleLog: battle.battleLog.slice(-20)
-                });
-            }
+            if (!battle || battle.status !== 'active') return;
+
+            // Только участники боя получают данные
+            const isPlayer1 = battle.player1Id.toString() === user._id.toString();
+            const isPlayer2 = battle.player2Id?.toString() === user._id.toString();
+            if (!isPlayer1 && !isPlayer2) return;
+
+            socket.emit('battle_status', {
+                hasBattle: true,
+                battleId: battle._id,
+                status: battle.status,
+                isPlayer1: isPlayer1,
+                currentTurn: battle.currentTurn,
+                myTeam: isPlayer1 ? battle.player1Team : battle.player2Team,
+                opponentTeam: isPlayer1 ? battle.player2Team : battle.player1Team,
+                battleLog: battle.battleLog.slice(-20)
+            });
         } catch (err) {
             console.error('check_battle_status error:', err);
         }
@@ -4606,8 +4631,21 @@ io.on('connection', (socket) => {
     // Ping/pong не нужен вручную: socket.io сам пингует каждые pingInterval=25s
     // и дисконнектит при отсутствии pong за pingTimeout=60s.
 
+    // Периодически проверяем не забанен ли пользователь (раз в 5 минут)
+    const banCheckInterval = setInterval(async () => {
+        try {
+            const freshUser = await User.findById(user._id).select('isBanned').lean();
+            if (freshUser?.isBanned) {
+                console.log(`🚫 Забаненный пользователь отключён: ${user.telegramId}`);
+                socket.disconnect(true);
+            }
+        } catch (e) { /* ignore */ }
+    }, 5 * 60 * 1000);
+
     socket.on('disconnect', (reason) => {
         console.log(`🔌 WebSocket отключён: ${user.telegramId}, причина: ${reason}`);
+        clearInterval(banCheckInterval);
+        clearInterval(wsRateLimitReset);
         if (arenaSocketManager) {
             // Передаём socket.id чтобы не удалить запись нового сокета,
             // если пользователь успел переподключиться до этого события.

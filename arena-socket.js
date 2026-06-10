@@ -185,8 +185,7 @@ class ArenaBattleManager {
         this.getCreature = getCreatureFn;
         this.sendNotification = sendNotificationFn;
         this.socketManager = arenaSocketManager;
-        this.activeBattles = new Map(); // резерв
-        this.searchQueue = []; // резерв
+        // activeBattles / searchQueue удалены — матчмейкинг через MongoDB, не in-memory
     }
 
     async createBattle(player1Id, teamIds, userLevel, league) {
@@ -236,31 +235,35 @@ class ArenaBattleManager {
         const excludeIds = [user._id];
         if (user.lastOpponentId) excludeIds.push(user.lastOpponentId);
 
-        let waitingBattle = await this.Battle.findOne({
-            status: 'waiting',
-            league: userLeague,
-            player1Id: { $nin: excludeIds },
-            expiresAt: { $gt: new Date() }
-        }).sort({ createdAt: 1 });
+        // Атомарно захватываем waiting-бой: устанавливаем player2Id только если поле ещё null.
+        // Защита от race condition: два игрока одновременно не смогут захватить одну позицию.
+        const player2TeamData = await buildTeamFromIds(teamIds, userLevel, user._id, this.getCreature);
+        const claimedBattle = await this.Battle.findOneAndUpdate(
+            {
+                status: 'waiting',
+                league: userLeague,
+                player1Id: { $nin: excludeIds },
+                player2Id: null, // гарантируем что ещё не занят
+                expiresAt: { $gt: new Date() }
+            },
+            {
+                $set: {
+                    player2Id: user._id,
+                    player2Team: player2TeamData,
+                    status: 'pending_confirmation',
+                    expiresAt: new Date(Date.now() + 60 * 1000)
+                }
+            },
+            { new: true, sort: { createdAt: 1 } }
+        );
 
-        // Если никого нет кроме последнего соперника — встаём в очередь
         try {
-            if (waitingBattle) {
-                const player2Team = await buildTeamFromIds(teamIds, userLevel, user._id, this.getCreature);
-
-                waitingBattle.player2Id = user._id;
-                waitingBattle.player2Team = player2Team;
-                waitingBattle.status = 'pending_confirmation';
-                waitingBattle.expiresAt = new Date(Date.now() + 60 * 1000);
-
-                waitingBattle.markModified('player2Team');
-                await waitingBattle.save();
-
+            if (claimedBattle) {
+                const waitingBattle = claimedBattle;
                 await Promise.all([
                     this.User.updateOne({ _id: user._id }, { $set: { currentBattleId: waitingBattle._id } }),
                     this.User.updateOne({ _id: waitingBattle.player1Id }, { $set: { currentBattleId: waitingBattle._id } })
                 ]);
-
                 return { success: true, battle: waitingBattle, isNew: false, entryFee: leagueConfig.entryFee };
             } else {
                 // Не вставать дважды в очередь
@@ -462,7 +465,7 @@ class ArenaBattleManager {
         battle.lastMoveAt = new Date();
         if (isPlayer1) { battle.markModified('player1Team'); } else { battle.markModified('player2Team'); }
         await battle.save();
-        return { success: true, finished: false, stunSkipped: true, currentTurn: battle.currentTurn, turnCount: battle.turnCount, myTeam, enemyTeam, timeLeft: 30 };
+        return { success: true, finished: false, stunSkipped: true, currentTurn: battle.currentTurn, turnCount: battle.turnCount, myTeam, enemyTeam, timeLeft: 30, serverTimestamp: Date.now() };
     }
 
     const isCrit = Math.random() < attacker.critChance;
@@ -757,23 +760,23 @@ class ArenaBattleManager {
 }
 
     async surrenderBattle(battleId, userId) {
-        const battle = await this.Battle.findById(battleId);
+        // Атомарно завершаем бой — защита от гонки с processMove
+        const battle = await this.Battle.findOneAndUpdate(
+            { _id: battleId, status: 'active' },
+            { $set: { status: 'finished' } },
+            { new: false }
+        );
         if (!battle) {
-            return { success: false, message: 'Бой не найден' };
+            return { success: false, message: 'Бой не найден или уже завершён' };
         }
-        
-        if (battle.status !== 'active') {
-            return { success: false, message: 'Бой не активен' };
-        }
-        
+
         const isPlayer1 = battle.player1Id.toString() === userId.toString();
-        
-        battle.status = 'finished';
+        battle.status = 'finished'; // синхронизируем in-memory для finishBattle
         battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
         battle.markModified('player1Team');
         battle.markModified('player2Team');
         await this.finishBattle(battle);
-        
+
         return { success: true, message: 'Вы сдались' };
     }
 
@@ -787,13 +790,19 @@ class ArenaBattleManager {
         });
         
         for (const battle of expiredWaiting) {
-            const entryFee = battle.entryFee;
-            const player1Id = battle.player1Id;
-            const player2Id = battle.player2Id;
-            const wasPendingConfirmation = battle.status === 'pending_confirmation';
-            
-            battle.status = 'expired';
-            await battle.save();
+            // Атомарно меняем статус: если два вызова expireOldBattles совпадут —
+            // только один обработает каждый бой и вернёт взнос.
+            const atomicExpire = await this.Battle.findOneAndUpdate(
+                { _id: battle._id, status: { $in: ['waiting', 'pending_confirmation'] } },
+                { $set: { status: 'expired' } },
+                { new: false }
+            );
+            if (!atomicExpire) continue; // уже обработан другим вызовом
+
+            const entryFee = atomicExpire.entryFee;
+            const player1Id = atomicExpire.player1Id;
+            const player2Id = atomicExpire.player2Id;
+            const wasPendingConfirmation = atomicExpire.status === 'pending_confirmation';
             expiredCount++;
             
             // Возвращаем взнос + попытку player1 (бой не начался)
@@ -875,6 +884,7 @@ class ArenaBattleManager {
             
             const isPlayer1 = battle.player1Id.toString() === userId.toString();
             
+            const isActive = battle.status === 'active';
             return {
                 hasBattle: true,
                 battleId: battle._id,
@@ -889,7 +899,8 @@ class ArenaBattleManager {
                 turnCount: battle.turnCount,
                 lastMoveAt: battle.lastMoveAt,
                 myTeam: isPlayer1 ? battle.player1Team : battle.player2Team,
-                opponentTeam: isPlayer1 ? battle.player2Team : battle.player1Team,
+                // Команду соперника раскрываем только в активном бою
+                opponentTeam: isActive ? (isPlayer1 ? battle.player2Team : battle.player1Team) : undefined,
                 battleLog: battle.battleLog ? battle.battleLog.slice(-20) : []
             };
         } catch (err) {

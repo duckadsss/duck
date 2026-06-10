@@ -99,6 +99,7 @@ class ArenaClient {
     
     stopSearch() {
         this.state.isSearching = false;
+        this.state.confirmationShown = false; // сбрасываем флаг при любой остановке поиска
         if (this.timers.searchTimer) {
             clearTimeout(this.timers.searchTimer);
             this.timers.searchTimer = null;
@@ -212,6 +213,9 @@ class ArenaClient {
     }
     
     endBattle(winnerId, prizePool) {
+        // Идемпотентная защита: если бой уже завершён — не вызываем onBattleEnd повторно.
+        // Это предотвращает двойной popup: HTTP ответ makeAttack + WS battle_end.
+        if (!this.state.battleActive) return;
         this.state.battleActive = false;
         this.state.currentBattleId = null;
         this.state.battleEndedAt = Date.now();
