@@ -378,6 +378,16 @@
             flex: 1;
         }
 
+        /* Кнопки рассылки */
+        .button-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .button-row input {
+            flex: 1;
+        }
+
         @media (min-width: 768px) {
             .stats-grid {
                 grid-template-columns: repeat(4, 1fr);
@@ -1418,17 +1428,19 @@
     }
 
     // ============================================================
-    // РАССЫЛКА
+    // РАССЫЛКА - ФУНКЦИИ ДЛЯ КНОПОК (ИСПРАВЛЕНО)
     // ============================================================
     let buttonRows = 1;
 
-    function addButtonRow() {
+    window.addButtonRow = function() {
         if (buttonRows >= 3) {
             showToast('Максимум 3 кнопки', 'error');
             return;
         }
         
         const container = document.getElementById('buttonsContainer');
+        if (!container) return;
+        
         const row = document.createElement('div');
         row.className = 'button-row';
         row.innerHTML = `
@@ -1440,10 +1452,12 @@
         buttonRows++;
     }
 
-    function removeButtonRow(btn) {
+    window.removeButtonRow = function(btn) {
         const row = btn.closest('.button-row');
-        row.remove();
-        buttonRows--;
+        if (row) {
+            row.remove();
+            buttonRows--;
+        }
     }
 
     function getButtons() {
@@ -1462,7 +1476,7 @@
         return buttons;
     }
 
-    async function sendBroadcast(testMode = false) {
+    window.sendBroadcast = async function(testMode = false) {
         const message = document.getElementById('broadcastMessage')?.value.trim();
         const imageUrl = document.getElementById('broadcastImage')?.value.trim();
         const buttons = getButtons();
@@ -1492,9 +1506,16 @@
             showToast(res.message, 'success');
             document.getElementById('broadcastMessage').value = '';
             document.getElementById('broadcastImage').value = '';
-            document.querySelectorAll('#buttonsContainer .button-row').forEach((row, idx) => {
-                if (idx > 0) row.remove();
-            });
+            const buttonsContainer = document.getElementById('buttonsContainer');
+            if (buttonsContainer) {
+                buttonsContainer.innerHTML = `
+                    <div class="button-row">
+                        <input type="text" placeholder="Текст кнопки" class="btn-text" style="flex: 1;">
+                        <input type="text" placeholder="URL ссылки" class="btn-url" style="flex: 2;">
+                        <button onclick="removeButtonRow(this)" class="danger" style="padding: 6px 12px;">✖</button>
+                    </div>
+                `;
+            }
             buttonRows = 1;
             loadBroadcastHistory();
         } else {
@@ -1561,7 +1582,7 @@
         }).join('');
     }
 
-    async function cancelBroadcast(broadcastId) {
+    window.cancelBroadcast = async function(broadcastId) {
         if (!confirm('Отменить рассылку? Отправленные сообщения не будут удалены.')) return;
         
         const res = await apiRequest(`/api/admin/broadcast/cancel/${broadcastId}`, 'POST');
@@ -1581,7 +1602,7 @@
                 
                 <div class="form-group">
                     <label>📝 Текст сообщения (HTML поддерживается)</label>
-                    <textarea id="broadcastMessage" rows="6" placeholder="Введите текст сообщения...&#10;&#10;Поддерживается HTML:&#10;&lt;b&gt;жирный&lt;/b&gt; &lt;i&gt;курсив&lt;/i&gt; &lt;a href=&quot;https://...&quot;&gt;ссылка&lt;/a&gt;"></textarea>
+                    <textarea id="broadcastMessage" rows="6" placeholder="Введите текст сообщения...&#10;&#10;Поддерживается HTML:&#10;&lt;b&gt;жирный&lt;/b&gt; &lt;i&gt;курсив&lt;/i&gt;"></textarea>
                 </div>
                 
                 <div class="form-group">
@@ -1673,7 +1694,6 @@
     // ARENA TAB
     // ============================================================
 
-    // Переключение на вкладку арены из любого места
     window.goToArenaTab = function() {
         document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
         const arenaBtn = document.getElementById('navArena');
@@ -1795,7 +1815,8 @@
                     <thead><tr>
                         <th>ID</th><th>Лига</th><th>Статус</th><th>Игроки</th>
                         <th>Команда 1</th><th>Команда 2</th><th>Приз</th><th>Ходы</th><th>Время</th><th>Победитель</th>
-                    </tr></thead>
+                    </tr>
+                    </thead>
                     <tbody>${rows}</tbody>
                 </table>
             </div>`;
@@ -1829,7 +1850,8 @@
                     <thead><tr>
                         <th>#</th><th>Игрок</th><th>Лига</th><th>Рейтинг</th>
                         <th>🏆 Победы</th><th>💀 Пор.</th><th>🔥 Серия</th><th>Заработано</th>
-                    </tr></thead>
+                    </tr>
+                    </thead>
                     <tbody>${rows}</tbody>
                 </table>
             </div>`;

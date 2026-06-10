@@ -5,7 +5,7 @@
 // ============================================================
 // CONFIG
 // ============================================================
-const API_URL = 'https://serv-production-765e.up.railway.app';
+const API_URL = 'https://serv-production-dbf3.up.railway.app';
 
 // ============================================================
 // ЗАПРЕТ КОНТЕКСТНОГО МЕНЮ И ВЫДЕЛЕНИЯ
@@ -482,10 +482,10 @@ function updateArenaLock() {
     const lock = document.getElementById('arenaNavLock');
     if (!lock) return;
     const level = state.user?.level || 1;
-    if (level < 5) {
+    if (level < 3) {
         lock.style.display = 'inline';
         lock.textContent = '🔒';
-        lock.title = `Доступно с 5 уровня (ваш: ${level})`;
+        lock.title = `Доступно с 3 уровня (ваш: ${level})`;
     } else if (!isArenaOpenClient()) {
         lock.style.display = 'inline';
         lock.textContent = '⏰';
@@ -507,6 +507,11 @@ function updateHeader() {
 
     const visualBalance = getVisualBalance();
     document.getElementById('balanceDisplay').textContent = formatBalance(visualBalance);
+    
+    const dustEl = document.getElementById('dustDisplay');
+    if (dustEl) dustEl.textContent = formatNum(u.dust || 0);
+    const walletDustEl = document.getElementById('walletDust');
+    if (walletDustEl) walletDustEl.textContent = formatNum(u.dust || 0);
     
     const incomeInline = document.getElementById('incomeInline');
     if (incomeInline) incomeInline.textContent = `+${formatNum(state.incomePerHour)}/hr`;
@@ -749,6 +754,15 @@ function showMergePreview(creatureId) {
     const nextCreature = CREATURES.find(c => c.name === creature.name && c.rarity === nextRarity) || creature;
     const color = RARITY_COLORS[creature.rarity];
 
+    const DUST_COST = { common: 400, uncommon: 4000, rare: 50000 };
+    const BASE_CHANCE = { common: 30, uncommon: 30, rare: 30, epic: 10, legendary: 5 };
+    const dustCost = DUST_COST[creature.rarity] || 0;
+    const baseChance = BASE_CHANCE[creature.rarity] || 30;
+    const boostedChance = Math.min(95, baseChance + 50);
+    const userDust = state.user?.dust || 0;
+    const canAffordDust = dustCost > 0 && userDust >= dustCost;
+    const hasDustBoost = dustCost > 0; // rarity supports dust
+
     document.getElementById('popup').innerHTML = `
         <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
         <div class="popup-title" style="margin-bottom:4px">Предпросмотр Слияния</div>
@@ -760,24 +774,37 @@ function showMergePreview(creatureId) {
                 <div style="text-align:center;flex:1"><div style="font-size:24px;margin-bottom:6px">?</div><div style="font-size:10px;color:#94a3b8">Результат</div><div style="font-size:11px;font-weight:600;color:#e2e8f0;margin-top:2px">Unknown</div></div>
             </div>
             <div style="border-top:1px solid #1e2d4a;padding-top:14px">
-                <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Возможные результаты</div>
+                <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Базовые шансы</div>
                 <div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:10px;padding:10px;margin-bottom:8px">
-                    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">${getIconHtml(nextCreature)}</span><div style="flex:1"><div style="font-size:11px;font-weight:600;color:#22c55e">30% Успех</div><div style="font-size:10px;color:#94a3b8">${escapeHtml(nextCreature.name)} (${nextRarity.toUpperCase()})</div></div><div style="font-size:12px;font-weight:700;color:#22c55e">▲ ПОВЫШЕНИЕ</div></div>
+                    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">${getIconHtml(nextCreature)}</span><div style="flex:1"><div style="font-size:11px;font-weight:600;color:#22c55e">${baseChance}% Успех</div><div style="font-size:10px;color:#94a3b8">${escapeHtml(nextCreature.name)} (${nextRarity.toUpperCase()})</div></div><div style="font-size:12px;font-weight:700;color:#22c55e">▲ ПОВЫШЕНИЕ</div></div>
                 </div>
                 <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:10px">
-                    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">${getIconHtml(creature)}</span><div style="flex:1"><div style="font-size:11px;font-weight:600;color:#ef4444">70% Провал</div><div style="font-size:10px;color:#94a3b8">${escapeHtml(creature.name)} (${creature.rarity.toUpperCase()})</div></div><div style="font-size:12px;font-weight:700;color:#ef4444">= БЕЗ ИЗМЕНЕНИЙ</div></div>
+                    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">${getIconHtml(creature)}</span><div style="flex:1"><div style="font-size:11px;font-weight:600;color:#ef4444">${100-baseChance}% Провал</div><div style="font-size:10px;color:#94a3b8">${escapeHtml(creature.name)} (${creature.rarity.toUpperCase()})</div></div><div style="font-size:12px;font-weight:700;color:#ef4444">= БЕЗ ИЗМЕНЕНИЙ</div></div>
                 </div>
+                ${hasDustBoost ? `
+                <div style="margin-top:12px;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.3);border-radius:10px;padding:10px">
+                    <div style="font-size:10px;color:#a78bfa;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">🌫️ Бонус Пыли +50%</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <div style="font-size:11px;color:#e2e8f0">Шанс успеха: <span style="color:#a78bfa;font-weight:700">${boostedChance}%</span></div>
+                        <div style="font-size:11px;color:${canAffordDust ? '#a78bfa' : '#ef4444'}">Стоимость: ${dustCost.toLocaleString()} 🌫️</div>
+                    </div>
+                    <div style="font-size:10px;color:${canAffordDust ? '#7c3aed' : '#ef4444'};margin-top:4px">У вас: ${userDust.toLocaleString()} 🌫️${canAffordDust ? '' : ' — недостаточно'}</div>
+                </div>` : ''}
             </div>
         </div>
-        <button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e);margin-bottom:8px" onclick="closeOverlay();executeMerge('${creatureId}')">
+        <button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e);margin-bottom:8px" onclick="closeOverlay();executeMerge('${creatureId}', false)">
             <i class="fa-solid fa-code-merge"></i> СЛИТЬ СЕЙЧАС
         </button>
+        ${hasDustBoost ? `
+        <button class="popup-btn" style="background:linear-gradient(135deg,#5b21b6,#7c3aed);margin-bottom:8px;${canAffordDust ? '' : 'opacity:0.5'}" onclick="${canAffordDust ? `closeOverlay();executeMerge('${creatureId}', true)` : 'showToast(\'Недостаточно пыли\', \'🌫️\')'}"}>
+            🌫️ СЛИТЬ ЗА ПЫЛЬ (${dustCost.toLocaleString()} 🌫️) — ${boostedChance}% шанс
+        </button>` : ''}
         <button class="popup-btn" style="background:#1a2540;color:#e2e8f0" onclick="closeOverlay()">ОТМЕНА</button>
     `;
     document.getElementById('overlay').classList.add('show');
 }
 
-async function executeMerge(creatureId) {
+async function executeMerge(creatureId, useDust = false) {
     if (state.isLoading) return;
     if (!canMerge(creatureId)) return;
     
@@ -788,7 +815,7 @@ async function executeMerge(creatureId) {
     lastMergeTimes.set(state.user?.telegramId, Date.now());
 
     state.isLoading = true;
-    const res = await apiRequest('POST', '/api/game/merge', { creatureId });
+    const res = await apiRequest('POST', '/api/game/merge', { creatureId, useDust: !!useDust });
     state.isLoading = false;
 
     if (!res.success) { showToast(res.message || 'Merge failed', '❌'); return; }
@@ -796,6 +823,8 @@ async function executeMerge(creatureId) {
     state.user = res.user;
     state.inventory = res.inventory;
     state.incomePerHour = res.incomePerHour;
+    
+    if (res.dustUsed > 0) showToast(`-${res.dustUsed.toLocaleString()} 🌫️ Пыль использована`, '✨');
     
     updateServerSnapshot(state.user.balance, state.incomePerHour, null);
     updateHeader();
@@ -2346,8 +2375,8 @@ async function findMatch() {
         return; 
     }
 
-    if ((state.user?.level || 1) < 5) {
-        showToast('Арена доступна с 5 уровня', '🔒');
+    if ((state.user?.level || 1) < 3) {
+        showToast('Арена доступна с 3 уровня', '🔒');
         return;
     }
 
@@ -2638,7 +2667,7 @@ async function renderArenaFightTab() {
                 if (leaderboardRes?.success && leaderboardRes.myStats) {
                     const myLeague = leaderboardRes.myStats.league || 'bronze';
                     const leagueConfigs = {
-                        bronze: { entryFee: 0, prizePool: 10, name: '🥉 Бронзовая' },
+                        bronze: { entryFee: 0, prizePool: 0, name: '🥉 Бронзовая' },
                         silver: { entryFee: 500, prizePool: 800, name: '🥈 Серебряная' },
                         gold: { entryFee: 1000, prizePool: 1600, name: '🥇 Золотая' },
                         platinum: { entryFee: 2000, prizePool: 3200, name: '💎 Платиновая' },
@@ -2782,6 +2811,7 @@ function updateBattleUIFromClient(data, isPlayer1) {
     
     if (!myTeam || !enemyTeam) return;
     
+    // Обновляем ТОЛЬКО свою команду (без анимации урона)
     for (let i = 0; i < myTeam.length; i++) {
         const creature = myTeam[i];
         const creatureEl = document.querySelector(`#arenaMyCreatures .arena-battle-creature[data-creature-index="${i}"]`);
@@ -2797,10 +2827,14 @@ function updateBattleUIFromClient(data, isPlayer1) {
     
     const isMyTurn = data.currentTurn && ((data.currentTurn === 'player1' && isPlayer1) || (data.currentTurn === 'player2' && !isPlayer1));
     
+    // Обновляем команду соперника (обычно без кнопки атаки)
     for (let i = 0; i < enemyTeam.length; i++) {
         const creature = enemyTeam[i];
         const creatureEl = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${i}"]`);
         if (!creatureEl || !creature) continue;
+        
+        const oldHp = parseInt(creatureEl.querySelector('.creature-hp')?.textContent?.match(/[\d.]+/)?.[0] || creature.currentHp);
+        const newHp = creature.currentHp;
         
         const hpEl = creatureEl.querySelector('.creature-hp');
         const fillEl = creatureEl.querySelector('.arena-hp-fill');
@@ -2811,6 +2845,12 @@ function updateBattleUIFromClient(data, isPlayer1) {
             creatureEl.classList.add('dead');
         } else {
             creatureEl.classList.remove('dead');
+        }
+        
+        // Если у врага уменьшилось HP — показываем анимацию урона
+        if (oldHp > newHp && data.lastMove && data.lastMove.targetIndex === i) {
+            const damage = oldHp - newHp;
+            showDamageAnimation(i, damage, data.lastMove.isCrit || false, false);
         }
         
         const existingBtn = creatureEl.querySelector('.arena-attack-btn');
@@ -2834,6 +2874,7 @@ function updateBattleUIFromClient(data, isPlayer1) {
         }
     }
     
+    // Обновляем лог боя
     if (data.lastMove) {
         const logContainer = document.getElementById('arenaBattleLog');
         if (logContainer) {
@@ -3135,8 +3176,8 @@ function switchTab(tab) {
     // Проверки ПЕРЕД переключением DOM
     if (tab === 'arena') {
         const userLevel = state.user?.level || 1;
-        if (userLevel < 5) {
-            showToast(`Арена доступна с 5 уровня (ваш: ${userLevel})`, '🔒');
+        if (userLevel < 3) {
+            showToast(`Арена доступна с 3 уровня (ваш: ${userLevel})`, '🔒');
             return;
         }
         if (!isArenaOpenClient()) {
@@ -3154,7 +3195,6 @@ function switchTab(tab) {
     if (tab === 'leaderboard') { leaderboardCache = { data: null, expiresAt: 0 }; renderLeaderboard(); }
     if (tab === 'special') renderSpecialQuests();
     if (tab === 'wallet') { updateHeader(); checkActiveRequests(); loadUserStats(); loadStakingStatus(); }
-    if (tab === 'guild')  { loadGuildTab(); }
     if (tab === 'shop') renderMarketplaceBuy();
     if (tab === 'friends') renderFriendsList();
     if (tab === 'arena') {
@@ -3297,9 +3337,6 @@ await loadCreaturesFromServer();
                 showSkillBanner(data.skillResult.skillName, data.skillResult.description);
             }
             updateBattleUIFromClient(data, isPlayer1);
-            if (data.lastMove && data.lastMove.targetIndex !== undefined) {
-                showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit, true);
-            }
         });
         arenaClient.on('onBattleEnd', (isWin, prizePool) => { 
             showNativeBattleResult(isWin, prizePool); 

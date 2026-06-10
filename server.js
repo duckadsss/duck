@@ -21,8 +21,6 @@ app.set('trust proxy', 1); // Railway проксирует запросы — н
 // ИМПОРТ МОДУЛЯ АРЕНЫ (WebSocket версия)
 // ============================================
 const ArenaModule = require('./arena-socket');
-const { Guild, GuildInvite, guildBonus } = require('./guild-models');
-const registerGuildRoutes = require('./guild-api');
 
 // ============================================
 // MIDDLEWARE
@@ -138,9 +136,6 @@ async function createIndexes() {
         await User.collection.createIndex({ level: -1, xp: -1, balance: -1 });
         await ArenaBattle.collection.createIndex({ status: 1, league: 1, expiresAt: 1 });
         await ArenaBattle.collection.createIndex({ player1Id: 1, player2Id: 1 });
-        await Guild.collection.createIndex({ name: 1 }, { unique: true });
-        await Guild.collection.createIndex({ tag: 1 }, { unique: true });
-        await Guild.collection.createIndex({ level: -1, totalGxpEarned: -1 });
         console.log('✅ Индексы созданы');
     } catch (e) {
         console.warn('⚠️ Индексы:', e.message);
@@ -158,6 +153,7 @@ const UserSchema = new mongoose.Schema({
     lastName: { type: String, default: '' },
     photoUrl: { type: String, default: '' },
     balance: { type: Number, default: 4000 },
+    dust: { type: Number, default: 0 },
     xp: { type: Number, default: 0 },
     level: { type: Number, default: 1 },
     mergeCount: { type: Number, default: 0 },
@@ -192,9 +188,7 @@ const UserSchema = new mongoose.Schema({
     arenaTeam: [{ type: String, default: [] }],
     arenaCooldownUntil: { type: Date, default: null },
     currentBattleId: { type: mongoose.Schema.Types.ObjectId, ref: 'ArenaBattle', default: null },
-    lastOpponentId: { type: mongoose.Schema.Types.ObjectId, default: null },
-    guildId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Guild', default: null },
-    guildRole: { type: String, enum: ['leader', 'officer', 'member'], default: null }
+    lastOpponentId: { type: mongoose.Schema.Types.ObjectId, default: null }
 });
 
 UserSchema.pre('save', function(next) {
@@ -675,6 +669,7 @@ function formatUser(user) {
         lastName: user.lastName,
         photoUrl: user.photoUrl,
         balance: user.balance,
+        dust: user.dust || 0,
         xp: user.xp,
         level: user.level,
         mergeCount: user.mergeCount,
@@ -1086,28 +1081,6 @@ app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
 
-// ВРЕМЕННЫЙ ЭНДПОИНТ ДЛЯ МИГРАЦИИ — УДАЛИТЬ ПОСЛЕ ИСПОЛЬЗОВАНИЯ!
-app.get('/api/migrate-guildrole', async (req, res) => {
-    try {
-        const result = await User.updateMany(
-            { guildRole: { $exists: false } },
-            { $set: { guildRole: null } }
-        );
-        res.json({ 
-            success: true, 
-            message: `Обновлено ${result.modifiedCount} пользователей`,
-            matched: result.matchedCount,
-            modified: result.modifiedCount
-        });
-    } catch (e) {
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
-// ============================================
-// GUILD ROUTES
-// ============================================
-registerGuildRoutes(app, authMiddleware, User);
-
 // ============================================
 // ПУБЛИЧНЫЕ ЭНДПОИНТЫ
 // ============================================
@@ -1201,18 +1174,16 @@ app.post('/api/auth/login', async (req, res) => {
             // Используем findOneAndUpdate с upsert для защиты от race condition
             // (одновременные логины одного пользователя не создадут дубликат)
             const newReferralCode = 'REF' + String(userData.id) + Math.random().toString(36).slice(2, 7).toUpperCase();
-            
-const newUserData = {
-    telegramId: String(userData.id),
-    username: userData.username || '',
-    firstName: userData.first_name || '',
-    lastName: userData.last_name || '',
-    photoUrl: userData.photo_url || '',
-    balance: 4000,
-    adsAvailable: MAX_ADS_AVAILABLE,
-    adsLastRegen: new Date(),
-    guildRole: null   // ← ЭТО ДОБАВИТЬ
-};
+            const newUserData = {
+                telegramId: String(userData.id),
+                username: userData.username || '',
+                firstName: userData.first_name || '',
+                lastName: userData.last_name || '',
+                photoUrl: userData.photo_url || '',
+                balance: 4000,
+                adsAvailable: MAX_ADS_AVAILABLE,
+                adsLastRegen: new Date()
+            };
 
             let referrerInfo = null;
             if (referralCode) {
@@ -1251,16 +1222,13 @@ const newUserData = {
                 `🕐 Время: ${new Date().toLocaleString()}`;
 
             await notifyAdmins(notificationMessage);
-  } else {
-    user.username = userData.username || user.username;
-    user.firstName = userData.first_name || user.firstName;
-    user.lastName = userData.last_name || user.lastName;
-    
-    await User.updateOne(
-        { _id: user._id },
-        { $set: { lastLogin: new Date() } }
-    );
-}
+        } else {
+            user.username = userData.username || user.username;
+            user.firstName = userData.first_name || user.firstName;
+            user.lastName = userData.last_name || user.lastName;
+            user.lastLogin = new Date();
+            await user.save();
+        }
 
         const token = jwt.sign(
             { userId: user._id, telegramId: user.telegramId },
@@ -1566,7 +1534,7 @@ app.post('/api/game/open-capsule', authMiddleware, async (req, res) => {
 // ============================================
 app.post('/api/game/merge', authMiddleware, async (req, res) => {
     try {
-        const { creatureId } = req.body;
+        const { creatureId, useDust } = req.body;
         const user = req.user;
         
         const lastMerge = lastMergeTimes.get(user.telegramId) || 0;
@@ -1594,6 +1562,26 @@ app.post('/api/game/merge', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Инвентарь полон' });
         }
 
+        // Dust boost: +50% to merge chance
+        const DUST_COST = { common: 400, uncommon: 4000, rare: 50000 };
+        const dustCost = useDust ? (DUST_COST[creature.rarity] || 0) : 0;
+        if (useDust && dustCost > 0) {
+            const freshUser = await User.findById(user._id).select('dust');
+            if ((freshUser.dust || 0) < dustCost) {
+                return res.status(400).json({ success: false, message: `Недостаточно пыли. Нужно ${dustCost} 🌫️` });
+            }
+            // Атомарно списываем пыль
+            const dustUpdated = await User.findOneAndUpdate(
+                { _id: user._id, dust: { $gte: dustCost } },
+                { $inc: { dust: -dustCost } },
+                { new: true }
+            );
+            if (!dustUpdated) {
+                return res.status(400).json({ success: false, message: 'Недостаточно пыли' });
+            }
+            user.dust = dustUpdated.dust;
+        }
+
         const invItem = await Inventory.findOneAndUpdate(
             { telegramId: user.telegramId, creatureId, count: { $gte: 3 } },
             { $inc: { count: -3 } },
@@ -1610,7 +1598,9 @@ app.post('/api/game/merge', authMiddleware, async (req, res) => {
 
         const currentRarityIdx = RARITY_ORDER.indexOf(creature.rarity);
         const MERGE_CHANCES = { common: 0.3, uncommon: 0.3, rare: 0.3, epic: 0.10, legendary: 0.05 };
-        const mergeChance = MERGE_CHANCES[creature.rarity] ?? 0.3;
+        const baseChance = MERGE_CHANCES[creature.rarity] ?? 0.3;
+        const dustBonus = (useDust && dustCost > 0) ? 0.5 : 0;
+        const mergeChance = Math.min(0.95, baseChance + dustBonus);
         const success = Math.random() < mergeChance;
 
         let resultCreature;
@@ -1669,6 +1659,7 @@ app.post('/api/game/merge', authMiddleware, async (req, res) => {
         res.json({
             success: true,
             upgraded: success,
+            dustUsed: dustCost,
             fromCreature: { id: creature.id, name: creature.name, rarity: creature.rarity, icon: creature.icon, incomeBase: creature.incomeBase },
             resultCreature: { id: resultCreature.id, name: resultCreature.name, rarity: resultCreature.rarity, icon: resultCreature.icon, incomeBase: resultCreature.incomeBase },
             user: formatUser(user),
@@ -2508,9 +2499,9 @@ app.post('/api/arena/find-match', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Сначала выберите команду из 3 питомцев' });
         }
 
-        if ((user.level || 1) < 5) {
-            return res.status(403).json({ success: false, message: 'Арена доступна с 5 уровня' });
-        }
+        if ((user.level || 1) < 3) {
+    return res.status(403).json({ success: false, message: 'Арена доступна с 3 уровня' });
+}
         
         if (user.currentBattleId) {
             const existingBattle = await ArenaBattle.findById(user.currentBattleId);
