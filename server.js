@@ -55,6 +55,7 @@ const MIN_TRANSACTION_AMOUNT = 10000;
 const MAX_ACTIVE_REQUESTS = 2;
 const MAX_ACTIVE_LISTINGS = 2;
 const MIN_MARKETPLACE_PRICE = 500;
+const MIN_DUST_PRICE = 15; // минимальная цена пыли за штуку
 const MAX_COMMON_PRICE = 1100;  // ЗАЩИТА ОТ ФАРМА
 const MAX_ADS_AVAILABLE = 10;
 const ADS_REGEN_INTERVAL = 60 * 60 * 1000;
@@ -232,8 +233,10 @@ const MarketplaceSchema = new mongoose.Schema({
     sellerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     sellerTgId: { type: String, required: true },
     sellerName: { type: String, default: '' },
-    creatureId: { type: String, required: true },
-    price: { type: Number, required: true, min: MIN_MARKETPLACE_PRICE },
+    creatureId: { type: String, default: null },   // null для пыли
+    isDust: { type: Boolean, default: false },      // true = лот пыли
+    dustAmount: { type: Number, default: 0 },       // кол-во пыли в лоте
+    price: { type: Number, required: true },
     active: { type: Boolean, default: true },
     createdAt: { type: Date, default: Date.now }
 });
@@ -2103,36 +2106,64 @@ app.post('/api/game/complete-special-quest', authMiddleware, async (req, res) =>
 // ============================================
 app.post('/api/marketplace/list', authMiddleware, async (req, res) => {
     try {
-        const { creatureId, price } = req.body;
+        const { creatureId, price, isDust, dustAmount } = req.body;
         const user = req.user;
-        
+
+        // Маркет доступен с 5 уровня
+        if ((user.level || 1) < 5) {
+            return res.status(403).json({ success: false, message: 'Маркет доступен с 5 уровня' });
+        }
+
         const config = await getGameConfig();
         const limits = config.limits;
 
+        const activeListingsCount = await Marketplace.countDocuments({ sellerTgId: user.telegramId, active: true });
+        if (activeListingsCount >= MAX_ACTIVE_LISTINGS) {
+            return res.status(400).json({ success: false, message: `Вы уже выставили ${MAX_ACTIVE_LISTINGS} лотов. Сначала отмените или дождитесь продажи существующих.` });
+        }
+
+        // ── ЛОТ ПЫЛИ ──────────────────────────────────────────
+        if (isDust) {
+            const amount = parseInt(dustAmount, 10);
+            if (!amount || amount < 1) {
+                return res.status(400).json({ success: false, message: 'Укажите количество пыли' });
+            }
+            if (!price || price < MIN_DUST_PRICE * amount) {
+                return res.status(400).json({ success: false, message: `Минимальная цена ${MIN_DUST_PRICE} MMO за 1 пыль` });
+            }
+            if (price > limits.maxMarketplacePrice) {
+                return res.status(400).json({ success: false, message: `Максимальная цена ${limits.maxMarketplacePrice} MMO` });
+            }
+            if ((user.dust || 0) < amount) {
+                return res.status(400).json({ success: false, message: `Недостаточно пыли (у вас: ${user.dust || 0})` });
+            }
+            await User.findByIdAndUpdate(user._id, { $inc: { dust: -amount } });
+            const listing = await Marketplace.create({
+                sellerId: user._id,
+                sellerTgId: user.telegramId,
+                sellerName: user.username || user.firstName || `User${user.telegramId.slice(-4)}`,
+                isDust: true,
+                dustAmount: amount,
+                price,
+                active: true
+            });
+            marketplaceListingsCache = { data: null, expiresAt: 0 };
+            return res.json({ success: true, listing, dust: (user.dust || 0) - amount });
+        }
+
+        // ── ЛОТ СУЩЕСТВА ──────────────────────────────────────
         const creature = await getCreature(creatureId);
         if (!creature) return res.status(400).json({ success: false, message: 'Существо не найдено' });
 
-        // ========== ЗАЩИТА ОТ ФАРМА ==========
+        // Защита от фарма
         if (creature.rarity === 'common' && price > MAX_COMMON_PRICE) {
-            return res.status(400).json({ 
-                success: false, 
-                message: `Common существ нельзя продавать дороже ${MAX_COMMON_PRICE} MMO` 
-            });
+            return res.status(400).json({ success: false, message: `Common существ нельзя продавать дороже ${MAX_COMMON_PRICE} MMO` });
         }
-        // ===================================
-
         if (!price || price < MIN_MARKETPLACE_PRICE) {
             return res.status(400).json({ success: false, message: `Минимальная цена ${MIN_MARKETPLACE_PRICE} MMO` });
         }
-        
         if (price > limits.maxMarketplacePrice) {
             return res.status(400).json({ success: false, message: `Максимальная цена ${limits.maxMarketplacePrice} MMO` });
-        }
-
-        const activeListingsCount = await Marketplace.countDocuments({ sellerTgId: user.telegramId, active: true });
-        
-        if (activeListingsCount >= MAX_ACTIVE_LISTINGS) {
-            return res.status(400).json({ success: false, message: `Вы уже выставили ${MAX_ACTIVE_LISTINGS} лотов. Сначала отмените или дождитесь продажи существующих.` });
         }
 
         const invItem = await Inventory.findOne({ telegramId: user.telegramId, creatureId });
@@ -2156,13 +2187,12 @@ app.post('/api/marketplace/list', authMiddleware, async (req, res) => {
             active: true
         });
 
-        // Убираем существо из арена-команды если оно там есть и больше нет в инвентаре
-        const remainingCount = invItem.count; // уже уменьшен выше
-        if (remainingCount <= 0 && user.arenaTeam && user.arenaTeam.includes(creatureId)) {
+        // Убираем существо из арена-команды если больше нет в инвентаре
+        if (invItem.count <= 0 && user.arenaTeam && user.arenaTeam.includes(creatureId)) {
             const newTeam = user.arenaTeam.filter(id => id !== creatureId);
             await User.updateOne({ _id: user._id }, { $set: { arenaTeam: newTeam } });
         }
-        
+
         marketplaceListingsCache = { data: null, expiresAt: 0 };
         invalidateInventoryCache(user.telegramId);
         const updatedInventory = await formatInventory(user.telegramId);
@@ -2188,23 +2218,60 @@ app.post('/api/marketplace/buy', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Нельзя купить свой лот' });
         }
 
+        // Маркет доступен с 5 уровня
+        if ((buyer.level || 1) < 5) {
+            return res.status(403).json({ success: false, message: 'Маркет доступен с 5 уровня' });
+        }
+
         const buyerInventory = await Inventory.find({ telegramId: buyer.telegramId });
         const usedSlots = buyerInventory.reduce((sum, i) => sum + i.count, 0);
         if (usedSlots >= buyer.inventorySlots) {
             return res.status(400).json({ success: false, message: 'Инвентарь покупателя полон' });
         }
 
-        const creature = await getCreature(listing.creatureId);
-        if (!creature) return res.status(400).json({ success: false, message: 'Существо не найдено' });
-
+        // Атомарно закрываем лот
         const closedListing = await Marketplace.findOneAndUpdate(
             { _id: listingId, active: true },
             { $set: { active: false } },
             { new: true }
         );
-
         if (!closedListing) {
             return res.status(400).json({ success: false, message: 'Лот уже куплен другим игроком' });
+        }
+
+        const fee = Math.floor(listing.price * 0.1);
+        const sellerEarns = listing.price - fee;
+
+        // ── ПОКУПКА ПЫЛИ ──────────────────────────────────────
+        if (listing.isDust) {
+            const updatedBuyer = await User.findOneAndUpdate(
+                { _id: buyer._id, balance: { $gte: listing.price } },
+                { $inc: { balance: -listing.price, dust: listing.dustAmount } },
+                { new: true }
+            );
+            if (!updatedBuyer) {
+                await Marketplace.findByIdAndUpdate(listingId, { $set: { active: true } });
+                return res.status(400).json({ success: false, message: 'Недостаточно MMO' });
+            }
+            const seller = await User.findOne({ telegramId: listing.sellerTgId });
+            if (seller) {
+                await User.findByIdAndUpdate(seller._id, { $inc: { balance: sellerEarns } });
+            }
+            marketplaceListingsCache = { data: null, expiresAt: 0 };
+            return res.json({
+                success: true,
+                isDust: true,
+                dustAmount: listing.dustAmount,
+                user: formatUser(updatedBuyer),
+                inventory: await formatInventory(buyer.telegramId)
+            });
+        }
+
+        // ── ПОКУПКА СУЩЕСТВА ──────────────────────────────────
+        const creature = await getCreature(listing.creatureId);
+        if (!creature) {
+            await Marketplace.findByIdAndUpdate(listingId, { $set: { active: true } });
+            return res.status(400).json({ success: false, message: 'Существо не найдено' });
         }
 
         const updatedBuyer = await User.findOneAndUpdate(
@@ -2221,8 +2288,6 @@ app.post('/api/marketplace/buy', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Недостаточно MMO' });
         }
 
-        const fee = Math.floor(listing.price * 0.1);
-        const sellerEarns = listing.price - fee;
         const seller = await User.findOne({ telegramId: listing.sellerTgId });
         if (seller) {
             await User.findByIdAndUpdate(seller._id, {
@@ -2254,11 +2319,7 @@ app.post('/api/marketplace/buy', authMiddleware, async (req, res) => {
             await Inventory.create({ userId: buyer._id, telegramId: buyer.telegramId, creatureId: listing.creatureId, count: 1 });
         }
 
-        if (!updatedBuyer.discovered.includes(listing.creatureId)) {
-            updatedBuyer.discovered.push(listing.creatureId);
-        }
-
-        // Атомарно: XP + discovered за одну операцию
+        // Атомарно: XP + discovered
         {
             const xpGain = 5;
             const needed = xpNeeded(updatedBuyer.level);
@@ -2338,6 +2399,16 @@ app.post('/api/marketplace/cancel', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Нет свободных слотов в инвентаре. Продайте или объедините существа.' });
         }
 
+        listing.active = false;
+        await listing.save();
+
+        if (listing.isDust) {
+            // Возвращаем пыль продавцу
+            await User.findByIdAndUpdate(user._id, { $inc: { dust: listing.dustAmount } });
+            marketplaceListingsCache = { data: null, expiresAt: 0 };
+            return res.json({ success: true, dust: (user.dust || 0) + listing.dustAmount });
+        }
+
         let invItem = await Inventory.findOne({ telegramId: user.telegramId, creatureId: listing.creatureId });
         if (invItem) {
             invItem.count += 1;
@@ -2346,9 +2417,6 @@ app.post('/api/marketplace/cancel', authMiddleware, async (req, res) => {
             await Inventory.create({ userId: user._id, telegramId: user.telegramId, creatureId: listing.creatureId, count: 1 });
         }
 
-        listing.active = false;
-        await listing.save();
-        
         marketplaceListingsCache = { data: null, expiresAt: 0 };
         invalidateInventoryCache(user.telegramId);
         const updatedInventory = await formatInventory(user.telegramId);

@@ -803,12 +803,12 @@ function showMergePreview(creatureId) {
                 </div>
                 ${hasDustBoost ? `
                 <div style="margin-top:12px;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.3);border-radius:10px;padding:10px">
-                    <div style="font-size:10px;color:#a78bfa;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">🌫️ Бонус Пыли +50%</div>
+                    <div style="font-size:10px;color:#a78bfa;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain"> Бонус Пыли +50%</div>
                     <div style="display:flex;justify-content:space-between;align-items:center">
                         <div style="font-size:11px;color:#e2e8f0">Шанс успеха: <span style="color:#a78bfa;font-weight:700">${boostedChance}%</span></div>
-                        <div style="font-size:11px;color:${canAffordDust ? '#a78bfa' : '#ef4444'}">Стоимость: ${dustCost.toLocaleString()} 🌫️</div>
+                        <div style="font-size:11px;color:${canAffordDust ? '#a78bfa' : '#ef4444'}">Стоимость: ${dustCost.toLocaleString()} <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain"></div>
                     </div>
-                    <div style="font-size:10px;color:${canAffordDust ? '#7c3aed' : '#ef4444'};margin-top:4px">У вас: ${userDust.toLocaleString()} 🌫️${canAffordDust ? '' : ' — недостаточно'}</div>
+                    <div style="font-size:10px;color:${canAffordDust ? '#7c3aed' : '#ef4444'};margin-top:4px">У вас: ${userDust.toLocaleString()} <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain">${canAffordDust ? '' : ' — недостаточно'}</div>
                 </div>` : ''}
             </div>
         </div>
@@ -817,7 +817,7 @@ function showMergePreview(creatureId) {
         </button>
         ${hasDustBoost ? `
         <button class="popup-btn" style="background:linear-gradient(135deg,#5b21b6,#7c3aed);margin-bottom:8px;${canAffordDust ? '' : 'opacity:0.5'}" onclick="${canAffordDust ? `closeOverlay();executeMerge('${creatureId}', true)` : 'showToast(\'Недостаточно пыли\', \'🌫️\')'}"}>
-            🌫️ СЛИТЬ ЗА ПЫЛЬ (${dustCost.toLocaleString()} 🌫️) — ${boostedChance}% шанс
+            <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain"> СЛИТЬ ЗА ПЫЛЬ (${dustCost.toLocaleString()} <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain">) — ${boostedChance}% шанс
         </button>` : ''}
         <button class="popup-btn" style="background:#1a2540;color:#e2e8f0" onclick="closeOverlay()">ОТМЕНА</button>
     `;
@@ -1169,11 +1169,36 @@ function renderMarketplaceListings(listings) {
         return;
     }
 
+    const userLevel = state.user?.level || 1;
     container.innerHTML = listings.map(l => {
+        const isOwn = l.sellerTgId === state.user?.telegramId;
+        const locked = !isOwn && userLevel < 5;
+
+        if (l.isDust) {
+            return `<div class="marketplace-listing">
+                <div class="marketplace-listing-icon" style="background:#a78bfa11;border-color:#a78bfa44">
+                    <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))">
+                </div>
+                <div class="marketplace-listing-info">
+                    <div class="marketplace-listing-name" style="color:#a78bfa">Пыль ×${l.dustAmount}</div>
+                    <div class="marketplace-listing-seller">by ${escapeHtml(l.sellerName)}${isOwn ? ' (Вы)' : ''}</div>
+                    <div class="marketplace-listing-rarity" style="color:#7c3aed;font-size:9px">${Math.round(l.price/l.dustAmount)} MMO/шт</div>
+                </div>
+                <div class="marketplace-listing-price">
+                    <div class="marketplace-listing-amount">${l.price} MMO</div>
+                    ${isOwn
+                        ? `<button class="marketplace-cancel-btn" onclick="cancelMarketplaceListing('${l._id}')">ОТМЕНИТЬ</button>`
+                        : locked
+                            ? `<button class="marketplace-buy-btn" style="opacity:0.5;cursor:not-allowed" onclick="showToast('Маркет доступен с 5 уровня','🔒')">🔒 LVL 5</button>`
+                            : `<button class="marketplace-buy-btn" style="background:linear-gradient(135deg,#7c3aed,#a855f7)" onclick="buyFromMarketplace('${l._id}', ${l.price}, null)">КУПИТЬ</button>`
+                    }
+                </div>
+            </div>`;
+        }
+
         const c = getCreature(l.creatureId);
         if (!c) return '';
         const color = RARITY_COLORS[c.rarity];
-        const isOwn = l.sellerTgId === state.user?.telegramId;
 
         return `<div class="marketplace-listing">
             <div class="marketplace-listing-icon" style="background:${color}11;border-color:${color}44">${getIconHtml(c)}</div>
@@ -1184,7 +1209,12 @@ function renderMarketplaceListings(listings) {
             </div>
             <div class="marketplace-listing-price">
                 <div class="marketplace-listing-amount">${l.price}</div>
-                ${isOwn ? `<button class="marketplace-cancel-btn" onclick="cancelMarketplaceListing('${l._id}')">CANCEL</button>` : `<button class="marketplace-buy-btn" onclick="buyFromMarketplace('${l._id}', ${l.price}, '${l.creatureId}')">BUY</button>`}
+                ${isOwn
+                    ? `<button class="marketplace-cancel-btn" onclick="cancelMarketplaceListing('${l._id}')">CANCEL</button>`
+                    : locked
+                        ? `<button class="marketplace-buy-btn" style="opacity:0.5;cursor:not-allowed" onclick="showToast('Маркет доступен с 5 уровня','🔒')">🔒 LVL 5</button>`
+                        : `<button class="marketplace-buy-btn" onclick="buyFromMarketplace('${l._id}', ${l.price}, '${l.creatureId}')">BUY</button>`
+                }
             </div>
         </div>`;
     }).join('');
@@ -1194,12 +1224,25 @@ function renderMarketplaceSell() {
     const cards = document.getElementById('marketplaceSellCards');
     if (!cards) return;
 
-    if (!state.inventory.length) {
-        cards.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#4a5568;padding:30px 20px;font-size:12px">You have no creatures to sell</div>`;
+    const userLevel = state.user?.level || 1;
+    if (userLevel < 5) {
+        cards.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:30px 20px">
+            <div style="font-size:32px;margin-bottom:12px">🔒</div>
+            <div style="color:#e2e8f0;font-weight:700;font-size:15px;margin-bottom:6px">Маркет доступен с 5 уровня</div>
+            <div style="color:#64748b;font-size:12px">Ваш уровень: ${userLevel}</div>
+        </div>`;
         return;
     }
 
-    cards.innerHTML = state.inventory.map(item => {
+    const dust = state.user?.dust || 0;
+    const dustCard = `<div class="marketplace-sell-card" style="cursor:pointer;border-color:#a78bfa44;background:#a78bfa11" onclick="openDustSellModal(${dust})">
+        <div class="marketplace-sell-card-icon"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))"></div>
+        <div class="marketplace-sell-card-name" style="color:#a78bfa">Пыль</div>
+        <div style="font-size:9px;color:#7c3aed">x${dust}</div>
+        <div style="font-size:10px;color:#a78bfa;font-weight:600;margin-top:4px">ПРОДАТЬ</div>
+    </div>`;
+
+    const creatureCards = state.inventory.map(item => {
         const c = getCreature(item.creatureId);
         if (!c || !item.count) return '';
         return `<div class="marketplace-sell-card" style="cursor:pointer" onclick="openSellModal('${item.creatureId}', '${c.name}', ${item.count})">
@@ -1209,6 +1252,8 @@ function renderMarketplaceSell() {
             <div style="font-size:10px;color:#06b6d4;font-weight:600;margin-top:4px">SET PRICE</div>
         </div>`;
     }).filter(Boolean).join('');
+
+    cards.innerHTML = dustCard + (creatureCards || `<div style="grid-column:1/-1;text-align:center;color:#4a5568;padding:30px 20px;font-size:12px">Нет существ для продажи</div>`);
 }
 
 function openSellModal(creatureId, creatureName, count) {
@@ -1230,6 +1275,64 @@ function openSellModal(creatureId, creatureName, count) {
     `;
     document.getElementById('overlay').classList.add('show');
     updateFeeCalculator();
+}
+
+function openDustSellModal(maxDust) {
+    if (maxDust < 1) { showToast('У вас нет пыли для продажи', '🌫️'); return; }
+    document.getElementById('popup').innerHTML = `
+        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
+        <div class="popup-title">Продать пыль</div>
+        <div class="popup-subtitle" style="margin-bottom:16px">Доступно: <b>${maxDust}</b> <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle" onerror="this.replaceWith(document.createTextNode('🌫️'))"></div>
+        <div class="price-input-modal">
+            <div style="margin-bottom:12px">
+                <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Количество пыли</div>
+                <input type="number" class="price-input-field" id="dustAmountInput" placeholder="Кол-во" min="1" max="${maxDust}" value="1" oninput="updateDustFeeCalculator(${maxDust})">
+            </div>
+            <div>
+                <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Цена за 1 пыль (MMO)</div>
+                <input type="number" class="price-input-field" id="dustPriceInput" placeholder="Цена за 1 шт" min="15" value="15" oninput="updateDustFeeCalculator(${maxDust})">
+            </div>
+            <div class="fee-calculator" style="margin-top:12px">
+                <div class="fee-row"><span class="fee-label">Итого</span><span class="fee-value" id="dustTotalDisplay">15</span></div>
+                <div class="fee-row" style="color:#ef4444"><span class="fee-label">Комиссия (10%)</span><span class="fee-value fee" id="dustFeeDisplay">-2</span></div>
+                <div class="fee-row total"><span>Получите</span><span class="fee-value final" id="dustFinalDisplay">13</span></div>
+            </div>
+        </div>
+        <button class="popup-btn" style="background:linear-gradient(135deg,#7c3aed,#a855f7);margin-top:16px" onclick="confirmDustSellListing()"><i class="fa-solid fa-check"></i> ВЫСТАВИТЬ ПЫЛЬ</button>
+        <button class="popup-btn" style="background:#1a2540;color:#e2e8f0;margin-top:8px" onclick="closeOverlay()">ОТМЕНА</button>
+    `;
+    document.getElementById('overlay').classList.add('show');
+    updateDustFeeCalculator(maxDust);
+}
+
+function updateDustFeeCalculator(maxDust) {
+    const amount = Math.max(1, Math.min(maxDust, parseInt(document.getElementById('dustAmountInput')?.value) || 1));
+    const priceEach = Math.max(15, parseInt(document.getElementById('dustPriceInput')?.value) || 15);
+    const total = amount * priceEach;
+    const fee = Math.floor(total * 0.1);
+    const el = (id) => document.getElementById(id);
+    if (el('dustTotalDisplay')) el('dustTotalDisplay').textContent = total;
+    if (el('dustFeeDisplay')) el('dustFeeDisplay').textContent = `-${fee}`;
+    if (el('dustFinalDisplay')) el('dustFinalDisplay').textContent = total - fee;
+}
+
+async function confirmDustSellListing() {
+    const amount = parseInt(document.getElementById('dustAmountInput')?.value) || 0;
+    const priceEach = parseInt(document.getElementById('dustPriceInput')?.value) || 0;
+    if (amount < 1) { showToast('Укажите количество пыли', '❌'); return; }
+    if (priceEach < 15) { showToast('Минимальная цена 15 MMO за 1 пыль', '❌'); return; }
+    const total = amount * priceEach;
+    state.isLoading = true;
+    const res = await apiRequest('POST', '/api/marketplace/list', { isDust: true, dustAmount: amount, price: total });
+    state.isLoading = false;
+    if (!res?.success) { showToast(res?.message || 'Ошибка', '❌'); return; }
+    if (state.user) state.user.dust = res.dust;
+    closeOverlay();
+    showToast(`Выставлено ${amount} пыли за ${total} MMO`, '✅');
+    updateHeader();
+    renderMarketplaceSell();
+    marketplaceCache.expiresAt = 0;
+    switchMarketplaceTab('mylistings');
 }
 
 function updateFeeCalculator() {
@@ -1277,11 +1380,26 @@ async function renderMarketplaceMyListings() {
     if (!listings.length) { container.innerHTML = `<div class="empty-listings">У вас нет активных лотов</div>`; return; }
 
     container.innerHTML = listings.map(l => {
+        const date = new Date(l.createdAt).toLocaleDateString();
+        if (l.isDust) {
+            return `<div class="marketplace-my-listing">
+                <div class="marketplace-my-listing-icon" style="background:#a78bfa11;border-color:#a78bfa44">
+                    <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))">
+                </div>
+                <div class="marketplace-my-listing-info">
+                    <div class="marketplace-my-listing-name" style="color:#a78bfa">Пыль ×${l.dustAmount}</div>
+                    <div class="marketplace-my-listing-status">Выставлено ${date}</div>
+                    <div style="font-size:9px;color:#7c3aed">${Math.round(l.price/l.dustAmount)} MMO/шт</div>
+                </div>
+                <div class="marketplace-my-listing-price">
+                    <div class="marketplace-my-listing-amount">${l.price} MMO</div>
+                    <button class="marketplace-cancel-btn" onclick="cancelMarketplaceListing('${l._id}')">ОТМЕНИТЬ</button>
+                </div>
+            </div>`;
+        }
         const c = getCreature(l.creatureId);
         if (!c) return '';
         const color = RARITY_COLORS[c.rarity];
-        const date = new Date(l.createdAt).toLocaleDateString();
-        
         return `<div class="marketplace-my-listing">
             <div class="marketplace-my-listing-icon" style="background:${color}11;border-color:${color}44">${getIconHtml(c)}</div>
             <div class="marketplace-my-listing-info">
@@ -1304,11 +1422,17 @@ async function cancelMarketplaceListing(listingId) {
 
     if (!res.success) { showToast(res.message || 'Error', '❌'); return; }
 
-    state.inventory = res.inventory;
-    renderCards();
+    if (res.dust !== undefined && state.user) {
+        state.user.dust = res.dust;
+        updateHeader();
+        showToast('Лот отменён, пыль возвращена', '✅');
+    } else {
+        state.inventory = res.inventory;
+        renderCards();
+        showToast('Listing cancelled, card returned', '✅');
+    }
     marketplaceCache.expiresAt = 0;
     renderMarketplaceMyListings();
-    showToast('Listing cancelled, card returned', '✅');
 }
 
 async function buyFromMarketplace(listingId, price, creatureId) {
@@ -1321,10 +1445,22 @@ async function buyFromMarketplace(listingId, price, creatureId) {
 
     if (!res.success) { showToast(res.message || 'Error buying', '❌'); return; }
 
+    if (res.isDust) {
+        if (state.user) state.user.dust = res.user?.dust ?? (state.user.dust || 0) + res.dustAmount;
+        state.user = res.user;
+        state.inventory = res.inventory || state.inventory;
+        updateHeader();
+        marketplaceCache.expiresAt = 0;
+        renderMarketplaceBuy();
+        showToast(`Куплено ${res.dustAmount} пыли за ${price} MMO!`, '✅');
+        spawnFloatingMMO(-price);
+        return;
+    }
+
     state.user = res.user;
     state.inventory = res.inventory;
     state.incomePerHour = res.incomePerHour;
-    
+
     updateServerSnapshot(state.user.balance, state.incomePerHour, null);
 
     const c = getCreature(creatureId);
