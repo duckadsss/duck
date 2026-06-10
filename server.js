@@ -21,6 +21,8 @@ app.set('trust proxy', 1); // Railway проксирует запросы — н
 // ИМПОРТ МОДУЛЯ АРЕНЫ (WebSocket версия)
 // ============================================
 const ArenaModule = require('./arena-socket');
+const { Guild, GuildInvite, guildBonus } = require('./guild-models');
+const registerGuildRoutes = require('./guild-api');
 
 // ============================================
 // MIDDLEWARE
@@ -136,6 +138,9 @@ async function createIndexes() {
         await User.collection.createIndex({ level: -1, xp: -1, balance: -1 });
         await ArenaBattle.collection.createIndex({ status: 1, league: 1, expiresAt: 1 });
         await ArenaBattle.collection.createIndex({ player1Id: 1, player2Id: 1 });
+        await Guild.collection.createIndex({ name: 1 }, { unique: true });
+        await Guild.collection.createIndex({ tag: 1 }, { unique: true });
+        await Guild.collection.createIndex({ level: -1, totalGxpEarned: -1 });
         console.log('✅ Индексы созданы');
     } catch (e) {
         console.warn('⚠️ Индексы:', e.message);
@@ -187,7 +192,9 @@ const UserSchema = new mongoose.Schema({
     arenaTeam: [{ type: String, default: [] }],
     arenaCooldownUntil: { type: Date, default: null },
     currentBattleId: { type: mongoose.Schema.Types.ObjectId, ref: 'ArenaBattle', default: null },
-    lastOpponentId: { type: mongoose.Schema.Types.ObjectId, default: null }
+    lastOpponentId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    guildId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Guild', default: null },
+    guildRole: { type: String, enum: ['leader', 'officer', 'member'], default: null }
 });
 
 UserSchema.pre('save', function(next) {
@@ -1079,6 +1086,28 @@ app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
 
+// ВРЕМЕННЫЙ ЭНДПОИНТ ДЛЯ МИГРАЦИИ — УДАЛИТЬ ПОСЛЕ ИСПОЛЬЗОВАНИЯ!
+app.get('/api/migrate-guildrole', async (req, res) => {
+    try {
+        const result = await User.updateMany(
+            { guildRole: { $exists: false } },
+            { $set: { guildRole: null } }
+        );
+        res.json({ 
+            success: true, 
+            message: `Обновлено ${result.modifiedCount} пользователей`,
+            matched: result.matchedCount,
+            modified: result.modifiedCount
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+// ============================================
+// GUILD ROUTES
+// ============================================
+registerGuildRoutes(app, authMiddleware, User);
+
 // ============================================
 // ПУБЛИЧНЫЕ ЭНДПОИНТЫ
 // ============================================
@@ -1172,16 +1201,18 @@ app.post('/api/auth/login', async (req, res) => {
             // Используем findOneAndUpdate с upsert для защиты от race condition
             // (одновременные логины одного пользователя не создадут дубликат)
             const newReferralCode = 'REF' + String(userData.id) + Math.random().toString(36).slice(2, 7).toUpperCase();
-            const newUserData = {
-                telegramId: String(userData.id),
-                username: userData.username || '',
-                firstName: userData.first_name || '',
-                lastName: userData.last_name || '',
-                photoUrl: userData.photo_url || '',
-                balance: 4000,
-                adsAvailable: MAX_ADS_AVAILABLE,
-                adsLastRegen: new Date()
-            };
+            
+const newUserData = {
+    telegramId: String(userData.id),
+    username: userData.username || '',
+    firstName: userData.first_name || '',
+    lastName: userData.last_name || '',
+    photoUrl: userData.photo_url || '',
+    balance: 4000,
+    adsAvailable: MAX_ADS_AVAILABLE,
+    adsLastRegen: new Date(),
+    guildRole: null   // ← ЭТО ДОБАВИТЬ
+};
 
             let referrerInfo = null;
             if (referralCode) {
@@ -1220,13 +1251,16 @@ app.post('/api/auth/login', async (req, res) => {
                 `🕐 Время: ${new Date().toLocaleString()}`;
 
             await notifyAdmins(notificationMessage);
-        } else {
-            user.username = userData.username || user.username;
-            user.firstName = userData.first_name || user.firstName;
-            user.lastName = userData.last_name || user.lastName;
-            user.lastLogin = new Date();
-            await user.save();
-        }
+  } else {
+    user.username = userData.username || user.username;
+    user.firstName = userData.first_name || user.firstName;
+    user.lastName = userData.last_name || user.lastName;
+    
+    await User.updateOne(
+        { _id: user._id },
+        { $set: { lastLogin: new Date() } }
+    );
+}
 
         const token = jwt.sign(
             { userId: user._id, telegramId: user.telegramId },
@@ -2474,9 +2508,9 @@ app.post('/api/arena/find-match', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Сначала выберите команду из 3 питомцев' });
         }
 
-        if ((user.level || 1) < 3) {
-    return res.status(403).json({ success: false, message: 'Арена доступна с 3 уровня' });
-}
+        if ((user.level || 1) < 5) {
+            return res.status(403).json({ success: false, message: 'Арена доступна с 5 уровня' });
+        }
         
         if (user.currentBattleId) {
             const existingBattle = await ArenaBattle.findById(user.currentBattleId);
