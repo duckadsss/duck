@@ -820,7 +820,7 @@ function showMergePreview(creatureId) {
         <div style="background:#0d1120;border:1px solid #2e1b4a;border-radius:14px;padding:14px;margin-bottom:12px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
                 <div style="font-size:12px;font-weight:700;color:#a78bfa;display:flex;align-items:center;gap:5px">
-                    <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain"> Бонус пыли
+                    <img src="https://duckadsss.github.io/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain"> Бонус пыли
                 </div>
                 <div style="font-size:11px;color:#7c3aed">У вас: ${userDust.toLocaleString()} 🌫️</div>
             </div>
@@ -834,7 +834,7 @@ function showMergePreview(creatureId) {
             <div id="mergeDustAffordability" style="font-size:10px;color:#64748b;text-align:center">Двигайте ползунок для выбора бонуса</div>
         </div>
         <button class="popup-btn" id="mergeDustBtn" style="background:linear-gradient(135deg,#5b21b6,#7c3aed);margin-bottom:8px;opacity:0.4;pointer-events:none" onclick="executeMergeWithDust('${creatureId}')">
-            <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain">
+            <img src="https://duckadsss.github.io/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain">
             <span id="mergeDustBtnLabel">Выберите бонус пыли</span>
         </button>` : ''}
 
@@ -1264,7 +1264,7 @@ function renderMarketplaceListings(listings) {
         if (l.isDust) {
             return `<div class="marketplace-listing">
                 <div class="marketplace-listing-icon" style="background:#a78bfa11;border-color:#a78bfa44">
-                    <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))">
+                    <img src="https://duckadsss.github.io/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))">
                 </div>
                 <div class="marketplace-listing-info">
                     <div class="marketplace-listing-name" style="color:#a78bfa">Пыль ×${l.dustAmount}</div>
@@ -1323,7 +1323,7 @@ function renderMarketplaceSell() {
 
     const dust = state.user?.dust || 0;
     const dustCard = `<div class="marketplace-sell-card" style="cursor:pointer;border-color:#a78bfa44;background:#a78bfa11" onclick="openDustSellModal(${dust})">
-        <div class="marketplace-sell-card-icon"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))"></div>
+        <div class="marketplace-sell-card-icon"><img src="https://duckadsss.github.io/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))"></div>
         <div class="marketplace-sell-card-name" style="color:#a78bfa">Пыль</div>
         <div style="font-size:9px;color:#7c3aed">x${dust}</div>
         <div style="font-size:10px;color:#a78bfa;font-weight:600;margin-top:4px">ПРОДАТЬ</div>
@@ -1369,7 +1369,7 @@ function openDustSellModal(maxDust) {
     document.getElementById('popup').innerHTML = `
         <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
         <div class="popup-title">Продать пыль</div>
-        <div class="popup-subtitle" style="margin-bottom:16px">Доступно: <b>${maxDust}</b> <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle" onerror="this.replaceWith(document.createTextNode('🌫️'))"></div>
+        <div class="popup-subtitle" style="margin-bottom:16px">Доступно: <b>${maxDust}</b> <img src="https://duckadsss.github.io/dust.png" style="width:14px;height:14px;vertical-align:middle" onerror="this.replaceWith(document.createTextNode('🌫️'))"></div>
         <div class="price-input-modal">
             <div style="margin-bottom:12px">
                 <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Количество пыли</div>
@@ -1471,7 +1471,7 @@ async function renderMarketplaceMyListings() {
         if (l.isDust) {
             return `<div class="marketplace-my-listing">
                 <div class="marketplace-my-listing-icon" style="background:#a78bfa11;border-color:#a78bfa44">
-                    <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))">
+                    <img src="https://duckadsss.github.io/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))">
                 </div>
                 <div class="marketplace-my-listing-info">
                     <div class="marketplace-my-listing-name" style="color:#a78bfa">Пыль ×${l.dustAmount}</div>
@@ -2483,19 +2483,50 @@ async function rejectBattleFromModal(battleId) {
     }
 }
 
-function showNativeBattleResult(isWin, prizePool) {
-    if (!window.Telegram?.WebApp) {
-        const overlay = document.getElementById('overlay');
-        const popup = document.getElementById('popup');
-        popup.innerHTML = `<div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div><div class="popup-icon">${isWin ? '🏆' : '💀'}</div><div class="popup-title" style="color:${isWin ? 'var(--legendary)' : 'var(--mythic)'}">${isWin ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}</div><div class="popup-subtitle">${isWin ? `Вы выиграли ${prizePool} MMO!` : 'В следующий раз повезёт!'}</div><button class="popup-btn" onclick="closeOverlay(); renderArenaFightTab();">Закрыть</button></div>`;
-        overlay.classList.add('show');
-        return;
+function showNativeBattleResult(isWin, prizePool, dustWin = 0) {
+    const overlay = document.getElementById('overlay');
+    const popup = document.getElementById('popup');
+    if (!overlay || !popup) return;
+
+    const D = 'https://duckadsss.github.io/dust.png';
+    let html = '';
+    html += '<div class="popup-close" onclick="closeOverlay(); renderArenaFightTab();"><i class="fa-solid fa-xmark"></i></div>';
+    html += '<div style="text-align:center;padding:8px 0 4px;">';
+    html += '<div style="font-size:64px;line-height:1;margin-bottom:10px;filter:drop-shadow(0 0 20px ' + (isWin ? '#fbbf24' : '#ef4444') + ');">' + (isWin ? '\uD83C\uDFC6' : '\uD83D\uDC80') + '</div>';
+    html += '<div style="font-size:28px;font-weight:900;letter-spacing:2px;font-family:Orbitron,monospace;background:' + (isWin ? 'linear-gradient(135deg,#fbbf24,#f59e0b,#fde68a)' : 'linear-gradient(135deg,#ef4444,#dc2626,#fca5a5)') + ';-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:6px;">' + (isWin ? '\u041f\u041e\u0411\u0415\u0414\u0410!' : '\u041f\u041e\u0420\u0410\u0416\u0415\u041d\u0418\u0415') + '</div>';
+    html += '<div style="font-size:13px;color:var(--text3);margin-bottom:4px;">' + (isWin ? '\uD83C\uDF89 \u041e\u0442\u043b\u0438\u0447\u043d\u0430\u044f \u0431\u0438\u0442\u0432\u0430!' : '\uD83D\uDCAA \u0412 \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0439 \u0440\u0430\u0437 \u043f\u043e\u0432\u0435\u0437\u0435\u0442!') + '</div>';
+    html += '</div>';
+
+    if (isWin) {
+        html += '<div style="display:flex;flex-direction:column;gap:10px;margin:18px 0;">';
+        html += '<div style="background:linear-gradient(135deg,#1a2e1a,#0d1f0d);border:1px solid #22c55e44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
+        html += '<div style="display:flex;align-items:center;gap:8px;color:#86efac;font-size:13px;"><i class="fa-solid fa-coins" style="color:#fbbf24"></i><span>\u0412\u044b\u0438\u0433\u0440\u044b\u0448</span></div>';
+        html += '<span style="font-size:18px;font-weight:800;color:#4ade80;">+' + (prizePool || 0).toLocaleString() + ' MMO</span>';
+        html += '</div>';
+        if (dustWin > 0) {
+            html += '<div style="background:linear-gradient(135deg,#1e1a2e,#130d1f);border:1px solid #a78bfa44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
+            html += '<div style="display:flex;align-items:center;gap:8px;color:#c4b5fd;font-size:13px;"><img src="' + D + '" style="width:16px;height:16px;vertical-align:middle" onerror="this.replaceWith(document.createTextNode('\uD83C\uDF2B\uFE0F'))"><span>\u041f\u044b\u043b\u044c</span></div>';
+            html += '<span style="font-size:18px;font-weight:800;color:#a78bfa;">+' + dustWin + ' \uD83C\uDF2B\uFE0F</span>';
+            html += '</div>';
+        }
+        html += '<div style="background:linear-gradient(135deg,#1a1f2e,#0d1220);border:1px solid #60a5fa44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
+        html += '<div style="display:flex;align-items:center;gap:8px;color:#93c5fd;font-size:13px;"><i class="fa-solid fa-chart-line" style="color:#60a5fa"></i><span>\u0420\u0435\u0439\u0442\u0438\u043d\u0433</span></div>';
+        html += '<span style="font-size:15px;font-weight:700;color:#60a5fa;">\u2191 \u041f\u043e\u0432\u044b\u0448\u0430\u0435\u0442\u0441\u044f</span>';
+        html += '</div>';
+        html += '</div>';
+    } else {
+        html += '<div style="background:linear-gradient(135deg,#2e1a1a,#1f0d0d);border:1px solid #ef444444;border-radius:14px;padding:14px 20px;margin:18px 0;display:flex;align-items:center;justify-content:space-between;">';
+        html += '<div style="display:flex;align-items:center;gap:8px;color:#fca5a5;font-size:13px;"><i class="fa-solid fa-arrow-trend-down" style="color:#ef4444"></i><span>\u0420\u0435\u0439\u0442\u0438\u043d\u0433</span></div>';
+        html += '<span style="font-size:15px;font-weight:700;color:#f87171;">\u2193 \u041f\u043e\u043d\u0438\u0436\u0430\u0435\u0442\u0441\u044f</span>';
+        html += '</div>';
     }
-    const tg = window.Telegram.WebApp;
-    const title = isWin ? '🏆 ПОБЕДА!' : '💀 ПОРАЖЕНИЕ';
-    const message = isWin ? `Вы выиграли ${prizePool} MMO! 🎉\nВаш рейтинг повышается!` : `Вы проиграли бой.\nВ следующий раз повезёт!`;
-    tg.showPopup({ title, message, buttons: [{ id: 'ok', type: 'default', text: 'ОК' }] });
+
+    html += '<button class="popup-btn" style="background:' + (isWin ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'linear-gradient(135deg,#1d4ed8,#1e40af)') + ';margin-top:4px;font-size:15px;font-weight:700;padding:14px;" onclick="closeOverlay(); renderArenaFightTab();">' + (isWin ? '\uD83C\uDFC6 \u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c' : '\uD83D\uDD04 \u041f\u043e\u043f\u0440\u043e\u0431\u043e\u0432\u0430\u0442\u044c \u0441\u043d\u043e\u0432\u0430') + '</button>';
+
+    popup.innerHTML = html;
+    overlay.classList.add('show');
 }
+
 
 // ============================================================
 // ARENA - UI ФУНКЦИИ
@@ -2779,7 +2810,7 @@ async function makeAttack(targetIndex) {
         }
 
         if (res.finished) {
-            arenaClient?.endBattle(res.winnerId || null, res.prizePool || 0);
+            arenaClient?.endBattle(res.winnerId || null, res.prizePool || 0, res.dustWin || 0);
             const isWin = !!res.winnerId && res.winnerId === arenaClient?.getCurrentUserId();
             showNativeBattleResult(isWin, res.prizePool || 0);
             renderArenaFightTab();
@@ -2906,7 +2937,10 @@ async function renderArenaFightTab() {
                     const entryRow = document.getElementById('arenaEntryFeeRow');
                     if (entryRow) entryRow.style.display = config.entryFee === 0 ? 'none' : '';
                     if (entryFeeEl) entryFeeEl.textContent = config.entryFee;
-                    if (prizePoolEl) prizePoolEl.textContent = config.prizePool;
+                    if (prizePoolEl) {
+                        const dustImg = '<img src="https://duckadsss.github.io/dust.png" style="width:13px;height:13px;vertical-align:middle;margin:0 2px" onerror="this.replaceWith(document.createTextNode('\uD83C\uDF2B\uFE0F'))">';
+                        prizePoolEl.innerHTML = config.prizePool + ' <span style="font-size:11px;color:var(--text3)">+ ' + config.dustWin + dustImg + '</span>';
+                    }
                     if (leagueEl) {
                         leagueEl.innerHTML = `<span class="arena-league-badge league-${myLeague}">${config.name}</span>`;
                     }
@@ -3564,8 +3598,8 @@ await loadCreaturesFromServer();
             }
             updateBattleUIFromClient(data, isPlayer1);
         });
-        arenaClient.on('onBattleEnd', (isWin, prizePool) => { 
-            showNativeBattleResult(isWin, prizePool); 
+        arenaClient.on('onBattleEnd', (isWin, prizePool, dustWin = 0) => { 
+            showNativeBattleResult(isWin, prizePool, dustWin); 
             refreshUserProfile();
             setTimeout(() => {
                 renderArenaFightTab();
