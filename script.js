@@ -457,7 +457,7 @@ function showArenaClosedModal() {
 }
 
 // Расписание арены (UTC+3)
-const ARENA_SCHEDULE_CLIENT = [[10, 14], [20, 02]];
+const ARENA_SCHEDULE_CLIENT = [[10, 19], [20, 02]];
 
 function isArenaOpenClient() {
     const nowUTC = new Date();
@@ -820,7 +820,7 @@ function showMergePreview(creatureId) {
         <div style="background:#0d1120;border:1px solid #2e1b4a;border-radius:14px;padding:14px;margin-bottom:12px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
                 <div style="font-size:12px;font-weight:700;color:#a78bfa;display:flex;align-items:center;gap:5px">
-                    <img src="https://duckadsss.github.io/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain"> Бонус пыли
+                    <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain"> Бонус пыли
                 </div>
                 <div style="font-size:11px;color:#7c3aed">У вас: ${userDust.toLocaleString()} 🌫️</div>
             </div>
@@ -834,7 +834,7 @@ function showMergePreview(creatureId) {
             <div id="mergeDustAffordability" style="font-size:10px;color:#64748b;text-align:center">Двигайте ползунок для выбора бонуса</div>
         </div>
         <button class="popup-btn" id="mergeDustBtn" style="background:linear-gradient(135deg,#5b21b6,#7c3aed);margin-bottom:8px;opacity:0.4;pointer-events:none" onclick="executeMergeWithDust('${creatureId}')">
-            <img src="https://duckadsss.github.io/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain">
+            <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain">
             <span id="mergeDustBtnLabel">Выберите бонус пыли</span>
         </button>` : ''}
 
@@ -1264,7 +1264,7 @@ function renderMarketplaceListings(listings) {
         if (l.isDust) {
             return `<div class="marketplace-listing">
                 <div class="marketplace-listing-icon" style="background:#a78bfa11;border-color:#a78bfa44">
-                    <img src="https://duckadsss.github.io/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))">
+                    <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))">
                 </div>
                 <div class="marketplace-listing-info">
                     <div class="marketplace-listing-name" style="color:#a78bfa">Пыль ×${l.dustAmount}</div>
@@ -1323,7 +1323,7 @@ function renderMarketplaceSell() {
 
     const dust = state.user?.dust || 0;
     const dustCard = `<div class="marketplace-sell-card" style="cursor:pointer;border-color:#a78bfa44;background:#a78bfa11" onclick="openDustSellModal(${dust})">
-        <div class="marketplace-sell-card-icon"><img src="https://duckadsss.github.io/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))"></div>
+        <div class="marketplace-sell-card-icon"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))"></div>
         <div class="marketplace-sell-card-name" style="color:#a78bfa">Пыль</div>
         <div style="font-size:9px;color:#7c3aed">x${dust}</div>
         <div style="font-size:10px;color:#a78bfa;font-weight:600;margin-top:4px">ПРОДАТЬ</div>
@@ -1369,7 +1369,7 @@ function openDustSellModal(maxDust) {
     document.getElementById('popup').innerHTML = `
         <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
         <div class="popup-title">Продать пыль</div>
-        <div class="popup-subtitle" style="margin-bottom:16px">Доступно: <b>${maxDust}</b> <img src="https://duckadsss.github.io/dust.png" style="width:14px;height:14px;vertical-align:middle" onerror="this.replaceWith(document.createTextNode('🌫️'))"></div>
+        <div class="popup-subtitle" style="margin-bottom:16px">Доступно: <b>${maxDust}</b> <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle" onerror="this.replaceWith(document.createTextNode('🌫️'))"></div>
         <div class="price-input-modal">
             <div style="margin-bottom:12px">
                 <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Количество пыли</div>
@@ -1471,7 +1471,7 @@ async function renderMarketplaceMyListings() {
         if (l.isDust) {
             return `<div class="marketplace-my-listing">
                 <div class="marketplace-my-listing-icon" style="background:#a78bfa11;border-color:#a78bfa44">
-                    <img src="https://duckadsss.github.io/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))">
+                    <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))">
                 </div>
                 <div class="marketplace-my-listing-info">
                     <div class="marketplace-my-listing-name" style="color:#a78bfa">Пыль ×${l.dustAmount}</div>
@@ -2488,7 +2488,7 @@ function showNativeBattleResult(isWin, prizePool, dustWin = 0) {
     const popup = document.getElementById('popup');
     if (!overlay || !popup) return;
 
-    const D = 'https://duckadsss.github.io/dust.png';
+    const D = 'https://ndammo.github.io/Mmodna/dust.png';
     let html = '';
     html += '<div class="popup-close" onclick="closeOverlay(); renderArenaFightTab();"><i class="fa-solid fa-xmark"></i></div>';
     html += '<div style="text-align:center;padding:8px 0 4px;">';
@@ -2939,7 +2939,7 @@ async function renderArenaFightTab() {
                     if (entryRow) entryRow.style.display = config.entryFee === 0 ? 'none' : '';
                     if (entryFeeEl) entryFeeEl.textContent = config.entryFee;
                     if (prizePoolEl) {
-                        const dustImg = '<img src="https://duckadsss.github.io/dust.png" style="width:13px;height:13px;vertical-align:middle;margin:0 2px" onerror="this.style.display=\'none\'">';
+                        const dustImg = '<img src="https://ndammo.github.io/Mmodna/dust.png" style="width:13px;height:13px;vertical-align:middle;margin:0 2px" onerror="this.style.display=\'none\'">';
                         prizePoolEl.innerHTML = config.prizePool + ' <span style="font-size:11px;color:var(--text3)">+ ' + config.dustWin + dustImg + '</span>';
                     }
                     if (leagueEl) {
