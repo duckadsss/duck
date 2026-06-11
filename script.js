@@ -3758,6 +3758,9 @@ window.renderArenaFightTab = renderArenaFightTab;
 // ============================================================
 // STAKING
 // ============================================================
+// ============================================================
+// STAKING
+// ============================================================
 let stakingTimerInterval = null;
 let currentStakingPlan = null;
 
@@ -3783,8 +3786,8 @@ function renderActiveStaking(s) {
     if (!block) return;
     block.style.display = 'block';
     document.getElementById('stakeAmount').textContent = formatNum(s.amount) + ' MMO';
-    document.getElementById('stakeReward').textContent = '+' + formatNum(s.reward) + ' MMO'
-        + (s.days === 10 ? ' + 🦫 Capybara' : '');
+    document.getElementById('stakeReward').innerHTML = '+' + formatNum(s.reward) + ' MMO'
+        + (s.days === 10 ? ' + 🦫 Capybara Rare' : '');
 
     if (stakingTimerInterval) clearInterval(stakingTimerInterval);
 
@@ -3889,6 +3892,7 @@ async function claimStaking() {
         showToast((data && data.message) || 'Ошибка', '❌');
     }
 }
+
 
 // ============================================================
 // ВОССТАНОВЛЕНИЕ WEBSOCKET ПОСЛЕ СВОРАЧИВАНИЯ/РАЗВОРАЧИВАНИЯ
