@@ -138,7 +138,7 @@ class ArenaClient {
         }, TIMEOUT * 1000);
     }
     
-    startBattle(battleId, isPlayer1, myTeam, enemyTeam, timeLeft) {
+    startBattle(battleId, isPlayer1, myTeam, enemyTeam) {
         this.state.battleActive = true;
         this.state.currentBattleId = battleId;
         this.state.currentBattleIsPlayer1 = isPlayer1;
@@ -163,11 +163,6 @@ class ArenaClient {
                 currentTurn: isPlayer1 ? 'player1' : 'player2',
                 battleLog: []
             });
-        }
-
-        // Запускаем таймер при восстановлении боя после перезагрузки/реконнекта
-        if (timeLeft !== undefined) {
-            this.startBattleTimer(timeLeft);
         }
     }
     
@@ -217,7 +212,7 @@ class ArenaClient {
         }
     }
     
-    endBattle(winnerId, prizePool) {
+    endBattle(winnerId, prizePool, dustWin = 0) {
         // Идемпотентная защита: если бой уже завершён — не вызываем onBattleEnd повторно.
         // Это предотвращает двойной popup: HTTP ответ makeAttack + WS battle_end.
         if (!this.state.battleActive) return;
@@ -233,7 +228,7 @@ class ArenaClient {
         const isWin = winnerId === this.getCurrentUserId();
         
         if (this.callbacks.onBattleEnd) {
-            this.callbacks.onBattleEnd(isWin, prizePool);
+            this.callbacks.onBattleEnd(isWin, prizePool, dustWin);
         }
         
         setTimeout(() => {
@@ -385,7 +380,7 @@ connectSocket(token, apiUrl) {
         
         socket.on('battle_end', (data) => {
             console.log('🏆 Battle end!', data);
-            this.endBattle(data.winnerId, data.prizePool);
+            this.endBattle(data.winnerId, data.prizePool, data.dustWin || 0);
         });
         
         socket.on('confirmation_update', (data) => {
@@ -443,11 +438,15 @@ connectSocket(token, apiUrl) {
                 this.callbacks.onConnected();
             }
             
-            // Восстанавливаем состояние боя по текущему battleId
             if (this.state.currentBattleId) {
                 this.state.socket.emit('check_battle_status', { battleId: this.state.currentBattleId });
+            } else if (this.state.confirmationShown && this.state.currentBattleId) {
+                this.state.socket.emit('check_battle_status', { battleId: this.state.currentBattleId });
+            } else if (this.state.battleActive && this.state.currentBattleId) {
+                this.state.socket.emit('check_battle_status', { battleId: this.state.currentBattleId });
+            } else if (this.state.isSearching) {
+                this.state.socket.emit('check_battle_status', {});
             }
-            // Если battleId неизвестен (перезагрузка страницы) — HTTP-опрос renderArenaFightTab восстановит состояние
         });
 
         socket.on('reconnect_failed', () => {
@@ -463,6 +462,32 @@ connectSocket(token, apiUrl) {
     }
 }
     
+    scheduleReconnect(token, apiUrl) {
+        if (this.timers.reconnectTimer) return;
+        
+        this.reconnectAttempts++;
+        if (this.reconnectAttempts > this.maxReconnectAttempts) {
+            console.log('Max reconnect attempts reached');
+            return;
+        }
+        
+        const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 30000);
+        console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+        
+        const savedAttempts = this.reconnectAttempts;
+        this.timers.reconnectTimer = setTimeout(() => {
+            this.timers.reconnectTimer = null;
+            // Закрываем только сокет, не трогаем reconnectAttempts
+            if (this.state.socket) {
+                this.state.socket.removeAllListeners();
+                this.state.socket.disconnect();
+                this.state.socket = null;
+            }
+            // Восстанавливаем счётчик после того как disconnectSocket его обнулил бы
+            this.reconnectAttempts = savedAttempts;
+            this.connectSocket(token, apiUrl);
+        }, delay);
+    }
     
     disconnectSocket() {
         if (this.state.socket) {

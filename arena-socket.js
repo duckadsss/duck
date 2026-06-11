@@ -239,9 +239,8 @@ class ArenaBattleManager {
         const excludeIds = [user._id];
         if (user.lastOpponentId) excludeIds.push(user.lastOpponentId);
 
-        // Сначала атомарно резервируем слот — без построения команды.
-        // buildTeamFromIds вызывается только если слот найден — экономим N DB запросов при промахе.
-        const reservedBattle = await this.Battle.findOneAndUpdate(
+        const player2TeamData = await buildTeamFromIds(teamIds, userLevel, user._id, this.getCreature);
+        const claimedBattle = await this.Battle.findOneAndUpdate(
             {
                 status: 'waiting',
                 league: userLeague,
@@ -252,24 +251,13 @@ class ArenaBattleManager {
             {
                 $set: {
                     player2Id: user._id,
-                    status: 'pending_confirmation_building', // временный статус пока строим команду
+                    player2Team: player2TeamData,
+                    status: 'pending_confirmation',
                     expiresAt: new Date(Date.now() + 60 * 1000)
                 }
             },
             { new: true, sort: { createdAt: 1 } }
         );
-
-        // Теперь строим команду только если нашли бой
-        let claimedBattle = null;
-        if (reservedBattle) {
-            const player2TeamData = await buildTeamFromIds(teamIds, userLevel, user._id, this.getCreature);
-            claimedBattle = await this.Battle.findOneAndUpdate(
-                { _id: reservedBattle._id, status: 'pending_confirmation_building' },
-                { $set: { player2Team: player2TeamData, status: 'pending_confirmation' } },
-                { new: true }
-            );
-            if (!claimedBattle) claimedBattle = reservedBattle; // fallback
-        }
 
         try {
             if (claimedBattle) {
@@ -403,7 +391,7 @@ class ArenaBattleManager {
         const expectedTurn = battle.currentTurn;
         const locked = await this.Battle.findOneAndUpdate(
             { _id: battleId, status: 'active', currentTurn: expectedTurn },
-            { $set: { currentTurn: '__processing__', processingStartedAt: new Date(), processingByPlayer: expectedTurn } }
+            { $set: { currentTurn: '__processing__', processingStartedAt: new Date() } }
         );
         if (!locked) {
             return { success: false, message: 'Ход уже обрабатывается, подождите' };
@@ -412,6 +400,7 @@ class ArenaBattleManager {
         try {
             const myTeam = isPlayer1 ? battle.player1Team : battle.player2Team;
             const enemyTeam = isPlayer1 ? battle.player2Team : battle.player1Team;
+            const leagueCfg = LEAGUE_CONFIG[battle.league] || LEAGUE_CONFIG.bronze;
 
             // ── ЯД: тик в начале хода ──────────────────────────────
             const poisonLog = [];
@@ -430,7 +419,7 @@ class ArenaBattleManager {
                 battle.markModified('player1Team');
                 battle.markModified('player2Team');
                 await this.finishBattle(battle);
-                return { success: true, finished: true, winnerId: battle.winnerId, poisonLog };
+                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, poisonLog };
             }
             
             let attackerIndex = -1;
@@ -449,7 +438,7 @@ class ArenaBattleManager {
                 battle.markModified('player1Team');
                 battle.markModified('player2Team');
                 await this.finishBattle(battle);
-                return { success: true, finished: true, winnerId: battle.winnerId };
+                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0 };
             }
             
             let targetIndex = -1;
@@ -466,7 +455,7 @@ class ArenaBattleManager {
                 battle.status = 'finished';
                 battle.winnerId = isPlayer1 ? battle.player1Id : battle.player2Id;
                 await this.finishBattle(battle);
-                return { success: true, finished: true, winnerId: battle.winnerId };
+                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0 };
             }
             
             const target = enemyTeam[targetIndex];
@@ -536,7 +525,7 @@ class ArenaBattleManager {
                 battle.markModified('player1Team');
                 battle.markModified('player2Team');
                 await this.finishBattle(battle);
-                return { success: true, finished: true, draw: true, winnerId: null };
+                return { success: true, finished: true, draw: true, winnerId: null, prizePool: 0, dustWin: 0 };
             }
 
             if (allMyDead) {
@@ -560,7 +549,9 @@ class ArenaBattleManager {
                 return {
                     success: true,
                     finished: true,
-                    winnerId: battle.winnerId,
+                    winnerId: battle.winnerId?.toString(),
+                    prizePool: battle.prizePool,
+                    dustWin: leagueCfg.dustWin || 0,
                     lastMove: { damage, isCrit, targetIndex, targetHp: target.currentHp, targetDead: true }
                 };
             }
@@ -797,7 +788,7 @@ class ArenaBattleManager {
         let expiredCount = 0;
         
         const expiredWaiting = await this.Battle.find({
-            status: { $in: ['waiting', 'pending_confirmation', 'pending_confirmation_building'] },
+            status: { $in: ['waiting', 'pending_confirmation'] },
             expiresAt: { $lt: now }
         });
         
@@ -870,12 +861,10 @@ class ArenaBattleManager {
         });
         for (const battle of stuckProcessing) {
             console.log(`⚠️ Разблокировка зависшего боя ${battle._id}`);
-            // processingByPlayer хранит ход ДО блокировки — именно его ход и нужно восстановить.
-            // Нельзя использовать battle.currentTurn — оно равно '__processing__', а не 'player1'/'player2'.
-            const restoreTurn = battle.processingByPlayer || 'player1';
+            const expectedRestore = battle.currentTurn === 'player1' ? 'player2' : 'player1';
             await this.Battle.updateOne(
                 { _id: battle._id, currentTurn: '__processing__' },
-                { $set: { currentTurn: restoreTurn, processingStartedAt: null, processingByPlayer: null } }
+                { $set: { currentTurn: expectedRestore, processingStartedAt: null } }
             );
             expiredCount++;
         }

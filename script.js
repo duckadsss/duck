@@ -2396,18 +2396,66 @@ async function rejectBattleFromModal(battleId) {
     }
 }
 
-function showNativeBattleResult(isWin, prizePool) {
-    if (!window.Telegram?.WebApp) {
-        const overlay = document.getElementById('overlay');
-        const popup = document.getElementById('popup');
-        popup.innerHTML = `<div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div><div class="popup-icon">${isWin ? '🏆' : '💀'}</div><div class="popup-title" style="color:${isWin ? 'var(--legendary)' : 'var(--mythic)'}">${isWin ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}</div><div class="popup-subtitle">${isWin ? `Вы выиграли ${prizePool} MMO!` : 'В следующий раз повезёт!'}</div><button class="popup-btn" onclick="closeOverlay(); renderArenaFightTab();">Закрыть</button></div>`;
-        overlay.classList.add('show');
-        return;
-    }
-    const tg = window.Telegram.WebApp;
-    const title = isWin ? '🏆 ПОБЕДА!' : '💀 ПОРАЖЕНИЕ';
-    const message = isWin ? `Вы выиграли ${prizePool} MMO! 🎉\nВаш рейтинг повышается!` : `Вы проиграли бой.\nВ следующий раз повезёт!`;
-    tg.showPopup({ title, message, buttons: [{ id: 'ok', type: 'default', text: 'ОК' }] });
+function showNativeBattleResult(isWin, prizePool, dustWin = 0) {
+    const overlay = document.getElementById('overlay');
+    const popup = document.getElementById('popup');
+    if (!overlay || !popup) return;
+
+    const DUST_IMG = `<img src="https://ndammo.github.io/Mmodna/dust.png" style="width:16px;height:16px;vertical-align:middle;margin-right:3px" onerror="this.replaceWith(document.createTextNode('🌫️'))">`;
+
+    const rewardsHtml = isWin ? `
+        <div style="display:flex;flex-direction:column;gap:10px;margin:18px 0;">
+            <div style="background:linear-gradient(135deg,#1a2e1a,#0d1f0d);border:1px solid #22c55e44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">
+                <div style="display:flex;align-items:center;gap:8px;color:#86efac;font-size:13px;">
+                    <i class="fa-solid fa-coins" style="color:#fbbf24"></i>
+                    <span>Выигрыш</span>
+                </div>
+                <span style="font-size:18px;font-weight:800;color:#4ade80;">+${(prizePool||0).toLocaleString()} MMO</span>
+            </div>
+            ${dustWin > 0 ? `
+            <div style="background:linear-gradient(135deg,#1e1a2e,#130d1f);border:1px solid #a78bfa44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">
+                <div style="display:flex;align-items:center;gap:8px;color:#c4b5fd;font-size:13px;">
+                    ${DUST_IMG}<span>Пыль</span>
+                </div>
+                <span style="font-size:18px;font-weight:800;color:#a78bfa;">+${dustWin} 🌫️</span>
+            </div>` : ''}
+            <div style="background:linear-gradient(135deg,#1a1f2e,#0d1220);border:1px solid #60a5fa44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">
+                <div style="display:flex;align-items:center;gap:8px;color:#93c5fd;font-size:13px;">
+                    <i class="fa-solid fa-chart-line" style="color:#60a5fa"></i>
+                    <span>Рейтинг</span>
+                </div>
+                <span style="font-size:15px;font-weight:700;color:#60a5fa;">↑ Повышается</span>
+            </div>
+        </div>` : `
+        <div style="background:linear-gradient(135deg,#2e1a1a,#1f0d0d);border:1px solid #ef444444;border-radius:14px;padding:14px 20px;margin:18px 0;display:flex;align-items:center;justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:8px;color:#fca5a5;font-size:13px;">
+                <i class="fa-solid fa-arrow-trend-down" style="color:#ef4444"></i>
+                <span>Рейтинг</span>
+            </div>
+            <span style="font-size:15px;font-weight:700;color:#f87171;">↓ Понижается</span>
+        </div>`;
+
+    popup.innerHTML = `
+        <div class="popup-close" onclick="closeOverlay(); renderArenaFightTab();">
+            <i class="fa-solid fa-xmark"></i>
+        </div>
+        <div style="text-align:center;padding:8px 0 4px;">
+            <div style="font-size:64px;line-height:1;margin-bottom:10px;filter:drop-shadow(0 0 20px ${isWin ? '#fbbf24' : '#ef4444'});">
+                ${isWin ? '🏆' : '💀'}
+            </div>
+            <div style="font-size:28px;font-weight:900;letter-spacing:2px;font-family:'Orbitron',monospace;background:${isWin ? 'linear-gradient(135deg,#fbbf24,#f59e0b,#fde68a)' : 'linear-gradient(135deg,#ef4444,#dc2626,#fca5a5)'};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:6px;">
+                ${isWin ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}
+            </div>
+            <div style="font-size:13px;color:var(--text3);margin-bottom:4px;">
+                ${isWin ? '🎉 Отличная битва!' : '💪 В следующий раз повезёт!'}
+            </div>
+        </div>
+        ${rewardsHtml}
+        <button class="popup-btn" style="background:${isWin ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'linear-gradient(135deg,#1d4ed8,#1e40af)'};margin-top:4px;font-size:15px;font-weight:700;padding:14px;" onclick="closeOverlay(); renderArenaFightTab();">
+            ${isWin ? '🏆 Продолжить' : '🔄 Попробовать снова'}
+        </button>
+    `;
+    overlay.classList.add('show');
 }
 
 // ============================================================
@@ -2587,28 +2635,15 @@ async function findMatch() {
     }
 }
 
-async function cancelBattleSearch() {
-    // Сначала останавливаем клиентский таймер и UI
+function cancelBattleSearch() {
     arenaClient?.stopSearch();
     const findBtn = document.getElementById('findMatchBtn');
     const searchStatus = document.getElementById('arenaSearchStatus');
     if (findBtn) { 
-        findBtn.disabled = true;
-        findBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-    }
-    if (searchStatus) searchStatus.innerHTML = '';
-
-    // Отменяем бой на сервере (удаляем waiting-бой из БД и возвращаем взнос)
-    try {
-        await apiRequest('POST', '/api/arena/cancel-search');
-    } catch (e) {
-        console.warn('cancel-search error:', e);
-    }
-
-    if (findBtn) { 
         findBtn.disabled = false; 
         findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; 
     }
+    if (searchStatus) searchStatus.innerHTML = '';
     showToast('Поиск отменён', '⚠️');
 }
 
@@ -2705,7 +2740,7 @@ async function makeAttack(targetIndex) {
         }
 
         if (res.finished) {
-            arenaClient?.endBattle(res.winnerId || null, res.prizePool || 0);
+            arenaClient?.endBattle(res.winnerId || null, res.prizePool || 0, res.dustWin || 0);
             const isWin = !!res.winnerId && res.winnerId === arenaClient?.getCurrentUserId();
             showNativeBattleResult(isWin, res.prizePool || 0);
             renderArenaFightTab();
@@ -3490,8 +3525,8 @@ await loadCreaturesFromServer();
             }
             updateBattleUIFromClient(data, isPlayer1);
         });
-        arenaClient.on('onBattleEnd', (isWin, prizePool) => { 
-            showNativeBattleResult(isWin, prizePool); 
+        arenaClient.on('onBattleEnd', (isWin, prizePool, dustWin = 0) => { 
+            showNativeBattleResult(isWin, prizePool, dustWin); 
             refreshUserProfile();
             setTimeout(() => {
                 renderArenaFightTab();
