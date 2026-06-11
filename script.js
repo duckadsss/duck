@@ -2587,15 +2587,28 @@ async function findMatch() {
     }
 }
 
-function cancelBattleSearch() {
+async function cancelBattleSearch() {
+    // Сначала останавливаем клиентский таймер и UI
     arenaClient?.stopSearch();
     const findBtn = document.getElementById('findMatchBtn');
     const searchStatus = document.getElementById('arenaSearchStatus');
     if (findBtn) { 
+        findBtn.disabled = true;
+        findBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    }
+    if (searchStatus) searchStatus.innerHTML = '';
+
+    // Отменяем бой на сервере (удаляем waiting-бой из БД и возвращаем взнос)
+    try {
+        await apiRequest('POST', '/api/arena/cancel-search');
+    } catch (e) {
+        console.warn('cancel-search error:', e);
+    }
+
+    if (findBtn) { 
         findBtn.disabled = false; 
         findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; 
     }
-    if (searchStatus) searchStatus.innerHTML = '';
     showToast('Поиск отменён', '⚠️');
 }
 
