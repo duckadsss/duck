@@ -1299,9 +1299,6 @@ body {
     position: fixed; inset: 0; z-index: 9999;
     background: rgba(0,0,0,0.75);
     display: flex; align-items: center; justify-content: center; padding: 20px;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s;
 }
 .staking-modal-box {
     background: var(--surface); border: 1px solid rgba(124,58,237,0.4);
@@ -2542,5 +2539,125 @@ img {
     max-width: 100%;
     display: block;
 }
+/* ── Arena list cards ─────────────────────────── */
+.arena-list-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    cursor: pointer;
+    transition: background 0.2s;
+    position: relative;
+}
+.arena-list-card:active { background: rgba(168,85,247,0.08); }
+.arena-list-card.selected { background: rgba(168,85,247,0.12); border-left: 3px solid #a855f7; }
+.arena-list-card.disabled { opacity: 0.4; pointer-events: none; }
 
+.arena-list-left { position: relative; flex-shrink: 0; }
+.arena-list-icon img, .arena-list-icon { width: 56px; height: 56px; object-fit: contain; }
+.arena-list-num {
+    position: absolute;
+    top: -4px; left: -4px;
+    background: #a855f7;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+}
+
+.arena-list-info { flex: 1; min-width: 0; }
+.arena-list-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text1);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+.arena-list-rarity {
+    font-size: 9px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 6px;
+    text-transform: uppercase;
+    background: rgba(255,255,255,0.08);
+}
+.arena-list-stats {
+    display: flex;
+    gap: 10px;
+    font-size: 11px;
+    color: var(--text2);
+    margin-bottom: 6px;
+}
+.arena-list-skill {
+    background: rgba(168,85,247,0.1);
+    border: 1px solid rgba(168,85,247,0.2);
+    border-radius: 8px;
+    padding: 5px 8px;
+}
+.arena-list-skill-name {
+    font-size: 11px;
+    font-weight: 700;
+    color: #a855f7;
+}
+.arena-list-skill-chance {
+    font-size: 10px;
+    color: #7c3aed;
+    background: rgba(124,58,237,0.2);
+    border-radius: 5px;
+    padding: 0 5px;
+    margin-left: 4px;
+}
+.arena-list-skill-desc {
+    font-size: 10px;
+    color: var(--text3);
+    margin-top: 2px;
+}
+
+.arena-list-check {
+    font-size: 20px;
+    color: #a855f7;
+    flex-shrink: 0;
+}
+.arena-list-card:not(.selected) .arena-list-check { color: rgba(255,255,255,0.2); }
+/* В style.css найдите секцию .arena-save-btn и добавьте рядом: */
+
+.arena-save-btn {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent), var(--accent3));
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: 'Orbitron', monospace;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.arena-save-btn:active { transform: scale(0.97); }
+
+/* ДОБАВИТЬ ЭТОТ КЛАСС для красной кнопки сброса */
+.arena-reset-btn {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    border: none;
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
 .arena-reset-btn:active { transform: scale(0.97); }

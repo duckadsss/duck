@@ -383,7 +383,7 @@ const ArenaStatsSchema = new mongoose.Schema({
 const ArenaStats = mongoose.model('ArenaStats', ArenaStatsSchema);
 
 const StakingSchema = new mongoose.Schema({
-    userId:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    userId:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
     amount:    { type: Number, required: true },
     days:      { type: Number, required: true },
     rate:      { type: Number, required: true },
@@ -392,7 +392,6 @@ const StakingSchema = new mongoose.Schema({
     endsAt:    { type: Date, required: true },
     claimed:   { type: Boolean, default: false }
 });
-StakingSchema.index({ userId: 1, claimed: 1 });
 const Staking = mongoose.model('Staking', StakingSchema);
 
 // ============================================

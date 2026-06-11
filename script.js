@@ -457,7 +457,7 @@ function showArenaClosedModal() {
 }
 
 // Расписание арены (UTC+3)
-const ARENA_SCHEDULE_CLIENT = [[10, 19], [20, 02]];
+const ARENA_SCHEDULE_CLIENT = [[10, 14], [20, 02]];
 
 function isArenaOpenClient() {
     const nowUTC = new Date();
@@ -2483,23 +2483,10 @@ async function rejectBattleFromModal(battleId) {
     }
 }
 
-function showNativeBattleResult(isWin, prizePool, dustWin = 0, xpGain = 0, dustLose = 0) {
+function showNativeBattleResult(isWin, prizePool, dustWin = 0) {
     const overlay = document.getElementById('overlay');
     const popup = document.getElementById('popup');
     if (!overlay || !popup) return;
-
-    // Всегда берём актуальные значения из конфига лиги
-    const league = window._currentArenaLeague || 'bronze';
-    const cfgs = {
-        bronze:   { xpWin: 10,  xpLose: 2,  dustLose: 0   },
-        silver:   { xpWin: 30,  xpLose: 5,  dustLose: 1   },
-        gold:     { xpWin: 50,  xpLose: 10, dustLose: 11  },
-        platinum: { xpWin: 100, xpLose: 30, dustLose: 750 },
-        diamond:  { xpWin: 75,  xpLose: 20, dustLose: 125 }
-    };
-    const cfg = cfgs[league] || cfgs.bronze;
-    xpGain   = isWin ? cfg.xpWin  : cfg.xpLose;
-    dustLose = cfg.dustLose;
 
     const D = 'https://ndammo.github.io/Mmodna/dust.png';
     let html = '';
@@ -2510,56 +2497,30 @@ function showNativeBattleResult(isWin, prizePool, dustWin = 0, xpGain = 0, dustL
     html += '<div style="font-size:13px;color:var(--text3);margin-bottom:4px;">' + (isWin ? '\uD83C\uDF89 \u041e\u0442\u043b\u0438\u0447\u043d\u0430\u044f \u0431\u0438\u0442\u0432\u0430!' : '\uD83D\uDCAA \u0412 \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0439 \u0440\u0430\u0437 \u043f\u043e\u0432\u0435\u0437\u0435\u0442!') + '</div>';
     html += '</div>';
 
-    html += '<div style="display:flex;flex-direction:column;gap:10px;margin:18px 0;">';
-
     if (isWin) {
-        // MMO
+        html += '<div style="display:flex;flex-direction:column;gap:10px;margin:18px 0;">';
         html += '<div style="background:linear-gradient(135deg,#1a2e1a,#0d1f0d);border:1px solid #22c55e44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
         html += '<div style="display:flex;align-items:center;gap:8px;color:#86efac;font-size:13px;"><i class="fa-solid fa-coins" style="color:#fbbf24"></i><span>\u0412\u044b\u0438\u0433\u0440\u044b\u0448</span></div>';
         html += '<span style="font-size:18px;font-weight:800;color:#4ade80;">+' + (prizePool || 0).toLocaleString() + ' MMO</span>';
         html += '</div>';
-        // Dust
         if (dustWin > 0) {
             html += '<div style="background:linear-gradient(135deg,#1e1a2e,#130d1f);border:1px solid #a78bfa44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
             html += '<div style="display:flex;align-items:center;gap:8px;color:#c4b5fd;font-size:13px;"><img src="' + D + '" style="width:16px;height:16px;vertical-align:middle" onerror="this.style.display=\'none\'"><span>\u041f\u044b\u043b\u044c</span></div>';
             html += '<span style="font-size:18px;font-weight:800;color:#a78bfa;">+' + dustWin + ' \uD83C\uDF2B\uFE0F</span>';
             html += '</div>';
         }
-        // XP
-        if (xpGain > 0) {
-            html += '<div style="background:linear-gradient(135deg,#1a2e2a,#0d1f1a);border:1px solid #34d39944;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
-            html += '<div style="display:flex;align-items:center;gap:8px;color:#6ee7b7;font-size:13px;"><i class="fa-solid fa-star" style="color:#34d399"></i><span>\u041e\u043f\u044b\u0442</span></div>';
-            html += '<span style="font-size:18px;font-weight:800;color:#34d399;">+' + xpGain + ' XP</span>';
-            html += '</div>';
-        }
-        // Рейтинг
         html += '<div style="background:linear-gradient(135deg,#1a1f2e,#0d1220);border:1px solid #60a5fa44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
         html += '<div style="display:flex;align-items:center;gap:8px;color:#93c5fd;font-size:13px;"><i class="fa-solid fa-chart-line" style="color:#60a5fa"></i><span>\u0420\u0435\u0439\u0442\u0438\u043d\u0433</span></div>';
         html += '<span style="font-size:15px;font-weight:700;color:#60a5fa;">\u2191 \u041f\u043e\u0432\u044b\u0448\u0430\u0435\u0442\u0441\u044f</span>';
         html += '</div>';
+        html += '</div>';
     } else {
-        // Dust при поражении
-        if (dustLose > 0) {
-            html += '<div style="background:linear-gradient(135deg,#1e1a2e,#130d1f);border:1px solid #a78bfa44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
-            html += '<div style="display:flex;align-items:center;gap:8px;color:#c4b5fd;font-size:13px;"><img src="' + D + '" style="width:16px;height:16px;vertical-align:middle" onerror="this.style.display=\'none\'"><span>\u041f\u044b\u043b\u044c</span></div>';
-            html += '<span style="font-size:18px;font-weight:800;color:#a78bfa;">+' + dustLose + ' \uD83C\uDF2B\uFE0F</span>';
-            html += '</div>';
-        }
-        // XP при поражении
-        if (xpGain > 0) {
-            html += '<div style="background:linear-gradient(135deg,#1a2e2a,#0d1f1a);border:1px solid #34d39944;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
-            html += '<div style="display:flex;align-items:center;gap:8px;color:#6ee7b7;font-size:13px;"><i class="fa-solid fa-star" style="color:#34d399"></i><span>\u041e\u043f\u044b\u0442</span></div>';
-            html += '<span style="font-size:18px;font-weight:800;color:#34d399;">+' + xpGain + ' XP</span>';
-            html += '</div>';
-        }
-        // Рейтинг
-        html += '<div style="background:linear-gradient(135deg,#2e1a1a,#1f0d0d);border:1px solid #ef444444;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
+        html += '<div style="background:linear-gradient(135deg,#2e1a1a,#1f0d0d);border:1px solid #ef444444;border-radius:14px;padding:14px 20px;margin:18px 0;display:flex;align-items:center;justify-content:space-between;">';
         html += '<div style="display:flex;align-items:center;gap:8px;color:#fca5a5;font-size:13px;"><i class="fa-solid fa-arrow-trend-down" style="color:#ef4444"></i><span>\u0420\u0435\u0439\u0442\u0438\u043d\u0433</span></div>';
         html += '<span style="font-size:15px;font-weight:700;color:#f87171;">\u2193 \u041f\u043e\u043d\u0438\u0436\u0430\u0435\u0442\u0441\u044f</span>';
         html += '</div>';
     }
 
-    html += '</div>';
     html += '<button class="popup-btn" style="background:' + (isWin ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'linear-gradient(135deg,#1d4ed8,#1e40af)') + ';margin-top:4px;font-size:15px;font-weight:700;padding:14px;" onclick="closeOverlay(); renderArenaFightTab();">' + (isWin ? '\uD83C\uDFC6 \u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c' : '\uD83D\uDD04 \u041f\u043e\u043f\u0440\u043e\u0431\u043e\u0432\u0430\u0442\u044c \u0441\u043d\u043e\u0432\u0430') + '</button>';
 
     popup.innerHTML = html;
@@ -2852,7 +2813,7 @@ async function makeAttack(targetIndex) {
         if (res.finished) {
             arenaClient?.endBattle(res.winnerId || null, res.prizePool || 0, res.dustWin || 0);
             const isWin = !!res.winnerId && res.winnerId === arenaClient?.getCurrentUserId();
-            showNativeBattleResult(isWin, res.prizePool || 0, res.dustWin || 0);
+            showNativeBattleResult(isWin, res.prizePool || 0);
             renderArenaFightTab();
         } else {
             const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
@@ -2961,13 +2922,12 @@ async function renderArenaFightTab() {
                 const leaderboardRes = await apiRequest('GET', '/api/arena/leaderboard');
                 if (leaderboardRes?.success && leaderboardRes.myStats) {
                     const myLeague = leaderboardRes.myStats.league || 'bronze';
-                    window._currentArenaLeague = myLeague;
                     const leagueConfigs = {
-    bronze: { entryFee: 10, prizePool: 16, dustWin: 1, dustLose: 0, xpWin: 10, xpLose: 2, name: '🥉 Бронзовая' },
-    silver: { entryFee: 50, prizePool: 80, dustWin: 5, dustLose: 1, xpWin: 30, xpLose: 5, name: '🥈 Серебряная' },
-    gold: { entryFee: 500, prizePool: 800, dustWin: 55, dustLose: 11, xpWin: 50, xpLose: 10, name: '🥇 Золотая' },
-    platinum: { entryFee: 25000, prizePool: 40000, dustWin: 3250, dustLose: 750, xpWin: 100, xpLose: 30, name: '💎 Платиновая' },
-    diamond: { entryFee: 5000, prizePool: 8000, dustWin: 600, dustLose: 125, xpWin: 75, xpLose: 20, name: '🏆 Алмазная' }
+    bronze: { entryFee: 10, prizePool: 15, dustWin: 1, name: '🥉 Бронзовая' },
+    silver: { entryFee: 50, prizePool: 80, dustWin: 5, name: '🥈 Серебряная' },
+    gold: { entryFee: 500, prizePool: 800, dustWin: 50, name: '🥇 Золотая' },
+    platinum: { entryFee: 2000, prizePool: 3200, dustWin: 100, name: '💎 Платиновая' },
+    diamond: { entryFee: 5000, prizePool: 8000, dustWin: 200, name: '🏆 Алмазная' }
 };
                     const config = leagueConfigs[myLeague] || leagueConfigs.bronze;
                     
@@ -2980,7 +2940,7 @@ async function renderArenaFightTab() {
                     if (entryFeeEl) entryFeeEl.textContent = config.entryFee;
                     if (prizePoolEl) {
                         const dustImg = '<img src="https://ndammo.github.io/Mmodna/dust.png" style="width:13px;height:13px;vertical-align:middle;margin:0 2px" onerror="this.style.display=\'none\'">';
-                        prizePoolEl.innerHTML = config.prizePool + ' <span style="font-size:11px;color:var(--text3)">+ ' + config.dustWin + dustImg + ' + ' + config.xpWin + ' XP</span>';
+                        prizePoolEl.innerHTML = config.prizePool + ' <span style="font-size:11px;color:var(--text3)">+ ' + config.dustWin + dustImg + '</span>';
                     }
                     if (leagueEl) {
                         leagueEl.innerHTML = `<span class="arena-league-badge league-${myLeague}">${config.name}</span>`;
@@ -3822,28 +3782,17 @@ function renderActiveStaking(s) {
     const block = document.getElementById('activeStakingBlock');
     if (!block) return;
     block.style.display = 'block';
-
-    const amountEl = document.getElementById('stakeAmount');
-    const rewardEl = document.getElementById('stakeReward');
-    if (amountEl) amountEl.textContent = formatNum(s.amount) + ' MMO';
-    if (rewardEl) rewardEl.textContent = '+' + formatNum(s.reward) + ' MMO'
+    document.getElementById('stakeAmount').textContent = formatNum(s.amount) + ' MMO';
+    document.getElementById('stakeReward').textContent = '+' + formatNum(s.reward) + ' MMO'
         + (s.days === 10 ? ' + 🦫 Capybara' : '');
 
     if (stakingTimerInterval) clearInterval(stakingTimerInterval);
 
-    const endsAt = s.endsAt ? new Date(s.endsAt).getTime() : NaN;
-
     function tick() {
+        const diff = new Date(s.endsAt).getTime() - Date.now();
         const claimBtn = document.getElementById('stakeClaimBtn');
         const timerEl  = document.getElementById('stakeTimer');
-        if (!timerEl) { clearInterval(stakingTimerInterval); return; }
-
-        if (isNaN(endsAt)) {
-            timerEl.textContent = '—';
-            return;
-        }
-
-        const diff = endsAt - Date.now();
+        if (!timerEl) return;
         if (diff <= 0) {
             timerEl.textContent = 'Готово! ✅';
             if (claimBtn) claimBtn.style.display = 'flex';
@@ -3870,47 +3819,32 @@ function selectStakingPlan(days) {
 }
 
 function openStakingModal(days) {
-    const plan = STAKING_PLANS_CLIENT[Number(days)];
+    const plan = STAKING_PLANS_CLIENT[days];
     if (!plan) return;
     currentStakingPlan = plan;
+    document.getElementById('stakingModalDays').textContent = days;
+    document.getElementById('stakingModalRate').textContent = plan.label;
+    document.getElementById('stakingModalMin').textContent  = 'Минимум: ' + formatNum(plan.minAmount) + ' MMO';
+    document.getElementById('stakingAmountInput').value     = '';
+    document.getElementById('stakingModalPreview').textContent = '';
+    document.getElementById('stakingModal').style.display   = 'flex';
 
-    const modal = document.getElementById('stakingModal');
-    if (!modal) return;
-
-    const daysEl = document.getElementById('stakingModalDays');
-    const rateEl = document.getElementById('stakingModalRate');
-    const minEl  = document.getElementById('stakingModalMin');
-    const input  = document.getElementById('stakingAmountInput');
-    const prev   = document.getElementById('stakingModalPreview');
-
-    if (daysEl) daysEl.textContent = days;
-    if (rateEl) rateEl.textContent = plan.label;
-    if (minEl)  minEl.textContent  = 'Минимум: ' + formatNum(plan.minAmount) + ' MMO';
-    if (input)  input.value        = '';
-    if (prev)   prev.textContent   = '';
-
-    modal.style.opacity = '1';
-    modal.style.pointerEvents = 'all';
-
-    if (input) {
-        input.oninput = function() {
-            if (!prev) return;
-            const val = Math.floor(Number(this.value));
-            if (val >= plan.minAmount) {
-                const reward = Math.floor(val * plan.rate);
-                prev.textContent = 'Получите: ' + formatNum(val + reward) + ' MMO'
-                    + (plan.capybara ? ' + 🦫 Capybara Rare' : '');
-            } else {
-                prev.textContent = val > 0 ? 'Минимум ' + formatNum(plan.minAmount) + ' MMO' : '';
-            }
-        };
-    }
+    document.getElementById('stakingAmountInput').oninput = function() {
+        const val     = Math.floor(Number(this.value));
+        const preview = document.getElementById('stakingModalPreview');
+        if (val >= plan.minAmount) {
+            const reward = Math.floor(val * plan.rate);
+            preview.textContent = 'Получите: ' + formatNum(val + reward) + ' MMO'
+                + (plan.capybara ? ' + 🦫 Capybara Rare' : '');
+        } else {
+            preview.textContent = val > 0 ? 'Минимум ' + formatNum(plan.minAmount) + ' MMO' : '';
+        }
+    };
 }
 
 function closeStakingModal(e) {
-    if (e && e.target && e.target.id !== 'stakingModal') return;
-    const modal = document.getElementById('stakingModal');
-    if (modal) { modal.style.opacity = '0'; modal.style.pointerEvents = 'none'; }
+    if (e && e.target !== document.getElementById('stakingModal')) return;
+    document.getElementById('stakingModal').style.display = 'none';
     currentStakingPlan = null;
 }
 
@@ -3928,8 +3862,7 @@ async function confirmStaking() {
 
     const data = await apiRequest('POST', '/api/staking/start', { days: plan.days, amount });
     if (data && data.success) {
-        const modal = document.getElementById('stakingModal');
-        if (modal) { modal.style.opacity = '0'; modal.style.pointerEvents = 'none'; }
+        document.getElementById('stakingModal').style.display = 'none';
         currentStakingPlan = null;
         document.querySelectorAll('.staking-plan').forEach(el => el.classList.remove('selected'));
         if (data.user) { state.user = data.user; updateHeader(); }

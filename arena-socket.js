@@ -7,11 +7,9 @@ const LEAGUE_CONFIG = {
         minRating: 0,
         maxRating: 1299,
         entryFee: 10,
-        prizePool: 16,
+        prizePool: 15,
         dustWin: 1,
         dustLose: 0,
-        xpWin: 10,
-        xpLose: 2,
         color: '#cd7c3a',
         name: '🥉 Бронзовая'
     },
@@ -22,8 +20,6 @@ const LEAGUE_CONFIG = {
         prizePool: 80,
         dustWin: 5,
         dustLose: 1,
-        xpWin: 30,
-        xpLose: 5,
         color: '#94a3b8',
         name: '🥈 Серебряная'
     },
@@ -32,22 +28,18 @@ const LEAGUE_CONFIG = {
         maxRating: 1899,
         entryFee: 500,
         prizePool: 800,
-        dustWin: 55,
-        dustLose: 11,
-        xpWin: 50,
-        xpLose: 10,
+        dustWin: 50,
+        dustLose: 10,
         color: '#f59e0b',
         name: '🥇 Золотая'
     },
     platinum: {
         minRating: 1900,
         maxRating: 2199,
-        entryFee: 25000,
-        prizePool: 40000,
-        dustWin: 3250,
-        dustLose: 750,
-        xpWin: 100,
-        xpLose: 30,
+        entryFee: 2000,
+        prizePool: 3200,
+        dustWin: 100,
+        dustLose: 20,
         color: '#a855f7',
         name: '💎 Платиновая'
     },
@@ -56,10 +48,8 @@ const LEAGUE_CONFIG = {
         maxRating: 9999,
         entryFee: 5000,
         prizePool: 8000,
-        dustWin: 600,
-        dustLose: 125,
-        xpWin: 75,
-        xpLose: 20,
+        dustWin: 200,
+        dustLose: 40,
         color: '#06b6d4',
         name: '🏆 Алмазная'
     }
@@ -720,18 +710,16 @@ class ArenaBattleManager {
         loserStats.totalLost = (loserStats.totalLost || 0) + battle.entryFee;
         loserStats.lastBattleAt = new Date();
 
-        const xpWin = leagueCfg.xpWin || 20;
-        const xpLose = leagueCfg.xpLose || 5;
         const xpOps = [];
-        if (winnerUser && loserUser) {
-            const winXp = winnerUser.xp + xpWin;
+        if (battle.league !== 'bronze' && winnerUser && loserUser) {
+            const winXp = winnerUser.xp + 20;
             xpOps.push(winXp >= xpCalc(winnerUser.level)
                 ? this.User.updateOne({ _id: winnerId }, { $inc: { level: 1 }, $set: { xp: winXp - xpCalc(winnerUser.level) } })
-                : this.User.updateOne({ _id: winnerId }, { $inc: { xp: xpWin } }));
-            const loseXp = loserUser.xp + xpLose;
+                : this.User.updateOne({ _id: winnerId }, { $inc: { xp: 20 } }));
+            const loseXp = loserUser.xp + 5;
             xpOps.push(loseXp >= xpCalc(loserUser.level)
                 ? this.User.updateOne({ _id: loserId }, { $inc: { level: 1 }, $set: { xp: loseXp - xpCalc(loserUser.level) } })
-                : this.User.updateOne({ _id: loserId }, { $inc: { xp: xpLose } }));
+                : this.User.updateOne({ _id: loserId }, { $inc: { xp: 5 } }));
         }
 
         const lastOpOps = (battle.player1Id && battle.player2Id) ? [
@@ -749,14 +737,11 @@ class ArenaBattleManager {
 
         if (this.sendNotification) {
             const dustStr = (leagueCfg.dustWin || 0) > 0 ? `\n🌫️ Пыль: +${leagueCfg.dustWin}` : '';
-            const xpWinStr = xpWin > 0 ? `\n⭐ Опыт: +${xpWin} XP` : '';
-            const xpLoseStr = xpLose > 0 ? `\n⭐ Опыт: +${xpLose} XP` : '';
-            const dustLoseStr = (leagueCfg.dustLose || 0) > 0 ? `\n🌫️ Пыль: +${leagueCfg.dustLose}` : '';
             if (winnerUser) {
                 this.sendNotification(winnerUser.telegramId,
                     `🏆 <b>ПОБЕДА В АРЕНЕ!</b>\n\n` +
                     `Вы победили ${loserUser?.username || loserUser?.firstName || 'игрока'}!\n` +
-                    `💰 Выигрыш: +${battle.prizePool.toLocaleString()} MMO${dustStr}${xpWinStr}\n` +
+                    `💰 Выигрыш: +${battle.prizePool.toLocaleString()} MMO${dustStr}\n` +
                     `📊 Рейтинг: ${winnerStats.rating} (+${ratingChange})\n` +
                     `🔥 Серия побед: ${winnerStats.streak}\n` +
                     `${promotionMessage ? `\n${promotionMessage}` : ''}\n` +
@@ -766,7 +751,7 @@ class ArenaBattleManager {
             if (loserUser) {
                 this.sendNotification(loserUser.telegramId,
                     `💀 <b>ПОРАЖЕНИЕ В АРЕНЕ</b>\n\n` +
-                    `Вы проиграли ${winnerUser?.username || winnerUser?.firstName || 'игроку'}.${dustLoseStr}${xpLoseStr}\n` +
+                    `Вы проиграли ${winnerUser?.username || winnerUser?.firstName || 'игроку'}.\n` +
                     `📊 Рейтинг: ${loserStats.rating} (-${ratingChange})\n` +
                     `${demotionMessage ? `\n${demotionMessage}` : ''}\n` +
                     `💪 Следующий бой будет лучше!`
