@@ -3777,6 +3777,8 @@ async function loadStakingStatus() {
         } else {
             const block = document.getElementById('activeStakingBlock');
             if (block) block.style.display = 'none';
+            const plansEl = document.querySelector('.staking-plans');
+            if (plansEl) plansEl.style.display = 'grid';
         }
     } catch (e) {}
 }
@@ -3785,6 +3787,9 @@ function renderActiveStaking(s) {
     const block = document.getElementById('activeStakingBlock');
     if (!block) return;
     block.style.display = 'block';
+    // Скрываем карточки планов — нельзя запустить второй стейкинг
+    const plansEl = document.querySelector('.staking-plans');
+    if (plansEl) plansEl.style.display = 'none';
     document.getElementById('stakeAmount').textContent = formatNum(s.amount) + ' MMO';
     document.getElementById('stakeReward').innerHTML = '+' + formatNum(s.reward) + ' MMO'
         + (s.days === 10 ? ' + 🦫 Capybara Rare' : '');
@@ -3882,6 +3887,9 @@ async function claimStaking() {
         if (stakingTimerInterval) clearInterval(stakingTimerInterval);
         const block = document.getElementById('activeStakingBlock');
         if (block) block.style.display = 'none';
+        // Показываем карточки планов снова
+        const plansEl = document.querySelector('.staking-plans');
+        if (plansEl) plansEl.style.display = 'grid';
         if (data.user) { state.user = data.user; updateHeader(); }
         if (data.capybara) {
             showToast('+' + formatNum(data.reward) + ' MMO + 🦫 Capybara Rare!', '🎉');
