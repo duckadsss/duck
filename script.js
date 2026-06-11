@@ -3831,28 +3831,32 @@ function renderActiveStaking(s) {
 
     if (stakingTimerInterval) clearInterval(stakingTimerInterval);
 
-    const endsAt = new Date(s.endsAt).getTime();
+    const endsAt = s.endsAt ? new Date(s.endsAt).getTime() : NaN;
 
     function tick() {
-        try {
-            const diff = endsAt - Date.now();
-            const claimBtn = document.getElementById('stakeClaimBtn');
-            const timerEl  = document.getElementById('stakeTimer');
-            if (!timerEl) { clearInterval(stakingTimerInterval); return; }
-            if (diff <= 0) {
-                timerEl.textContent = 'Готово! ✅';
-                if (claimBtn) claimBtn.style.display = 'flex';
-                clearInterval(stakingTimerInterval);
-            } else {
-                const d   = Math.floor(diff / 86400000);
-                const h   = Math.floor((diff % 86400000) / 3600000);
-                const m   = Math.floor((diff % 3600000) / 60000);
-                const sec = Math.floor((diff % 60000) / 1000);
-                timerEl.textContent = (d > 0 ? d + 'д ' : '') +
-                    String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
-                if (claimBtn) claimBtn.style.display = 'none';
-            }
-        } catch(err) { clearInterval(stakingTimerInterval); }
+        const claimBtn = document.getElementById('stakeClaimBtn');
+        const timerEl  = document.getElementById('stakeTimer');
+        if (!timerEl) { clearInterval(stakingTimerInterval); return; }
+
+        if (isNaN(endsAt)) {
+            timerEl.textContent = '—';
+            return;
+        }
+
+        const diff = endsAt - Date.now();
+        if (diff <= 0) {
+            timerEl.textContent = 'Готово! ✅';
+            if (claimBtn) claimBtn.style.display = 'flex';
+            clearInterval(stakingTimerInterval);
+        } else {
+            const d   = Math.floor(diff / 86400000);
+            const h   = Math.floor((diff % 86400000) / 3600000);
+            const m   = Math.floor((diff % 3600000) / 60000);
+            const sec = Math.floor((diff % 60000) / 1000);
+            timerEl.textContent = (d > 0 ? d + 'д ' : '') +
+                String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+            if (claimBtn) claimBtn.style.display = 'none';
+        }
     }
     tick();
     stakingTimerInterval = setInterval(tick, 1000);
@@ -3871,20 +3875,22 @@ function openStakingModal(days) {
     currentStakingPlan = plan;
 
     const modal = document.getElementById('stakingModal');
+    if (!modal) return;
+
     const daysEl = document.getElementById('stakingModalDays');
     const rateEl = document.getElementById('stakingModalRate');
     const minEl  = document.getElementById('stakingModalMin');
     const input  = document.getElementById('stakingAmountInput');
     const prev   = document.getElementById('stakingModalPreview');
 
-    if (!modal) return;
     if (daysEl) daysEl.textContent = days;
     if (rateEl) rateEl.textContent = plan.label;
     if (minEl)  minEl.textContent  = 'Минимум: ' + formatNum(plan.minAmount) + ' MMO';
     if (input)  input.value        = '';
     if (prev)   prev.textContent   = '';
 
-    modal.style.display = 'flex';
+    modal.style.opacity = '1';
+    modal.style.pointerEvents = 'all';
 
     if (input) {
         input.oninput = function() {
@@ -3902,11 +3908,9 @@ function openStakingModal(days) {
 }
 
 function closeStakingModal(e) {
-    // Закрывать только если клик по самому оверлею (не по дочерним элементам)
-    // или если вызвано программно без event
     if (e && e.target && e.target.id !== 'stakingModal') return;
     const modal = document.getElementById('stakingModal');
-    if (modal) modal.style.display = 'none';
+    if (modal) { modal.style.opacity = '0'; modal.style.pointerEvents = 'none'; }
     currentStakingPlan = null;
 }
 
@@ -3924,7 +3928,8 @@ async function confirmStaking() {
 
     const data = await apiRequest('POST', '/api/staking/start', { days: plan.days, amount });
     if (data && data.success) {
-        document.getElementById('stakingModal').style.display = 'none';
+        const modal = document.getElementById('stakingModal');
+        if (modal) { modal.style.opacity = '0'; modal.style.pointerEvents = 'none'; }
         currentStakingPlan = null;
         document.querySelectorAll('.staking-plan').forEach(el => el.classList.remove('selected'));
         if (data.user) { state.user = data.user; updateHeader(); }

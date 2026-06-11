@@ -392,8 +392,8 @@ const StakingSchema = new mongoose.Schema({
     endsAt:    { type: Date, required: true },
     claimed:   { type: Boolean, default: false }
 });
-const Staking = mongoose.model('Staking', StakingSchema);
 StakingSchema.index({ userId: 1, claimed: 1 });
+const Staking = mongoose.model('Staking', StakingSchema);
 
 // ============================================
 // АДМИН АВТОРИЗАЦИЯ
