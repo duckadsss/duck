@@ -13,6 +13,8 @@ var STAKING_PLANS_CLIENT = {
     30: { days: 30, rate: 0.20, minAmount: 50000,  label: '+20%' }
 };
 window.STAKING_PLANS_CLIENT = STAKING_PLANS_CLIENT;
+var stakingTimerInterval = null;
+var currentStakingPlan = null;
 
 // ============================================================
 // ЗАПРЕТ КОНТЕКСТНОГО МЕНЮ И ВЫДЕЛЕНИЯ
@@ -3768,8 +3770,6 @@ window.renderArenaFightTab = renderArenaFightTab;
 // ============================================================
 // STAKING
 // ============================================================
-let stakingTimerInterval = null;
-let currentStakingPlan = null;
 
 
 
