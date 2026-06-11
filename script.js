@@ -764,7 +764,7 @@ function onCardClick(creatureId) {
     document.getElementById('overlay').classList.add('show');
 }
 
-// Таблица стоимости пыли — синхронизирована с сервером
+// Таблица стоимости пыли
 const MERGE_DUST_TABLE = {
     common:   { 10: 600,  20: 950,   30: 1200,  40: 1350,  50: 1500,  60: 1600,  70: 3200  },
     uncommon: { 10: 3000, 20: 5200,  30: 6600,  40: 7500,  50: 8000,  60: 8400,  70: 16800 },
@@ -774,76 +774,56 @@ const MERGE_DUST_TABLE = {
 function showMergePreview(creatureId) {
     const creature = getCreature(creatureId);
     if (!creature) return;
-    if (creature.rarity === 'legendary') { showToast('Legendary is max!', '⭐'); return; }
+    if (creature.rarity === 'legendary') { showToast('Legendary is max!', '\u2b50'); return; }
 
     const currentRarityIdx = RARITY_ORDER.indexOf(creature.rarity);
     const nextRarity = currentRarityIdx < RARITY_ORDER.length - 2 ? RARITY_ORDER[currentRarityIdx + 1] : creature.rarity;
     const nextCreature = CREATURES.find(c => c.name === creature.name && c.rarity === nextRarity) || creature;
-
     const BASE_CHANCE = { common: 30, uncommon: 30, rare: 30, epic: 10, legendary: 5 };
     const baseChance = BASE_CHANCE[creature.rarity] || 30;
     const userDust = state.user?.dust || 0;
     const rarityTable = MERGE_DUST_TABLE[creature.rarity];
     const hasDustBoost = !!rarityTable;
     const steps = rarityTable ? Object.keys(rarityTable).map(Number).sort((a,b)=>a-b) : [];
+    const D = 'https://ndammo.github.io/Mmodna/dust.png';
 
-    document.getElementById('popup').innerHTML = `
-        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
-        <div class="popup-title" style="margin-bottom:4px">Слияние</div>
-        <div class="popup-subtitle">3x ${escapeHtml(creature.name)} → ?</div>
+    let html = '';
+    html += '<div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>';
+    html += '<div class="popup-title" style="margin-bottom:4px">\u0421\u043b\u0438\u044f\u043d\u0438\u0435</div>';
+    html += '<div class="popup-subtitle">3x ' + escapeHtml(creature.name) + ' \u2192 ?</div>';
+    html += '<div style="background:#0d1120;border:1px solid #1e2d4a;border-radius:14px;padding:14px;margin-bottom:12px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+    html += '<div style="text-align:center;flex:1"><div style="font-size:28px;margin-bottom:4px">' + getIconHtml(creature) + '</div><div style="font-size:10px;color:#94a3b8">3x ' + escapeHtml(creature.name) + '</div></div>';
+    html += '<div style="color:#4a5568;font-size:22px;padding:0 8px">\u2192</div>';
+    html += '<div style="text-align:center;flex:1"><div style="font-size:28px;margin-bottom:4px">?</div><div style="font-size:10px;color:#94a3b8">' + escapeHtml(nextCreature.name) + ' (' + nextRarity + ')</div></div>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:8px">';
+    html += '<div style="flex:1;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:10px;padding:8px;text-align:center"><div style="font-size:20px;font-weight:800;color:#22c55e" id="mergeChanceDisplay">' + baseChance + '%</div><div style="font-size:10px;color:#86efac">\u0428\u0430\u043d\u0441 \u0443\u0441\u043f\u0435\u0445\u0430</div></div>';
+    html += '<div style="flex:1;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:8px;text-align:center"><div style="font-size:20px;font-weight:800;color:#ef4444" id="mergeFailDisplay">' + (100-baseChance) + '%</div><div style="font-size:10px;color:#fca5a5">\u041f\u0440\u043e\u0432\u0430\u043b</div></div>';
+    html += '</div></div>';
 
-        <div style="background:#0d1120;border:1px solid #1e2d4a;border-radius:14px;padding:14px;margin-bottom:12px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-                <div style="text-align:center;flex:1">
-                    <div style="font-size:28px;margin-bottom:4px">${getIconHtml(creature)}</div>
-                    <div style="font-size:10px;color:#94a3b8">3x ${escapeHtml(creature.name)}</div>
-                </div>
-                <div style="color:#4a5568;font-size:22px;padding:0 8px">→</div>
-                <div style="text-align:center;flex:1">
-                    <div style="font-size:28px;margin-bottom:4px">?</div>
-                    <div style="font-size:10px;color:#94a3b8">${escapeHtml(nextCreature.name)} (${nextRarity})</div>
-                </div>
-            </div>
-            <div style="display:flex;gap:8px">
-                <div style="flex:1;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:10px;padding:8px;text-align:center">
-                    <div style="font-size:20px;font-weight:800;color:#22c55e" id="mergeChanceDisplay">${baseChance}%</div>
-                    <div style="font-size:10px;color:#86efac">Шанс успеха</div>
-                </div>
-                <div style="flex:1;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:8px;text-align:center">
-                    <div style="font-size:20px;font-weight:800;color:#ef4444" id="mergeFailDisplay">${100-baseChance}%</div>
-                    <div style="font-size:10px;color:#fca5a5">Провал</div>
-                </div>
-            </div>
-        </div>
+    if (hasDustBoost) {
+        html += '<div style="background:#0d1120;border:1px solid #2e1b4a;border-radius:14px;padding:14px;margin-bottom:12px">';
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+        html += '<div style="font-size:12px;font-weight:700;color:#a78bfa"><img src="' + D + '" style="width:14px;height:14px;vertical-align:middle;object-fit:contain"> \u0411\u043e\u043d\u0443\u0441 \u043f\u044b\u043b\u0438</div>';
+        html += '<div style="font-size:11px;color:#7c3aed">\u0423 \u0432\u0430\u0441: ' + userDust.toLocaleString() + ' \uD83C\uDF2B\uFE0F</div>';
+        html += '</div>';
+        html += '<input type="range" id="mergeDustSlider" min="0" max="' + steps.length + '" value="0" style="width:100%;accent-color:#7c3aed;cursor:pointer;height:6px;margin-bottom:10px" oninput="updateMergeSlider('' + creatureId + '',' + baseChance + ')">';
+        html += '<div style="display:flex;justify-content:space-between;margin-bottom:6px">';
+        html += '<div style="font-size:11px;color:#c4b5fd">\u0411\u043e\u043d\u0443\u0441: <span id="mergeBonusLabel" style="color:#a78bfa">\u0411\u0435\u0437 \u043f\u044b\u043b\u0438</span></div>';
+        html += '<div style="font-size:11px;color:#c4b5fd">\u0421\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u044c: <span id="mergeCostLabel">0</span></div>';
+        html += '</div>';
+        html += '<div id="mergeDustAffordability" style="font-size:10px;color:#64748b;text-align:center">\u0414\u0432\u0438\u0433\u0430\u0439\u0442\u0435 \u043f\u043e\u043b\u0437\u0443\u043d\u043e\u043a \u0434\u043b\u044f \u0432\u044b\u0431\u043e\u0440\u0430 \u0431\u043e\u043d\u0443\u0441\u0430</div>';
+        html += '</div>';
+        html += '<button class="popup-btn" id="mergeDustBtn" style="background:linear-gradient(135deg,#5b21b6,#7c3aed);margin-bottom:8px;opacity:0.4;pointer-events:none" onclick="executeMergeWithDust('' + creatureId + '')">';
+        html += '<img src="' + D + '" style="width:14px;height:14px;vertical-align:middle;object-fit:contain"> <span id="mergeDustBtnLabel">\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0431\u043e\u043d\u0443\u0441</span></button>';
+    }
 
-        ${hasDustBoost ? `
-        <div style="background:#0d1120;border:1px solid #2e1b4a;border-radius:14px;padding:14px;margin-bottom:12px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-                <div style="font-size:12px;font-weight:700;color:#a78bfa;display:flex;align-items:center;gap:5px">
-                    <img src="` + DUST_IMG + `" style="width:14px;height:14px;vertical-align:middle;object-fit:contain"> Бонус пыли
-                </div>
-                <div style="font-size:11px;color:#7c3aed">У вас: ${userDust.toLocaleString()} 🌫️</div>
-            </div>
-            <input type="range" id="mergeDustSlider" min="0" max="${steps.length}" value="0"
-                style="width:100%;accent-color:#7c3aed;cursor:pointer;height:6px;margin-bottom:10px"
-                oninput="updateMergeSlider('${creatureId}', ${baseChance})">
-            <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-                <div style="font-size:11px;color:#c4b5fd">Бонус: <span id="mergeBonusLabel" style="font-weight:700;color:#a78bfa">Без пыли</span></div>
-                <div style="font-size:11px;color:#c4b5fd">Стоимость: <span id="mergeCostLabel" style="font-weight:700">0 🌫️</span></div>
-            </div>
-            <div id="mergeDustAffordability" style="font-size:10px;color:#64748b;text-align:center">Двигайте ползунок для выбора бонуса</div>
-        </div>
-        <button class="popup-btn" id="mergeDustBtn" style="background:linear-gradient(135deg,#5b21b6,#7c3aed);margin-bottom:8px;opacity:0.4;pointer-events:none" onclick="executeMergeWithDust('${creatureId}')">
-            <img src="` + DUST_IMG + `" style="width:14px;height:14px;vertical-align:middle;object-fit:contain">
-            <span id="mergeDustBtnLabel">Выберите бонус пыли</span>
-        </button>` : ''}
+    html += '<button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e);margin-bottom:8px" onclick="closeOverlay();executeMerge('' + creatureId + '',0)">';
+    html += '<i class="fa-solid fa-code-merge"></i> \u0421\u041b\u0418\u0422\u042c \u0411\u0415\u0417 \u041f\u042b\u041b\u0418 \u2014 ' + baseChance + '%</button>';
+    html += '<button class="popup-btn" style="background:#1a2540;color:#e2e8f0" onclick="closeOverlay()">\u041e\u0422\u041c\u0415\u041d\u0410</button>';
 
-        <button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e);margin-bottom:8px"
-            onclick="closeOverlay();executeMerge('${creatureId}', 0)">
-            <i class="fa-solid fa-code-merge"></i> СЛИТЬ БЕЗ ПЫЛИ — ${baseChance}%
-        </button>
-        <button class="popup-btn" style="background:#1a2540;color:#e2e8f0" onclick="closeOverlay()">ОТМЕНА</button>
-    `;
+    document.getElementById('popup').innerHTML = html;
     document.getElementById('overlay').classList.add('show');
 }
 
@@ -852,48 +832,38 @@ function updateMergeSlider(creatureId, baseChance) {
     const rarityTable = MERGE_DUST_TABLE[creature?.rarity];
     if (!rarityTable) return;
     const steps = Object.keys(rarityTable).map(Number).sort((a,b)=>a-b);
-    const slider = document.getElementById('mergeDustSlider');
-    const idx = parseInt(slider.value);
+    const idx = parseInt(document.getElementById('mergeDustSlider').value);
     const userDust = state.user?.dust || 0;
+    const D = 'https://ndammo.github.io/Mmodna/dust.png';
 
-    const bonusLabel = document.getElementById('mergeBonusLabel');
-    const costLabel = document.getElementById('mergeCostLabel');
-    const afford = document.getElementById('mergeDustAffordability');
-    const btn = document.getElementById('mergeDustBtn');
-    const btnLabel = document.getElementById('mergeDustBtnLabel');
-    const chanceEl = document.getElementById('mergeChanceDisplay');
-    const failEl = document.getElementById('mergeFailDisplay');
-
+    const get = id => document.getElementById(id);
     if (idx === 0) {
-        if (bonusLabel) bonusLabel.textContent = 'Без пыли';
-        if (costLabel) costLabel.innerHTML = '0 🌫️';
-        if (afford) afford.innerHTML = 'Двигайте ползунок для выбора бонуса';
-        if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
-        if (btnLabel) btnLabel.textContent = 'Выберите бонус пыли';
-        if (chanceEl) chanceEl.textContent = baseChance + '%';
-        if (failEl) failEl.textContent = (100 - baseChance) + '%';
+        if (get('mergeBonusLabel')) get('mergeBonusLabel').textContent = '\u0411\u0435\u0437 \u043f\u044b\u043b\u0438';
+        if (get('mergeCostLabel'))  get('mergeCostLabel').textContent  = '0';
+        if (get('mergeDustAffordability')) get('mergeDustAffordability').textContent = '\u0414\u0432\u0438\u0433\u0430\u0439\u0442\u0435 \u043f\u043e\u043b\u0437\u0443\u043d\u043e\u043a';
+        if (get('mergeDustBtn'))  { get('mergeDustBtn').style.opacity = '0.4'; get('mergeDustBtn').style.pointerEvents = 'none'; }
+        if (get('mergeDustBtnLabel')) get('mergeDustBtnLabel').textContent = '\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0431\u043e\u043d\u0443\u0441';
+        if (get('mergeChanceDisplay')) get('mergeChanceDisplay').textContent = baseChance + '%';
+        if (get('mergeFailDisplay'))   get('mergeFailDisplay').textContent   = (100-baseChance) + '%';
         return;
     }
-
-    const bonusPct = steps[idx - 1];
+    const bonusPct = steps[idx-1];
     const cost = rarityTable[bonusPct];
-    const totalChance = Math.min(95, baseChance + bonusPct);
-    const canAfford = userDust >= cost;
+    const total = Math.min(95, baseChance + bonusPct);
+    const ok = userDust >= cost;
 
-    if (bonusLabel) bonusLabel.innerHTML = `<span style="color:#a78bfa">+${bonusPct}%</span>`;
-    if (costLabel) costLabel.innerHTML = `<span style="color:${canAfford ? '#a78bfa' : '#ef4444'}">${cost.toLocaleString()} 🌫️</span>`;
-    if (chanceEl) chanceEl.textContent = totalChance + '%';
-    if (failEl) failEl.textContent = (100 - totalChance) + '%';
-
-    if (canAfford) {
-        if (afford) afford.innerHTML = `<span style="color:#22c55e">✓ Достаточно пыли</span>`;
-        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
-        if (btnLabel) btnLabel.innerHTML = `Слить +${bonusPct}% за ${cost.toLocaleString()} 🌫️ — <b>${totalChance}%</b>`;
+    if (get('mergeBonusLabel')) get('mergeBonusLabel').innerHTML = '<span style="color:#a78bfa">+' + bonusPct + '%</span>';
+    if (get('mergeCostLabel'))  get('mergeCostLabel').innerHTML  = '<span style="color:' + (ok ? '#a78bfa' : '#ef4444') + '">' + cost.toLocaleString() + ' <img src="' + D + '" style="width:12px;height:12px;vertical-align:middle"></span>';
+    if (get('mergeChanceDisplay')) get('mergeChanceDisplay').textContent = total + '%';
+    if (get('mergeFailDisplay'))   get('mergeFailDisplay').textContent   = (100-total) + '%';
+    if (ok) {
+        if (get('mergeDustAffordability')) get('mergeDustAffordability').innerHTML = '<span style="color:#22c55e">\u2713 \u0414\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e</span>';
+        if (get('mergeDustBtn'))  { get('mergeDustBtn').style.opacity = '1'; get('mergeDustBtn').style.pointerEvents = 'auto'; }
+        if (get('mergeDustBtnLabel')) get('mergeDustBtnLabel').innerHTML = '\u0421\u043b\u0438\u0442\u044c +' + bonusPct + '% \u0437\u0430 ' + cost.toLocaleString() + ' \uD83C\uDF2B\uFE0F \u2014 <b>' + total + '%</b>';
     } else {
-        const need = cost - userDust;
-        if (afford) afford.innerHTML = `<span style="color:#ef4444">✗ Не хватает ${need.toLocaleString()} 🌫️</span>`;
-        if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
-        if (btnLabel) btnLabel.textContent = 'Не хватает пыли';
+        if (get('mergeDustAffordability')) get('mergeDustAffordability').innerHTML = '<span style="color:#ef4444">\u2717 \u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 ' + (cost-userDust).toLocaleString() + ' \uD83C\uDF2B\uFE0F</span>';
+        if (get('mergeDustBtn'))  { get('mergeDustBtn').style.opacity = '0.4'; get('mergeDustBtn').style.pointerEvents = 'none'; }
+        if (get('mergeDustBtnLabel')) get('mergeDustBtnLabel').textContent = '\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 \u043f\u044b\u043b\u0438';
     }
 }
 
@@ -902,12 +872,10 @@ function executeMergeWithDust(creatureId) {
     const rarityTable = MERGE_DUST_TABLE[creature?.rarity];
     if (!rarityTable) return;
     const steps = Object.keys(rarityTable).map(Number).sort((a,b)=>a-b);
-    const slider = document.getElementById('mergeDustSlider');
-    const idx = parseInt(slider?.value || '0');
+    const idx = parseInt(document.getElementById('mergeDustSlider')?.value || '0');
     if (idx === 0) return;
-    const bonusPct = steps[idx - 1];
     closeOverlay();
-    executeMerge(creatureId, bonusPct);
+    executeMerge(creatureId, steps[idx-1]);
 }
 
 

@@ -1578,22 +1578,17 @@ app.post('/api/game/merge', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Инвентарь полон' });
         }
 
-        // Таблица стоимости пыли по шагам (+10%..+80%)
         const DUST_BONUS_TABLE = {
             common:   { 10: 600,  20: 950,   30: 1200,  40: 1350,  50: 1500,  60: 1600,  70: 3200  },
             uncommon: { 10: 3000, 20: 5200,  30: 6600,  40: 7500,  50: 8000,  60: 8400,  70: 16800 },
             rare:     { 10: 132000, 20: 180000, 30: 205000, 40: 223000, 50: 237000, 60: 248000, 70: 257000, 80: 266000 }
         };
-
-        const { creatureId: _cId, useDust: _ud, dustBonusPercent: _dbp } = req.body;
-        // dustBonusPercent: число 10..80 или 0/undefined = без пыли
+        const { dustBonusPercent: _dbp } = req.body;
         const dustBonusPercent = (typeof req.body.dustBonusPercent === 'number' && req.body.dustBonusPercent > 0)
             ? req.body.dustBonusPercent : 0;
-
         const rarityTable = DUST_BONUS_TABLE[creature.rarity];
-        const dustCost = (dustBonusPercent > 0 && rarityTable)
-            ? (rarityTable[dustBonusPercent] || 0) : 0;
-
+        const dustCost = (dustBonusPercent > 0 && rarityTable && rarityTable[dustBonusPercent])
+            ? rarityTable[dustBonusPercent] : 0;
         if (dustBonusPercent > 0 && dustCost > 0) {
             const dustUpdated = await User.findOneAndUpdate(
                 { _id: user._id, dust: { $gte: dustCost } },
@@ -1601,11 +1596,10 @@ app.post('/api/game/merge', authMiddleware, async (req, res) => {
                 { new: true }
             );
             if (!dustUpdated) {
-                return res.status(400).json({ success: false, message: `Недостаточно пыли. Нужно ${dustCost.toLocaleString()} 🌫️` });
+                return res.status(400).json({ success: false, message: `\u041d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e \u043f\u044b\u043b\u0438. \u041d\u0443\u0436\u043d\u043e ${dustCost.toLocaleString()} \uD83C\uDF2B\uFE0F` });
             }
             user.dust = dustUpdated.dust;
         }
-
         const invItem = await Inventory.findOneAndUpdate(
             { telegramId: user.telegramId, creatureId, count: { $gte: 3 } },
             { $inc: { count: -3 } },
