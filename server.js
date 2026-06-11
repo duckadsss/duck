@@ -1578,20 +1578,30 @@ app.post('/api/game/merge', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Инвентарь полон' });
         }
 
-        const DUST_COST = { common: 400, uncommon: 4000, rare: 50000 };
-        const dustCost = useDust ? (DUST_COST[creature.rarity] || 0) : 0;
-        if (useDust && dustCost > 0) {
-            const freshUser = await User.findById(user._id).select('dust');
-            if ((freshUser.dust || 0) < dustCost) {
-                return res.status(400).json({ success: false, message: `Недостаточно пыли. Нужно ${dustCost} 🌫️` });
-            }
+        // Таблица стоимости пыли по шагам (+10%..+80%)
+        const DUST_BONUS_TABLE = {
+            common:   { 10: 600,  20: 950,   30: 1200,  40: 1350,  50: 1500,  60: 1600,  70: 3200  },
+            uncommon: { 10: 3000, 20: 5200,  30: 6600,  40: 7500,  50: 8000,  60: 8400,  70: 16800 },
+            rare:     { 10: 132000, 20: 180000, 30: 205000, 40: 223000, 50: 237000, 60: 248000, 70: 257000, 80: 266000 }
+        };
+
+        const { creatureId: _cId, useDust: _ud, dustBonusPercent: _dbp } = req.body;
+        // dustBonusPercent: число 10..80 или 0/undefined = без пыли
+        const dustBonusPercent = (typeof req.body.dustBonusPercent === 'number' && req.body.dustBonusPercent > 0)
+            ? req.body.dustBonusPercent : 0;
+
+        const rarityTable = DUST_BONUS_TABLE[creature.rarity];
+        const dustCost = (dustBonusPercent > 0 && rarityTable)
+            ? (rarityTable[dustBonusPercent] || 0) : 0;
+
+        if (dustBonusPercent > 0 && dustCost > 0) {
             const dustUpdated = await User.findOneAndUpdate(
                 { _id: user._id, dust: { $gte: dustCost } },
                 { $inc: { dust: -dustCost } },
                 { new: true }
             );
             if (!dustUpdated) {
-                return res.status(400).json({ success: false, message: 'Недостаточно пыли' });
+                return res.status(400).json({ success: false, message: `Недостаточно пыли. Нужно ${dustCost.toLocaleString()} 🌫️` });
             }
             user.dust = dustUpdated.dust;
         }
@@ -1613,7 +1623,7 @@ app.post('/api/game/merge', authMiddleware, async (req, res) => {
         const currentRarityIdx = RARITY_ORDER.indexOf(creature.rarity);
         const MERGE_CHANCES = { common: 0.3, uncommon: 0.3, rare: 0.3, epic: 0.10, legendary: 0.05 };
         const baseChance = MERGE_CHANCES[creature.rarity] ?? 0.3;
-        const dustBonus = (useDust && dustCost > 0) ? 0.5 : 0;
+        const dustBonus = (dustBonusPercent > 0 && dustCost > 0) ? (dustBonusPercent / 100) : 0;
         const mergeChance = Math.min(0.95, baseChance + dustBonus);
         const success = Math.random() < mergeChance;
 
@@ -2856,13 +2866,11 @@ app.post('/api/arena/move', authMiddleware, async (req, res) => {
         if (result.finished) {
             const battle = await ArenaBattle.findById(battleId);
             if (battle) {
-                const _leagueCfgEnd = ArenaModule?.LEAGUE_CONFIG?.[battle.league] || { dustWin: 0 };
                 arenaSocketManager?.sendBoth(battle, 'battle_end', {
                     battleId: battle._id,
                     winnerId: result.winnerId?.toString(),
                     lastMove: result.lastMove,
-                    prizePool: battle.prizePool,
-                    dustWin: _leagueCfgEnd.dustWin || 0
+                    prizePool: battle.prizePool
                 });
             }
         } else {

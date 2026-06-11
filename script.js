@@ -457,7 +457,7 @@ function showArenaClosedModal() {
 }
 
 // Расписание арены (UTC+3)
-const ARENA_SCHEDULE_CLIENT = [[10, 20], [20, 24]];
+const ARENA_SCHEDULE_CLIENT = [[10, 12], [20, 24]];
 
 function isArenaOpenClient() {
     const nowUTC = new Date();
@@ -764,6 +764,13 @@ function onCardClick(creatureId) {
     document.getElementById('overlay').classList.add('show');
 }
 
+// Таблица стоимости пыли — синхронизирована с сервером
+const MERGE_DUST_TABLE = {
+    common:   { 10: 600,  20: 950,   30: 1200,  40: 1350,  50: 1500,  60: 1600,  70: 3200  },
+    uncommon: { 10: 3000, 20: 5200,  30: 6600,  40: 7500,  50: 8000,  60: 8400,  70: 16800 },
+    rare:     { 10: 132000, 20: 180000, 30: 205000, 40: 223000, 50: 237000, 60: 248000, 70: 257000, 80: 266000 }
+};
+
 function showMergePreview(creatureId) {
     const creature = getCreature(creatureId);
     if (!creature) return;
@@ -772,59 +779,139 @@ function showMergePreview(creatureId) {
     const currentRarityIdx = RARITY_ORDER.indexOf(creature.rarity);
     const nextRarity = currentRarityIdx < RARITY_ORDER.length - 2 ? RARITY_ORDER[currentRarityIdx + 1] : creature.rarity;
     const nextCreature = CREATURES.find(c => c.name === creature.name && c.rarity === nextRarity) || creature;
-    const color = RARITY_COLORS[creature.rarity];
 
-    const DUST_COST = { common: 400, uncommon: 4000, rare: 50000 };
     const BASE_CHANCE = { common: 30, uncommon: 30, rare: 30, epic: 10, legendary: 5 };
-    const dustCost = DUST_COST[creature.rarity] || 0;
     const baseChance = BASE_CHANCE[creature.rarity] || 30;
-    const boostedChance = Math.min(95, baseChance + 50);
     const userDust = state.user?.dust || 0;
-    const canAffordDust = dustCost > 0 && userDust >= dustCost;
-    const hasDustBoost = dustCost > 0; // rarity supports dust
+    const rarityTable = MERGE_DUST_TABLE[creature.rarity];
+    const hasDustBoost = !!rarityTable;
+    const steps = rarityTable ? Object.keys(rarityTable).map(Number).sort((a,b)=>a-b) : [];
 
     document.getElementById('popup').innerHTML = `
         <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
-        <div class="popup-title" style="margin-bottom:4px">Предпросмотр Слияния</div>
+        <div class="popup-title" style="margin-bottom:4px">Слияние</div>
         <div class="popup-subtitle">3x ${escapeHtml(creature.name)} → ?</div>
-        <div style="background:#0d1120;border:1px solid #1e2d4a;border-radius:14px;padding:16px;margin-bottom:16px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-                <div style="text-align:center;flex:1"><div style="font-size:24px;margin-bottom:6px">${getIconHtml(creature)}</div><div style="font-size:10px;color:#94a3b8">Исходные</div><div style="font-size:11px;font-weight:600;color:#e2e8f0;margin-top:2px">3x ${escapeHtml(creature.name)}</div></div>
-                <div style="color:#4a5568;font-size:18px">→</div>
-                <div style="text-align:center;flex:1"><div style="font-size:24px;margin-bottom:6px">?</div><div style="font-size:10px;color:#94a3b8">Результат</div><div style="font-size:11px;font-weight:600;color:#e2e8f0;margin-top:2px">Unknown</div></div>
+
+        <div style="background:#0d1120;border:1px solid #1e2d4a;border-radius:14px;padding:14px;margin-bottom:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                <div style="text-align:center;flex:1">
+                    <div style="font-size:28px;margin-bottom:4px">${getIconHtml(creature)}</div>
+                    <div style="font-size:10px;color:#94a3b8">3x ${escapeHtml(creature.name)}</div>
+                </div>
+                <div style="color:#4a5568;font-size:22px;padding:0 8px">→</div>
+                <div style="text-align:center;flex:1">
+                    <div style="font-size:28px;margin-bottom:4px">?</div>
+                    <div style="font-size:10px;color:#94a3b8">${escapeHtml(nextCreature.name)} (${nextRarity})</div>
+                </div>
             </div>
-            <div style="border-top:1px solid #1e2d4a;padding-top:14px">
-                <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Базовые шансы</div>
-                <div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:10px;padding:10px;margin-bottom:8px">
-                    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">${getIconHtml(nextCreature)}</span><div style="flex:1"><div style="font-size:11px;font-weight:600;color:#22c55e">${baseChance}% Успех</div><div style="font-size:10px;color:#94a3b8">${escapeHtml(nextCreature.name)} (${nextRarity.toUpperCase()})</div></div><div style="font-size:12px;font-weight:700;color:#22c55e">▲ ПОВЫШЕНИЕ</div></div>
+            <div style="display:flex;gap:8px">
+                <div style="flex:1;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:10px;padding:8px;text-align:center">
+                    <div style="font-size:20px;font-weight:800;color:#22c55e" id="mergeChanceDisplay">${baseChance}%</div>
+                    <div style="font-size:10px;color:#86efac">Шанс успеха</div>
                 </div>
-                <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:10px">
-                    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">${getIconHtml(creature)}</span><div style="flex:1"><div style="font-size:11px;font-weight:600;color:#ef4444">${100-baseChance}% Провал</div><div style="font-size:10px;color:#94a3b8">${escapeHtml(creature.name)} (${creature.rarity.toUpperCase()})</div></div><div style="font-size:12px;font-weight:700;color:#ef4444">= БЕЗ ИЗМЕНЕНИЙ</div></div>
+                <div style="flex:1;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:8px;text-align:center">
+                    <div style="font-size:20px;font-weight:800;color:#ef4444" id="mergeFailDisplay">${100-baseChance}%</div>
+                    <div style="font-size:10px;color:#fca5a5">Провал</div>
                 </div>
-                ${hasDustBoost ? `
-                <div style="margin-top:12px;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.3);border-radius:10px;padding:10px">
-                    <div style="font-size:10px;color:#a78bfa;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain"> Бонус Пыли +50%</div>
-                    <div style="display:flex;justify-content:space-between;align-items:center">
-                        <div style="font-size:11px;color:#e2e8f0">Шанс успеха: <span style="color:#a78bfa;font-weight:700">${boostedChance}%</span></div>
-                        <div style="font-size:11px;color:${canAffordDust ? '#a78bfa' : '#ef4444'}">Стоимость: ${dustCost.toLocaleString()} <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain"></div>
-                    </div>
-                    <div style="font-size:10px;color:${canAffordDust ? '#7c3aed' : '#ef4444'};margin-top:4px">У вас: ${userDust.toLocaleString()} <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain">${canAffordDust ? '' : ' — недостаточно'}</div>
-                </div>` : ''}
             </div>
         </div>
-        <button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e);margin-bottom:8px" onclick="closeOverlay();executeMerge('${creatureId}', false)">
-            <i class="fa-solid fa-code-merge"></i> СЛИТЬ СЕЙЧАС
-        </button>
+
         ${hasDustBoost ? `
-        <button class="popup-btn" style="background:linear-gradient(135deg,#5b21b6,#7c3aed);margin-bottom:8px;${canAffordDust ? '' : 'opacity:0.5'}" onclick="${canAffordDust ? `closeOverlay();executeMerge('${creatureId}', true)` : 'showToast(\'Недостаточно пыли\', \'🌫️\')'}"}>
-            <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain"> СЛИТЬ ЗА ПЫЛЬ (${dustCost.toLocaleString()} <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain">) — ${boostedChance}% шанс
+        <div style="background:#0d1120;border:1px solid #2e1b4a;border-radius:14px;padding:14px;margin-bottom:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <div style="font-size:12px;font-weight:700;color:#a78bfa;display:flex;align-items:center;gap:5px">
+                    <img src="` + DUST_IMG + `" style="width:14px;height:14px;vertical-align:middle;object-fit:contain"> Бонус пыли
+                </div>
+                <div style="font-size:11px;color:#7c3aed">У вас: ${userDust.toLocaleString()} 🌫️</div>
+            </div>
+            <input type="range" id="mergeDustSlider" min="0" max="${steps.length}" value="0"
+                style="width:100%;accent-color:#7c3aed;cursor:pointer;height:6px;margin-bottom:10px"
+                oninput="updateMergeSlider('${creatureId}', ${baseChance})">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+                <div style="font-size:11px;color:#c4b5fd">Бонус: <span id="mergeBonusLabel" style="font-weight:700;color:#a78bfa">Без пыли</span></div>
+                <div style="font-size:11px;color:#c4b5fd">Стоимость: <span id="mergeCostLabel" style="font-weight:700">0 🌫️</span></div>
+            </div>
+            <div id="mergeDustAffordability" style="font-size:10px;color:#64748b;text-align:center">Двигайте ползунок для выбора бонуса</div>
+        </div>
+        <button class="popup-btn" id="mergeDustBtn" style="background:linear-gradient(135deg,#5b21b6,#7c3aed);margin-bottom:8px;opacity:0.4;pointer-events:none" onclick="executeMergeWithDust('${creatureId}')">
+            <img src="` + DUST_IMG + `" style="width:14px;height:14px;vertical-align:middle;object-fit:contain">
+            <span id="mergeDustBtnLabel">Выберите бонус пыли</span>
         </button>` : ''}
+
+        <button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e);margin-bottom:8px"
+            onclick="closeOverlay();executeMerge('${creatureId}', 0)">
+            <i class="fa-solid fa-code-merge"></i> СЛИТЬ БЕЗ ПЫЛИ — ${baseChance}%
+        </button>
         <button class="popup-btn" style="background:#1a2540;color:#e2e8f0" onclick="closeOverlay()">ОТМЕНА</button>
     `;
     document.getElementById('overlay').classList.add('show');
 }
 
-async function executeMerge(creatureId, useDust = false) {
+function updateMergeSlider(creatureId, baseChance) {
+    const creature = getCreature(creatureId);
+    const rarityTable = MERGE_DUST_TABLE[creature?.rarity];
+    if (!rarityTable) return;
+    const steps = Object.keys(rarityTable).map(Number).sort((a,b)=>a-b);
+    const slider = document.getElementById('mergeDustSlider');
+    const idx = parseInt(slider.value);
+    const userDust = state.user?.dust || 0;
+
+    const bonusLabel = document.getElementById('mergeBonusLabel');
+    const costLabel = document.getElementById('mergeCostLabel');
+    const afford = document.getElementById('mergeDustAffordability');
+    const btn = document.getElementById('mergeDustBtn');
+    const btnLabel = document.getElementById('mergeDustBtnLabel');
+    const chanceEl = document.getElementById('mergeChanceDisplay');
+    const failEl = document.getElementById('mergeFailDisplay');
+
+    if (idx === 0) {
+        if (bonusLabel) bonusLabel.textContent = 'Без пыли';
+        if (costLabel) costLabel.innerHTML = '0 🌫️';
+        if (afford) afford.innerHTML = 'Двигайте ползунок для выбора бонуса';
+        if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
+        if (btnLabel) btnLabel.textContent = 'Выберите бонус пыли';
+        if (chanceEl) chanceEl.textContent = baseChance + '%';
+        if (failEl) failEl.textContent = (100 - baseChance) + '%';
+        return;
+    }
+
+    const bonusPct = steps[idx - 1];
+    const cost = rarityTable[bonusPct];
+    const totalChance = Math.min(95, baseChance + bonusPct);
+    const canAfford = userDust >= cost;
+
+    if (bonusLabel) bonusLabel.innerHTML = `<span style="color:#a78bfa">+${bonusPct}%</span>`;
+    if (costLabel) costLabel.innerHTML = `<span style="color:${canAfford ? '#a78bfa' : '#ef4444'}">${cost.toLocaleString()} 🌫️</span>`;
+    if (chanceEl) chanceEl.textContent = totalChance + '%';
+    if (failEl) failEl.textContent = (100 - totalChance) + '%';
+
+    if (canAfford) {
+        if (afford) afford.innerHTML = `<span style="color:#22c55e">✓ Достаточно пыли</span>`;
+        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+        if (btnLabel) btnLabel.innerHTML = `Слить +${bonusPct}% за ${cost.toLocaleString()} 🌫️ — <b>${totalChance}%</b>`;
+    } else {
+        const need = cost - userDust;
+        if (afford) afford.innerHTML = `<span style="color:#ef4444">✗ Не хватает ${need.toLocaleString()} 🌫️</span>`;
+        if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
+        if (btnLabel) btnLabel.textContent = 'Не хватает пыли';
+    }
+}
+
+function executeMergeWithDust(creatureId) {
+    const creature = getCreature(creatureId);
+    const rarityTable = MERGE_DUST_TABLE[creature?.rarity];
+    if (!rarityTable) return;
+    const steps = Object.keys(rarityTable).map(Number).sort((a,b)=>a-b);
+    const slider = document.getElementById('mergeDustSlider');
+    const idx = parseInt(slider?.value || '0');
+    if (idx === 0) return;
+    const bonusPct = steps[idx - 1];
+    closeOverlay();
+    executeMerge(creatureId, bonusPct);
+}
+
+
+async function executeMerge(creatureId, dustBonusPercent = 0) {
     if (state.isLoading) return;
     if (!canMerge(creatureId)) return;
     
@@ -835,7 +922,7 @@ async function executeMerge(creatureId, useDust = false) {
     lastMergeTimes.set(state.user?.telegramId, Date.now());
 
     state.isLoading = true;
-    const res = await apiRequest('POST', '/api/game/merge', { creatureId, useDust: !!useDust });
+    const res = await apiRequest('POST', '/api/game/merge', { creatureId, dustBonusPercent: Number(dustBonusPercent) || 0 });
     state.isLoading = false;
 
     if (!res.success) { showToast(res.message || 'Merge failed', '❌'); return; }
@@ -2396,59 +2483,18 @@ async function rejectBattleFromModal(battleId) {
     }
 }
 
-function showNativeBattleResult(isWin, prizePool, dustWin = 0) {
-    const overlay = document.getElementById('overlay');
-    const popup = document.getElementById('popup');
-    if (!overlay || !popup) return;
-
-    const DUST_IMG = `<img src="https://ndammo.github.io/Mmodna/dust.png" style="width:16px;height:16px;vertical-align:middle;margin-right:3px" onerror="this.replaceWith(document.createTextNode('🌫️'))">`;
-
-    const rewardsHtml = isWin ? `
-        <div style="display:flex;flex-direction:column;gap:10px;margin:18px 0;">
-            <div style="background:linear-gradient(135deg,#1a2e1a,#0d1f0d);border:1px solid #22c55e44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">
-                <div style="display:flex;align-items:center;gap:8px;color:#86efac;font-size:13px;">
-                    <i class="fa-solid fa-coins" style="color:#fbbf24"></i><span>Выигрыш</span>
-                </div>
-                <span style="font-size:18px;font-weight:800;color:#4ade80;">+${(prizePool||0).toLocaleString()} MMO</span>
-            </div>
-            ${dustWin > 0 ? `
-            <div style="background:linear-gradient(135deg,#1e1a2e,#130d1f);border:1px solid #a78bfa44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">
-                <div style="display:flex;align-items:center;gap:8px;color:#c4b5fd;font-size:13px;">
-                    ${DUST_IMG}<span>Пыль</span>
-                </div>
-                <span style="font-size:18px;font-weight:800;color:#a78bfa;">+${dustWin} 🌫️</span>
-            </div>` : ''}
-            <div style="background:linear-gradient(135deg,#1a1f2e,#0d1220);border:1px solid #60a5fa44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">
-                <div style="display:flex;align-items:center;gap:8px;color:#93c5fd;font-size:13px;">
-                    <i class="fa-solid fa-chart-line" style="color:#60a5fa"></i><span>Рейтинг</span>
-                </div>
-                <span style="font-size:15px;font-weight:700;color:#60a5fa;">↑ Повышается</span>
-            </div>
-        </div>` : `
-        <div style="background:linear-gradient(135deg,#2e1a1a,#1f0d0d);border:1px solid #ef444444;border-radius:14px;padding:14px 20px;margin:18px 0;display:flex;align-items:center;justify-content:space-between;">
-            <div style="display:flex;align-items:center;gap:8px;color:#fca5a5;font-size:13px;">
-                <i class="fa-solid fa-arrow-trend-down" style="color:#ef4444"></i><span>Рейтинг</span>
-            </div>
-            <span style="font-size:15px;font-weight:700;color:#f87171;">↓ Понижается</span>
-        </div>`;
-
-    popup.innerHTML = `
-        <div class="popup-close" onclick="closeOverlay(); renderArenaFightTab();"><i class="fa-solid fa-xmark"></i></div>
-        <div style="text-align:center;padding:8px 0 4px;">
-            <div style="font-size:64px;line-height:1;margin-bottom:10px;filter:drop-shadow(0 0 20px ${isWin ? '#fbbf24' : '#ef4444'});">
-                ${isWin ? '🏆' : '💀'}
-            </div>
-            <div style="font-size:28px;font-weight:900;letter-spacing:2px;font-family:'Orbitron',monospace;background:${isWin ? 'linear-gradient(135deg,#fbbf24,#f59e0b,#fde68a)' : 'linear-gradient(135deg,#ef4444,#dc2626,#fca5a5)'};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:6px;">
-                ${isWin ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}
-            </div>
-            <div style="font-size:13px;color:var(--text3);margin-bottom:4px;">${isWin ? '🎉 Отличная битва!' : '💪 В следующий раз повезёт!'}</div>
-        </div>
-        ${rewardsHtml}
-        <button class="popup-btn" style="background:${isWin ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'linear-gradient(135deg,#1d4ed8,#1e40af)'};margin-top:4px;font-size:15px;font-weight:700;padding:14px;" onclick="closeOverlay(); renderArenaFightTab();">
-            ${isWin ? '🏆 Продолжить' : '🔄 Попробовать снова'}
-        </button>
-    `;
-    overlay.classList.add('show');
+function showNativeBattleResult(isWin, prizePool) {
+    if (!window.Telegram?.WebApp) {
+        const overlay = document.getElementById('overlay');
+        const popup = document.getElementById('popup');
+        popup.innerHTML = `<div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div><div class="popup-icon">${isWin ? '🏆' : '💀'}</div><div class="popup-title" style="color:${isWin ? 'var(--legendary)' : 'var(--mythic)'}">${isWin ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}</div><div class="popup-subtitle">${isWin ? `Вы выиграли ${prizePool} MMO!` : 'В следующий раз повезёт!'}</div><button class="popup-btn" onclick="closeOverlay(); renderArenaFightTab();">Закрыть</button></div>`;
+        overlay.classList.add('show');
+        return;
+    }
+    const tg = window.Telegram.WebApp;
+    const title = isWin ? '🏆 ПОБЕДА!' : '💀 ПОРАЖЕНИЕ';
+    const message = isWin ? `Вы выиграли ${prizePool} MMO! 🎉\nВаш рейтинг повышается!` : `Вы проиграли бой.\nВ следующий раз повезёт!`;
+    tg.showPopup({ title, message, buttons: [{ id: 'ok', type: 'default', text: 'ОК' }] });
 }
 
 // ============================================================
@@ -2733,7 +2779,7 @@ async function makeAttack(targetIndex) {
         }
 
         if (res.finished) {
-            arenaClient?.endBattle(res.winnerId || null, res.prizePool || 0, res.dustWin || 0);
+            arenaClient?.endBattle(res.winnerId || null, res.prizePool || 0);
             const isWin = !!res.winnerId && res.winnerId === arenaClient?.getCurrentUserId();
             showNativeBattleResult(isWin, res.prizePool || 0);
             renderArenaFightTab();
@@ -2860,10 +2906,7 @@ async function renderArenaFightTab() {
                     const entryRow = document.getElementById('arenaEntryFeeRow');
                     if (entryRow) entryRow.style.display = config.entryFee === 0 ? 'none' : '';
                     if (entryFeeEl) entryFeeEl.textContent = config.entryFee;
-                    if (prizePoolEl) {
-                        const DUST_IMG_SMALL = `<img src="https://ndammo.github.io/Mmodna/dust.png" style="width:13px;height:13px;vertical-align:middle;margin:0 2px" onerror="this.replaceWith(document.createTextNode('🌫️'))">`;
-                        prizePoolEl.innerHTML = `${config.prizePool} <span style="font-size:11px;color:var(--text3)">+ ${config.dustWin}${DUST_IMG_SMALL}</span>`;
-                    }
+                    if (prizePoolEl) prizePoolEl.textContent = config.prizePool;
                     if (leagueEl) {
                         leagueEl.innerHTML = `<span class="arena-league-badge league-${myLeague}">${config.name}</span>`;
                     }
@@ -3521,8 +3564,8 @@ await loadCreaturesFromServer();
             }
             updateBattleUIFromClient(data, isPlayer1);
         });
-        arenaClient.on('onBattleEnd', (isWin, prizePool, dustWin = 0) => { 
-            showNativeBattleResult(isWin, prizePool, dustWin); 
+        arenaClient.on('onBattleEnd', (isWin, prizePool) => { 
+            showNativeBattleResult(isWin, prizePool); 
             refreshUserProfile();
             setTimeout(() => {
                 renderArenaFightTab();
