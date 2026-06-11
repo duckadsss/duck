@@ -338,6 +338,7 @@ const ArenaBattleSchema = new mongoose.Schema({
     
     currentTurn: { type: String, enum: ['player1', 'player2', '__processing__'], default: 'player1' },
     processingStartedAt: { type: Date, default: null },
+    processingByPlayer: { type: String, default: null },
     turnCount: { type: Number, default: 0 },
     battleLog: [{
         turn: Number, player: String, attackerName: String, attackerIndex: Number,
@@ -2724,6 +2725,7 @@ app.get('/api/arena/battle/status', authMiddleware, async (req, res) => {
         if (isActive) {
             const timeSinceLastMove = (Date.now() - new Date(battle.lastMoveAt).getTime()) / 1000;
             response.timeLeft = Math.max(0, 30 - Math.floor(timeSinceLastMove));
+            response.serverTimestamp = Date.now();
             const opponentId = isPlayer1 ? battle.player2Id : battle.player1Id;
             if (opponentId) {
                 const opp = await User.findById(opponentId).select('username firstName level').lean();

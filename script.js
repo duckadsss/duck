@@ -755,7 +755,7 @@ function onCardClick(creatureId) {
         </div>
         ${skillBlock}
         ${canMerge(creatureId)
-            ? `<button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e)" onclick="closeOverlay();showMergePreview('${creatureId}')">
+            ? `<button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e)" onclick="showMergePreview('${creatureId}')">
                 <i class="fa-solid fa-code-merge"></i> MERGE x3
             </button>`
             : `<button class="popup-btn" onclick="closeOverlay()">CLOSE</button>`
@@ -2705,7 +2705,7 @@ async function findMatch() {
     }
 }
 
-function cancelBattleSearch() {
+async function cancelBattleSearch() {
     arenaClient?.stopSearch();
     const findBtn = document.getElementById('findMatchBtn');
     const searchStatus = document.getElementById('arenaSearchStatus');
@@ -2714,6 +2714,7 @@ function cancelBattleSearch() {
         findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; 
     }
     if (searchStatus) searchStatus.innerHTML = '';
+    try { await apiRequest('POST', '/api/arena/cancel-search'); } catch(e) {}
     showToast('Поиск отменён', '⚠️');
 }
 
@@ -3707,6 +3708,8 @@ window.openCapsule = openCapsule;
 window.onCardClick = onCardClick;
 window.showMergePreview = showMergePreview;
 window.executeMerge = executeMerge;
+window.updateMergeSlider = updateMergeSlider;
+window.executeMergeWithDust = executeMergeWithDust;
 window.upgradeInventory = upgradeInventory;
 window.watchAd = watchAd;
 window.showEncyclopedia = showEncyclopedia;

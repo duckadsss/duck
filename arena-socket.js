@@ -391,7 +391,7 @@ class ArenaBattleManager {
         const expectedTurn = battle.currentTurn;
         const locked = await this.Battle.findOneAndUpdate(
             { _id: battleId, status: 'active', currentTurn: expectedTurn },
-            { $set: { currentTurn: '__processing__', processingStartedAt: new Date() } }
+            { $set: { currentTurn: '__processing__', processingStartedAt: new Date(), processingByPlayer: expectedTurn } }
         );
         if (!locked) {
             return { success: false, message: 'Ход уже обрабатывается, подождите' };
@@ -861,7 +861,7 @@ class ArenaBattleManager {
         });
         for (const battle of stuckProcessing) {
             console.log(`⚠️ Разблокировка зависшего боя ${battle._id}`);
-            const expectedRestore = battle.currentTurn === 'player1' ? 'player2' : 'player1';
+            const expectedRestore = battle.processingByPlayer || 'player1';
             await this.Battle.updateOne(
                 { _id: battle._id, currentTurn: '__processing__' },
                 { $set: { currentTurn: expectedRestore, processingStartedAt: null } }
