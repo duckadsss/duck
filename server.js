@@ -141,6 +141,7 @@ async function createIndexes() {
         await ArenaBattle.collection.createIndex({ player1Id: 1, status: 1, createdAt: -1 });
         await ArenaBattle.collection.createIndex({ player2Id: 1, status: 1, createdAt: -1 });
         await ArenaStats.collection.createIndex({ rating: -1 });
+        await ArenaBattle.collection.createIndex({ status: 1, currentTurn: 1, processingStartedAt: 1 });
         console.log('✅ Индексы созданы');
     } catch (e) {
         console.warn('⚠️ Индексы:', e.message);
@@ -336,15 +337,16 @@ const ArenaBattleSchema = new mongoose.Schema({
         poisonTurns: { type: Number, default: 0 },
         skill: { id: String, name: String, chance: Number, description: String } }],
     
-    currentTurn: { type: String, enum: ['player1', 'player2', '__processing__'], default: 'player1' },
+    currentTurn: { type: String, enum: ['player1', 'player2', '__processing__', 'pending_confirmation_building'], default: 'player1' },
     processingStartedAt: { type: Date, default: null },
+    processingByPlayer: { type: String, default: null }, // ход до блокировки __processing__
     turnCount: { type: Number, default: 0 },
     battleLog: [{
         turn: Number, player: String, attackerName: String, attackerIndex: Number,
         targetName: String, targetIndex: Number, damage: Number, isCrit: Boolean,
         remainingHp: Number, timestamp: { type: Date, default: Date.now }
     }],
-    status: { type: String, enum: ['waiting', 'pending_confirmation', 'active', 'finished', 'cancelled', 'expired'], default: 'waiting' },
+    status: { type: String, enum: ['waiting', 'pending_confirmation', 'pending_confirmation_building', 'active', 'finished', 'cancelled', 'expired'], default: 'waiting' },
     winnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     league: { type: String, enum: ['bronze', 'silver', 'gold', 'platinum', 'diamond'], required: true },
     entryFee: { type: Number, required: true },
@@ -2718,8 +2720,10 @@ app.get('/api/arena/battle/status', authMiddleware, async (req, res) => {
         };
 
         if (isActive) {
-            const timeSinceLastMove = (Date.now() - new Date(battle.lastMoveAt).getTime()) / 1000;
+            const now = Date.now();
+            const timeSinceLastMove = (now - new Date(battle.lastMoveAt).getTime()) / 1000;
             response.timeLeft = Math.max(0, 30 - Math.floor(timeSinceLastMove));
+            response.serverTimestamp = now; // для компенсации сетевой задержки на клиенте
             const opponentId = isPlayer1 ? battle.player2Id : battle.player1Id;
             if (opponentId) {
                 const opp = await User.findById(opponentId).select('username firstName level').lean();

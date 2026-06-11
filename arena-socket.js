@@ -239,8 +239,9 @@ class ArenaBattleManager {
         const excludeIds = [user._id];
         if (user.lastOpponentId) excludeIds.push(user.lastOpponentId);
 
-        const player2TeamData = await buildTeamFromIds(teamIds, userLevel, user._id, this.getCreature);
-        const claimedBattle = await this.Battle.findOneAndUpdate(
+        // Сначала атомарно резервируем слот — без построения команды.
+        // buildTeamFromIds вызывается только если слот найден — экономим N DB запросов при промахе.
+        const reservedBattle = await this.Battle.findOneAndUpdate(
             {
                 status: 'waiting',
                 league: userLeague,
@@ -251,13 +252,24 @@ class ArenaBattleManager {
             {
                 $set: {
                     player2Id: user._id,
-                    player2Team: player2TeamData,
-                    status: 'pending_confirmation',
+                    status: 'pending_confirmation_building', // временный статус пока строим команду
                     expiresAt: new Date(Date.now() + 60 * 1000)
                 }
             },
             { new: true, sort: { createdAt: 1 } }
         );
+
+        // Теперь строим команду только если нашли бой
+        let claimedBattle = null;
+        if (reservedBattle) {
+            const player2TeamData = await buildTeamFromIds(teamIds, userLevel, user._id, this.getCreature);
+            claimedBattle = await this.Battle.findOneAndUpdate(
+                { _id: reservedBattle._id, status: 'pending_confirmation_building' },
+                { $set: { player2Team: player2TeamData, status: 'pending_confirmation' } },
+                { new: true }
+            );
+            if (!claimedBattle) claimedBattle = reservedBattle; // fallback
+        }
 
         try {
             if (claimedBattle) {
@@ -391,7 +403,7 @@ class ArenaBattleManager {
         const expectedTurn = battle.currentTurn;
         const locked = await this.Battle.findOneAndUpdate(
             { _id: battleId, status: 'active', currentTurn: expectedTurn },
-            { $set: { currentTurn: '__processing__', processingStartedAt: new Date() } }
+            { $set: { currentTurn: '__processing__', processingStartedAt: new Date(), processingByPlayer: expectedTurn } }
         );
         if (!locked) {
             return { success: false, message: 'Ход уже обрабатывается, подождите' };
@@ -785,7 +797,7 @@ class ArenaBattleManager {
         let expiredCount = 0;
         
         const expiredWaiting = await this.Battle.find({
-            status: { $in: ['waiting', 'pending_confirmation'] },
+            status: { $in: ['waiting', 'pending_confirmation', 'pending_confirmation_building'] },
             expiresAt: { $lt: now }
         });
         
@@ -858,10 +870,12 @@ class ArenaBattleManager {
         });
         for (const battle of stuckProcessing) {
             console.log(`⚠️ Разблокировка зависшего боя ${battle._id}`);
-            const expectedRestore = battle.currentTurn === 'player1' ? 'player2' : 'player1';
+            // processingByPlayer хранит ход ДО блокировки — именно его ход и нужно восстановить.
+            // Нельзя использовать battle.currentTurn — оно равно '__processing__', а не 'player1'/'player2'.
+            const restoreTurn = battle.processingByPlayer || 'player1';
             await this.Battle.updateOne(
                 { _id: battle._id, currentTurn: '__processing__' },
-                { $set: { currentTurn: expectedRestore, processingStartedAt: null } }
+                { $set: { currentTurn: restoreTurn, processingStartedAt: null, processingByPlayer: null } }
             );
             expiredCount++;
         }
