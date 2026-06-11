@@ -116,7 +116,7 @@ function getIconHtml(creature, addShadow = false, shadowColor = null) {
     const icon = creature.icon;
     if (icon && (icon.startsWith('http') || icon.startsWith('/') || icon.startsWith('Images/'))) {
         const shadowStyle = addShadow && shadowColor ? `filter:drop-shadow(0 0 16px ${shadowColor});` : '';
-        return `<img src="${icon}" alt="${escapeHtml(creature.name)}" loading="lazy" style="object-fit:contain;${shadowStyle}" class="card-icon-img" onerror="this.style.display='none'">`;
+        return `<img src="${icon}" alt="${escapeHtml(creature.name)}" loading="lazy" style="object-fit:contain;${shadowStyle}" class="card-icon-img" onerror="this.style.display=\'none\'">`;
     }
     return icon || '🧬';
 }
@@ -2505,7 +2505,7 @@ function showNativeBattleResult(isWin, prizePool, dustWin = 0) {
         html += '</div>';
         if (dustWin > 0) {
             html += '<div style="background:linear-gradient(135deg,#1e1a2e,#130d1f);border:1px solid #a78bfa44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
-            html += '<div style="display:flex;align-items:center;gap:8px;color:#c4b5fd;font-size:13px;"><img src="' + D + '" style="width:16px;height:16px;vertical-align:middle" onerror="this.replaceWith(document.createTextNode('\uD83C\uDF2B\uFE0F'))"><span>\u041f\u044b\u043b\u044c</span></div>';
+            html += '<div style="display:flex;align-items:center;gap:8px;color:#c4b5fd;font-size:13px;"><img src="' + D + '" style="width:16px;height:16px;vertical-align:middle" onerror="this.style.display=\'none\'"><span>\u041f\u044b\u043b\u044c</span></div>';
             html += '<span style="font-size:18px;font-weight:800;color:#a78bfa;">+' + dustWin + ' \uD83C\uDF2B\uFE0F</span>';
             html += '</div>';
         }
@@ -2939,7 +2939,7 @@ async function renderArenaFightTab() {
                     if (entryRow) entryRow.style.display = config.entryFee === 0 ? 'none' : '';
                     if (entryFeeEl) entryFeeEl.textContent = config.entryFee;
                     if (prizePoolEl) {
-                        const dustImg = '<img src="https://duckadsss.github.io/dust.png" style="width:13px;height:13px;vertical-align:middle;margin:0 2px" onerror="this.replaceWith(document.createTextNode('\uD83C\uDF2B\uFE0F'))">';
+                        const dustImg = '<img src="https://duckadsss.github.io/dust.png" style="width:13px;height:13px;vertical-align:middle;margin:0 2px" onerror="this.style.display=\'none\'">';
                         prizePoolEl.innerHTML = config.prizePool + ' <span style="font-size:11px;color:var(--text3)">+ ' + config.dustWin + dustImg + '</span>';
                     }
                     if (leagueEl) {

@@ -656,7 +656,7 @@ function _getLowestAllyMaxHp(myTeam, excludeAttacker) {
 // ============================================================
 // ЭКСПОРТ
 // ============================================================
-module.exports = {
+window.ArenaSkills = {
     SKILLS_MAP,
     getSkillForCreature,
     applySkill,
@@ -664,3 +664,6 @@ module.exports = {
     checkAndClearStun,
     checkAndClearShield
 };
+
+// Совместимость с window.ARENA_SKILLS_MAP
+window.ARENA_SKILLS_MAP = SKILLS_MAP;
