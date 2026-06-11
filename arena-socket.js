@@ -419,7 +419,7 @@ class ArenaBattleManager {
                 battle.markModified('player1Team');
                 battle.markModified('player2Team');
                 await this.finishBattle(battle);
-                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, poisonLog };
+                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, poisonLog };
             }
             
             let attackerIndex = -1;

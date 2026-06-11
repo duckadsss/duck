@@ -2407,8 +2407,7 @@ function showNativeBattleResult(isWin, prizePool, dustWin = 0) {
         <div style="display:flex;flex-direction:column;gap:10px;margin:18px 0;">
             <div style="background:linear-gradient(135deg,#1a2e1a,#0d1f0d);border:1px solid #22c55e44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">
                 <div style="display:flex;align-items:center;gap:8px;color:#86efac;font-size:13px;">
-                    <i class="fa-solid fa-coins" style="color:#fbbf24"></i>
-                    <span>Выигрыш</span>
+                    <i class="fa-solid fa-coins" style="color:#fbbf24"></i><span>Выигрыш</span>
                 </div>
                 <span style="font-size:18px;font-weight:800;color:#4ade80;">+${(prizePool||0).toLocaleString()} MMO</span>
             </div>
@@ -2421,24 +2420,20 @@ function showNativeBattleResult(isWin, prizePool, dustWin = 0) {
             </div>` : ''}
             <div style="background:linear-gradient(135deg,#1a1f2e,#0d1220);border:1px solid #60a5fa44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">
                 <div style="display:flex;align-items:center;gap:8px;color:#93c5fd;font-size:13px;">
-                    <i class="fa-solid fa-chart-line" style="color:#60a5fa"></i>
-                    <span>Рейтинг</span>
+                    <i class="fa-solid fa-chart-line" style="color:#60a5fa"></i><span>Рейтинг</span>
                 </div>
                 <span style="font-size:15px;font-weight:700;color:#60a5fa;">↑ Повышается</span>
             </div>
         </div>` : `
         <div style="background:linear-gradient(135deg,#2e1a1a,#1f0d0d);border:1px solid #ef444444;border-radius:14px;padding:14px 20px;margin:18px 0;display:flex;align-items:center;justify-content:space-between;">
             <div style="display:flex;align-items:center;gap:8px;color:#fca5a5;font-size:13px;">
-                <i class="fa-solid fa-arrow-trend-down" style="color:#ef4444"></i>
-                <span>Рейтинг</span>
+                <i class="fa-solid fa-arrow-trend-down" style="color:#ef4444"></i><span>Рейтинг</span>
             </div>
             <span style="font-size:15px;font-weight:700;color:#f87171;">↓ Понижается</span>
         </div>`;
 
     popup.innerHTML = `
-        <div class="popup-close" onclick="closeOverlay(); renderArenaFightTab();">
-            <i class="fa-solid fa-xmark"></i>
-        </div>
+        <div class="popup-close" onclick="closeOverlay(); renderArenaFightTab();"><i class="fa-solid fa-xmark"></i></div>
         <div style="text-align:center;padding:8px 0 4px;">
             <div style="font-size:64px;line-height:1;margin-bottom:10px;filter:drop-shadow(0 0 20px ${isWin ? '#fbbf24' : '#ef4444'});">
                 ${isWin ? '🏆' : '💀'}
@@ -2446,9 +2441,7 @@ function showNativeBattleResult(isWin, prizePool, dustWin = 0) {
             <div style="font-size:28px;font-weight:900;letter-spacing:2px;font-family:'Orbitron',monospace;background:${isWin ? 'linear-gradient(135deg,#fbbf24,#f59e0b,#fde68a)' : 'linear-gradient(135deg,#ef4444,#dc2626,#fca5a5)'};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:6px;">
                 ${isWin ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}
             </div>
-            <div style="font-size:13px;color:var(--text3);margin-bottom:4px;">
-                ${isWin ? '🎉 Отличная битва!' : '💪 В следующий раз повезёт!'}
-            </div>
+            <div style="font-size:13px;color:var(--text3);margin-bottom:4px;">${isWin ? '🎉 Отличная битва!' : '💪 В следующий раз повезёт!'}</div>
         </div>
         ${rewardsHtml}
         <button class="popup-btn" style="background:${isWin ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'linear-gradient(135deg,#1d4ed8,#1e40af)'};margin-top:4px;font-size:15px;font-weight:700;padding:14px;" onclick="closeOverlay(); renderArenaFightTab();">
@@ -2867,7 +2860,10 @@ async function renderArenaFightTab() {
                     const entryRow = document.getElementById('arenaEntryFeeRow');
                     if (entryRow) entryRow.style.display = config.entryFee === 0 ? 'none' : '';
                     if (entryFeeEl) entryFeeEl.textContent = config.entryFee;
-                    if (prizePoolEl) prizePoolEl.textContent = config.prizePool;
+                    if (prizePoolEl) {
+                        const DUST_IMG_SMALL = `<img src="https://ndammo.github.io/Mmodna/dust.png" style="width:13px;height:13px;vertical-align:middle;margin:0 2px" onerror="this.replaceWith(document.createTextNode('🌫️'))">`;
+                        prizePoolEl.innerHTML = `${config.prizePool} <span style="font-size:11px;color:var(--text3)">+ ${config.dustWin}${DUST_IMG_SMALL}</span>`;
+                    }
                     if (leagueEl) {
                         leagueEl.innerHTML = `<span class="arena-league-badge league-${myLeague}">${config.name}</span>`;
                     }

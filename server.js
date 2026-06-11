@@ -2856,13 +2856,13 @@ app.post('/api/arena/move', authMiddleware, async (req, res) => {
         if (result.finished) {
             const battle = await ArenaBattle.findById(battleId);
             if (battle) {
-                const leagueCfgForEnd = ArenaModule?.LEAGUE_CONFIG?.[battle.league] || { dustWin: 0 };
+                const _leagueCfgEnd = ArenaModule?.LEAGUE_CONFIG?.[battle.league] || { dustWin: 0 };
                 arenaSocketManager?.sendBoth(battle, 'battle_end', {
                     battleId: battle._id,
                     winnerId: result.winnerId?.toString(),
                     lastMove: result.lastMove,
                     prizePool: battle.prizePool,
-                    dustWin: leagueCfgForEnd.dustWin || 0
+                    dustWin: _leagueCfgEnd.dustWin || 0
                 });
             }
         } else {
