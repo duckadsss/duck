@@ -2863,13 +2863,16 @@ app.post('/api/arena/move', authMiddleware, async (req, res) => {
         if (result.finished) {
             const battle = await ArenaBattle.findById(battleId);
             if (battle) {
-                const _lcEnd = ArenaModule?.LEAGUE_CONFIG?.[battle.league] || { dustWin: 0 };
+                const _lcEnd = ArenaModule?.LEAGUE_CONFIG?.[battle.league] || { dustWin: 0, dustLose: 0, xpWin: 0, xpLose: 0 };
                 arenaSocketManager?.sendBoth(battle, 'battle_end', {
                     battleId: battle._id,
                     winnerId: result.winnerId?.toString(),
                     lastMove: result.lastMove,
                     prizePool: battle.prizePool,
-                    dustWin: _lcEnd.dustWin || 0
+                    dustWin: _lcEnd.dustWin || 0,
+                    dustLose: _lcEnd.dustLose || 0,
+                    xpWin: _lcEnd.xpWin || 0,
+                    xpLose: _lcEnd.xpLose || 0
                 });
             }
         } else {
@@ -2914,10 +2917,16 @@ app.post('/api/arena/surrender', authMiddleware, async (req, res) => {
         if (result.success) {
             const battle = await ArenaBattle.findById(battleId);
             if (battle) {
+                const _lcSurr = ArenaModule?.LEAGUE_CONFIG?.[battle.league] || { dustWin: 0, dustLose: 0, xpWin: 0, xpLose: 0 };
                 arenaSocketManager?.sendBoth(battle, 'battle_end', {
                     battleId: battle._id,
                     winnerId: battle.winnerId?.toString(),
-                    surrendered: true
+                    surrendered: true,
+                    prizePool: battle.prizePool,
+                    dustWin: _lcSurr.dustWin || 0,
+                    dustLose: _lcSurr.dustLose || 0,
+                    xpWin: _lcSurr.xpWin || 0,
+                    xpLose: _lcSurr.xpLose || 0
                 });
             }
         }

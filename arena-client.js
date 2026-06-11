@@ -215,7 +215,7 @@ class ArenaClient {
         }
     }
     
-    endBattle(winnerId, prizePool, dustWin = 0) {
+    endBattle(winnerId, prizePool, dustWin = 0, dustLose = 0, xpWin = 0, xpLose = 0) {
         // Идемпотентная защита: если бой уже завершён — не вызываем onBattleEnd повторно.
         // Это предотвращает двойной popup: HTTP ответ makeAttack + WS battle_end.
         if (!this.state.battleActive) return;
@@ -231,7 +231,7 @@ class ArenaClient {
         const isWin = winnerId === this.getCurrentUserId();
         
         if (this.callbacks.onBattleEnd) {
-            this.callbacks.onBattleEnd(isWin, prizePool, dustWin);
+            this.callbacks.onBattleEnd(isWin, prizePool, dustWin, dustLose, xpWin, xpLose);
         }
         
         setTimeout(() => {
@@ -383,7 +383,7 @@ connectSocket(token, apiUrl) {
         
         socket.on('battle_end', (data) => {
             console.log('🏆 Battle end!', data);
-            this.endBattle(data.winnerId, data.prizePool, data.dustWin || 0);
+            this.endBattle(data.winnerId, data.prizePool, data.dustWin || 0, data.dustLose || 0, data.xpWin || 0, data.xpLose || 0);
         });
         
         socket.on('confirmation_update', (data) => {
