@@ -2488,20 +2488,18 @@ function showNativeBattleResult(isWin, prizePool, dustWin = 0, xpGain = 0, dustL
     const popup = document.getElementById('popup');
     if (!overlay || !popup) return;
 
-    // Пытаемся взять XP/dust из текущей лиги если не переданы
-    if (!xpGain) {
-        const league = window._currentArenaLeague || 'bronze';
-        const cfgs = {
-            bronze: { xpWin: 10, xpLose: 2, dustLose: 0 },
-            silver: { xpWin: 30, xpLose: 5, dustLose: 1 },
-            gold: { xpWin: 50, xpLose: 10, dustLose: 11 },
-            platinum: { xpWin: 100, xpLose: 30, dustLose: 750 },
-            diamond: { xpWin: 75, xpLose: 20, dustLose: 125 }
-        };
-        const cfg = cfgs[league] || cfgs.bronze;
-        xpGain = isWin ? cfg.xpWin : cfg.xpLose;
-        if (!dustLose) dustLose = cfg.dustLose;
-    }
+    // Всегда берём актуальные значения из конфига лиги
+    const league = window._currentArenaLeague || 'bronze';
+    const cfgs = {
+        bronze:   { xpWin: 10,  xpLose: 2,  dustLose: 0   },
+        silver:   { xpWin: 30,  xpLose: 5,  dustLose: 1   },
+        gold:     { xpWin: 50,  xpLose: 10, dustLose: 11  },
+        platinum: { xpWin: 100, xpLose: 30, dustLose: 750 },
+        diamond:  { xpWin: 75,  xpLose: 20, dustLose: 125 }
+    };
+    const cfg = cfgs[league] || cfgs.bronze;
+    xpGain   = isWin ? cfg.xpWin  : cfg.xpLose;
+    dustLose = cfg.dustLose;
 
     const D = 'https://ndammo.github.io/Mmodna/dust.png';
     let html = '';
@@ -2854,7 +2852,7 @@ async function makeAttack(targetIndex) {
         if (res.finished) {
             arenaClient?.endBattle(res.winnerId || null, res.prizePool || 0, res.dustWin || 0);
             const isWin = !!res.winnerId && res.winnerId === arenaClient?.getCurrentUserId();
-            showNativeBattleResult(isWin, res.prizePool || 0);
+            showNativeBattleResult(isWin, res.prizePool || 0, res.dustWin || 0);
             renderArenaFightTab();
         } else {
             const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
