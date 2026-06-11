@@ -711,7 +711,7 @@ class ArenaBattleManager {
         loserStats.lastBattleAt = new Date();
 
         const xpOps = [];
-        if (battle.league !== 'bronze' && winnerUser && loserUser) {
+        if (winnerUser && loserUser) {
             const winXp = winnerUser.xp + 20;
             xpOps.push(winXp >= xpCalc(winnerUser.level)
                 ? this.User.updateOne({ _id: winnerId }, { $inc: { level: 1 }, $set: { xp: winXp - xpCalc(winnerUser.level) } })
