@@ -7,6 +7,13 @@
 // ============================================================
 const API_URL = 'https://serv-production-765e.up.railway.app';
 
+// STAKING PLANS (вверху файла — доступен сразу при любом onclick)
+var STAKING_PLANS_CLIENT = {
+    10: { days: 10, rate: 0.10, minAmount: 300000, label: '+10%', capybara: true },
+    30: { days: 30, rate: 0.20, minAmount: 50000,  label: '+20%' }
+};
+window.STAKING_PLANS_CLIENT = STAKING_PLANS_CLIENT;
+
 // ============================================================
 // ЗАПРЕТ КОНТЕКСТНОГО МЕНЮ И ВЫДЕЛЕНИЯ
 // ============================================================
@@ -3764,10 +3771,7 @@ window.renderArenaFightTab = renderArenaFightTab;
 let stakingTimerInterval = null;
 let currentStakingPlan = null;
 
-const STAKING_PLANS_CLIENT = {
-    10: { days: 10, rate: 0.10, minAmount: 300000, label: '+10%', capybara: true },
-    30: { days: 30, rate: 0.20, minAmount: 50000,  label: '+20%' }
-};
+
 
 async function loadStakingStatus() {
     try {
