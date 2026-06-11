@@ -755,7 +755,7 @@ function onCardClick(creatureId) {
         </div>
         ${skillBlock}
         ${canMerge(creatureId)
-            ? `<button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e)" onclick="showMergePreview('${creatureId}')">
+            ? `<button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e)" onclick="closeOverlay();showMergePreview('${creatureId}')">
                 <i class="fa-solid fa-code-merge"></i> MERGE x3
             </button>`
             : `<button class="popup-btn" onclick="closeOverlay()">CLOSE</button>`
@@ -780,7 +780,7 @@ function showMergePreview(creatureId) {
     const nextRarity = currentRarityIdx < RARITY_ORDER.length - 2 ? RARITY_ORDER[currentRarityIdx + 1] : creature.rarity;
     const nextCreature = CREATURES.find(c => c.name === creature.name && c.rarity === nextRarity) || creature;
 
-    const BASE_CHANCE = { common: 30, uncommon: 30, rare: 30, epic: 10, legendary: 5 };
+    const BASE_CHANCE = { common: 30, uncommon: 30, rare: 10, epic: 10, legendary: 5 };
     const baseChance = BASE_CHANCE[creature.rarity] || 30;
     const userDust = state.user?.dust || 0;
     const rarityTable = MERGE_DUST_TABLE[creature.rarity];
@@ -877,7 +877,7 @@ function updateMergeSlider(creatureId, baseChance) {
 
     const bonusPct = steps[idx - 1];
     const cost = rarityTable[bonusPct];
-    const totalChance = Math.min(95, baseChance + bonusPct);
+    const totalChance = Math.min(100, baseChance + bonusPct);
     const canAfford = userDust >= cost;
 
     if (bonusLabel) bonusLabel.innerHTML = `<span style="color:#a78bfa">+${bonusPct}%</span>`;

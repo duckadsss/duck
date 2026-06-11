@@ -1615,10 +1615,10 @@ app.post('/api/game/merge', authMiddleware, async (req, res) => {
         }
 
         const currentRarityIdx = RARITY_ORDER.indexOf(creature.rarity);
-        const MERGE_CHANCES = { common: 0.3, uncommon: 0.3, rare: 0.3, epic: 0.10, legendary: 0.05 };
+        const MERGE_CHANCES = { common: 0.3, uncommon: 0.3, rare: 0.1, epic: 0.10, legendary: 0.05 };
         const baseChance = MERGE_CHANCES[creature.rarity] ?? 0.3;
         const dustBonus = (dustBonusPercent > 0 && dustCost > 0) ? (dustBonusPercent / 100) : 0;
-        const mergeChance = Math.min(0.95, baseChance + dustBonus);
+        const mergeChance = Math.min(1.0, baseChance + dustBonus);
         const success = Math.random() < mergeChance;
 
         let resultCreature;
