@@ -138,7 +138,7 @@ class ArenaClient {
         }, TIMEOUT * 1000);
     }
     
-    startBattle(battleId, isPlayer1, myTeam, enemyTeam, timeLeft) {
+    startBattle(battleId, isPlayer1, myTeam, enemyTeam, timeLeft, currentTurn) {
         this.state.battleActive = true;
         this.state.currentBattleId = battleId;
         this.state.currentBattleIsPlayer1 = isPlayer1;
@@ -152,6 +152,10 @@ class ArenaClient {
             this.callbacks.onBattleStart(battleId, isPlayer1, myTeam, enemyTeam);
         }
         
+        // Определяем реальный ход: если пришёл currentTurn — используем его,
+        // иначе fallback на предположение по isPlayer1
+        const resolvedTurn = currentTurn || (isPlayer1 ? 'player1' : 'player2');
+        
         if (this.callbacks.onBattleStartUI) {
             this.callbacks.onBattleStartUI({
                 battleId: battleId,
@@ -160,7 +164,7 @@ class ArenaClient {
                 player2Team: isPlayer1 ? enemyTeam : myTeam,
                 myTeam: myTeam,
                 opponentTeam: enemyTeam,
-                currentTurn: isPlayer1 ? 'player1' : 'player2',
+                currentTurn: resolvedTurn,
                 battleLog: []
             });
         }
@@ -215,7 +219,7 @@ class ArenaClient {
         }
     }
     
-    endBattle(winnerId, prizePool, dustWin = 0, xpGained = 0, ratingChange = 0, entryFee = 0) {
+    endBattle(winnerId, prizePool, dustWin = 0) {
         // Идемпотентная защита: если бой уже завершён — не вызываем onBattleEnd повторно.
         // Это предотвращает двойной popup: HTTP ответ makeAttack + WS battle_end.
         if (!this.state.battleActive) return;
@@ -231,7 +235,7 @@ class ArenaClient {
         const isWin = winnerId === this.getCurrentUserId();
         
         if (this.callbacks.onBattleEnd) {
-            this.callbacks.onBattleEnd(isWin, prizePool, dustWin, xpGained, ratingChange, entryFee);
+            this.callbacks.onBattleEnd(isWin, prizePool, dustWin);
         }
         
         setTimeout(() => {
@@ -328,7 +332,8 @@ connectSocket(token, apiUrl) {
                     data.isPlayer1,
                     data.myTeam,
                     data.opponentTeam,
-                    data.timeLeft
+                    data.timeLeft,
+                    data.currentTurn
                 );
             } else if (data.hasBattle && data.status === 'pending_confirmation' && !this.state.confirmationShown) {
                 this.stopSearch();
@@ -365,7 +370,8 @@ connectSocket(token, apiUrl) {
                 data.isPlayer1,
                 data.myTeam,
                 data.opponentTeam,
-                data.timeLeft !== undefined ? data.timeLeft : 30
+                data.timeLeft !== undefined ? data.timeLeft : 30,
+                data.currentTurn
             );
             // startBattle уже запускает таймер если timeLeft передан
         });
@@ -376,7 +382,7 @@ connectSocket(token, apiUrl) {
         
         socket.on('battle_end', (data) => {
             console.log('🏆 Battle end!', data);
-            this.endBattle(data.winnerId, data.prizePool, data.dustWin || 0, data.xpGained || 0, data.ratingChange || 0, data.entryFee || 0);
+            this.endBattle(data.winnerId, data.prizePool, data.dustWin || 0);
         });
         
         socket.on('confirmation_update', (data) => {
@@ -433,16 +439,9 @@ connectSocket(token, apiUrl) {
             if (this.callbacks.onConnected) {
                 this.callbacks.onConnected();
             }
-            
-            if (this.state.currentBattleId) {
-                this.state.socket.emit('check_battle_status', { battleId: this.state.currentBattleId });
-            } else if (this.state.confirmationShown && this.state.currentBattleId) {
-                this.state.socket.emit('check_battle_status', { battleId: this.state.currentBattleId });
-            } else if (this.state.battleActive && this.state.currentBattleId) {
-                this.state.socket.emit('check_battle_status', { battleId: this.state.currentBattleId });
-            } else if (this.state.isSearching) {
-                this.state.socket.emit('check_battle_status', {});
-            }
+            // После реконнекта всегда запрашиваем статус боя
+            const checkId = this.state.currentBattleId;
+            this.state.socket.emit('check_battle_status', checkId ? { battleId: checkId } : {});
         });
 
         socket.on('reconnect_failed', () => {

@@ -2872,21 +2872,31 @@ app.post('/api/arena/move', authMiddleware, async (req, res) => {
             const battle = await ArenaBattle.findById(battleId);
             if (battle) {
                 const _lcEnd = ArenaModule?.LEAGUE_CONFIG?.[battle.league] || { dustWin: 0 };
-                arenaSocketManager?.sendBoth(battle, 'battle_end', {
+                const _isP1Winner = result.winnerId && battle.player1Id.toString() === result.winnerId.toString();
+                const _xpWinner = result.xpGained || 0;
+                const _xpLoser = result.xpLose || 0;
+                const _basePayload = {
                     battleId: battle._id,
                     winnerId: result.winnerId?.toString(),
                     lastMove: result.lastMove,
                     prizePool: battle.prizePool,
                     dustWin: _lcEnd.dustWin || 0,
-                    xpGained: result.xpGained || 0,
                     ratingChange: result.ratingChange || 0,
                     entryFee: battle.entryFee || 0
+                };
+                arenaSocketManager?.send(battle.player1Id, 'battle_end', {
+                    ..._basePayload,
+                    xpGained: _isP1Winner ? _xpWinner : _xpLoser
                 });
+                arenaSocketManager?.send(battle.player2Id, 'battle_end', {
+                    ..._basePayload,
+                    xpGained: _isP1Winner ? _xpLoser : _xpWinner
+                });
+                result.dustWin = _lcEnd.dustWin || 0;
+                result.entryFee = battle.entryFee || 0;
                 // Сбрасываем rate limit обоих игроков после боя
                 resetRateLimitForUser(battle.player1Id);
                 resetRateLimitForUser(battle.player2Id);
-                result.dustWin = _lcEnd.dustWin || 0;
-                result.entryFee = battle.entryFee || 0;
             }
         } else {
             const battle = await ArenaBattle.findById(battleId);
@@ -2932,12 +2942,26 @@ app.post('/api/arena/surrender', authMiddleware, async (req, res) => {
             const battle = await ArenaBattle.findById(battleId);
             if (battle) {
                 const _lcSurr = ArenaModule?.LEAGUE_CONFIG?.[battle.league] || { dustWin: 0 };
-                arenaSocketManager?.sendBoth(battle, 'battle_end', {
+                const _surrWinnerId = battle.winnerId?.toString();
+                const _isP1WinnerSurr = _surrWinnerId && battle.player1Id.toString() === _surrWinnerId;
+                const _xpWinSurr = result.xpGained || 0;
+                const _xpLoseSurr = result.xpLose || 0;
+                const _basePayloadSurr = {
                     battleId: battle._id,
-                    winnerId: battle.winnerId?.toString(),
+                    winnerId: _surrWinnerId,
                     surrendered: true,
                     prizePool: battle.prizePool,
-                    dustWin: _lcSurr.dustWin || 0
+                    dustWin: _lcSurr.dustWin || 0,
+                    ratingChange: result.ratingChange || 0,
+                    entryFee: battle.entryFee || 0
+                };
+                arenaSocketManager?.send(battle.player1Id, 'battle_end', {
+                    ..._basePayloadSurr,
+                    xpGained: _isP1WinnerSurr ? _xpWinSurr : _xpLoseSurr
+                });
+                arenaSocketManager?.send(battle.player2Id, 'battle_end', {
+                    ..._basePayloadSurr,
+                    xpGained: _isP1WinnerSurr ? _xpLoseSurr : _xpWinSurr
                 });
                 resetRateLimitForUser(battle.player1Id);
                 resetRateLimitForUser(battle.player2Id);
