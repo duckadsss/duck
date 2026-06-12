@@ -215,7 +215,7 @@ class ArenaClient {
         }
     }
     
-    endBattle(winnerId, prizePool, dustWin = 0, dustLose = 0, xpWin = 0, xpLose = 0) {
+    endBattle(winnerId, prizePool, dustWin = 0, xpGained = 0, ratingChange = 0, entryFee = 0) {
         // Идемпотентная защита: если бой уже завершён — не вызываем onBattleEnd повторно.
         // Это предотвращает двойной popup: HTTP ответ makeAttack + WS battle_end.
         if (!this.state.battleActive) return;
@@ -231,7 +231,7 @@ class ArenaClient {
         const isWin = winnerId === this.getCurrentUserId();
         
         if (this.callbacks.onBattleEnd) {
-            this.callbacks.onBattleEnd(isWin, prizePool, dustWin, dustLose, xpWin, xpLose);
+            this.callbacks.onBattleEnd(isWin, prizePool, dustWin, xpGained, ratingChange, entryFee);
         }
         
         setTimeout(() => {
@@ -365,25 +365,18 @@ connectSocket(token, apiUrl) {
                 data.isPlayer1,
                 data.myTeam,
                 data.opponentTeam,
-                data.timeLeft
+                data.timeLeft !== undefined ? data.timeLeft : 30
             );
-            if (data.timeLeft !== undefined) {
-                this.startBattleTimer(data.timeLeft);
-            } else {
-                this.startBattleTimer(30);
-            }
+            // startBattle уже запускает таймер если timeLeft передан
         });
         
         socket.on('move_update', (data) => {
-            this.updateBattle(data);
-            if (data.timeLeft !== undefined) {
-                this.startBattleTimer(data.timeLeft);
-            }
+            this.updateBattle(data); // updateBattle уже обновляет таймер внутри
         });
         
         socket.on('battle_end', (data) => {
             console.log('🏆 Battle end!', data);
-            this.endBattle(data.winnerId, data.prizePool, data.dustWin || 0, data.dustLose || 0, data.xpWin || 0, data.xpLose || 0);
+            this.endBattle(data.winnerId, data.prizePool, data.dustWin || 0, data.xpGained || 0, data.ratingChange || 0, data.entryFee || 0);
         });
         
         socket.on('confirmation_update', (data) => {

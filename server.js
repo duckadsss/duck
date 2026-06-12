@@ -68,37 +68,45 @@ const REFERRAL_BONUS_PERCENT = 2;
 // RATE LIMITING
 // ============================================
 const rateLimit = new Map();
-const RATE_LIMIT_MAX = 100;
+const RATE_LIMIT_MAX = 600;
 const RATE_LIMIT_WINDOW = 60 * 1000;
 
 setInterval(() => {
     const now = Date.now();
-    for (const [ip, record] of rateLimit.entries()) {
-        if (now > record.resetAt) {
-            rateLimit.delete(ip);
-        }
+    for (const [key, record] of rateLimit.entries()) {
+        if (now > record.resetAt) rateLimit.delete(key);
     }
 }, RATE_LIMIT_WINDOW);
 
+function resetRateLimitForUser(userId) {
+    if (userId) rateLimit.delete('u:' + userId.toString());
+}
+
 function rateLimiter(req, res, next) {
-    const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    if (req.method === 'OPTIONS') return next();
+    let key;
+    const authHeader = req.headers['authorization'];
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+            const payload = JSON.parse(Buffer.from(authHeader.split('.')[1], 'base64').toString());
+            key = 'u:' + (payload.id || payload._id || payload.userId);
+        } catch (_) {}
+    }
+    if (!key) {
+        const forwarded = req.headers['x-forwarded-for'];
+        key = 'ip:' + (forwarded ? forwarded.split(',')[0].trim() : (req.ip || 'unknown'));
+    }
     const now = Date.now();
-    
-    if (!rateLimit.has(ip)) {
-        rateLimit.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    const record = rateLimit.get(key);
+    if (!record || now > record.resetAt) {
+        rateLimit.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
         return next();
     }
-    
-    const record = rateLimit.get(ip);
-    if (now > record.resetAt) {
-        rateLimit.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
-        return next();
-    }
-    
     if (record.count >= RATE_LIMIT_MAX) {
-        return res.status(429).json({ success: false, message: 'Слишком много запросов. Подождите.' });
+        const retryAfter = Math.ceil((record.resetAt - now) / 1000);
+        res.setHeader('Retry-After', retryAfter);
+        return res.status(429).json({ success: false, message: `Слишком много запросов. Подождите ${retryAfter} сек.` });
     }
-    
     record.count++;
     next();
 }
@@ -2863,17 +2871,22 @@ app.post('/api/arena/move', authMiddleware, async (req, res) => {
         if (result.finished) {
             const battle = await ArenaBattle.findById(battleId);
             if (battle) {
-                const _lcEnd = ArenaModule?.LEAGUE_CONFIG?.[battle.league] || { dustWin: 0, dustLose: 0, xpWin: 0, xpLose: 0 };
+                const _lcEnd = ArenaModule?.LEAGUE_CONFIG?.[battle.league] || { dustWin: 0 };
                 arenaSocketManager?.sendBoth(battle, 'battle_end', {
                     battleId: battle._id,
                     winnerId: result.winnerId?.toString(),
                     lastMove: result.lastMove,
                     prizePool: battle.prizePool,
                     dustWin: _lcEnd.dustWin || 0,
-                    dustLose: _lcEnd.dustLose || 0,
-                    xpWin: _lcEnd.xpWin || 0,
-                    xpLose: _lcEnd.xpLose || 0
+                    xpGained: result.xpGained || 0,
+                    ratingChange: result.ratingChange || 0,
+                    entryFee: battle.entryFee || 0
                 });
+                // Сбрасываем rate limit обоих игроков после боя
+                resetRateLimitForUser(battle.player1Id);
+                resetRateLimitForUser(battle.player2Id);
+                result.dustWin = _lcEnd.dustWin || 0;
+                result.entryFee = battle.entryFee || 0;
             }
         } else {
             const battle = await ArenaBattle.findById(battleId);
@@ -2890,6 +2903,7 @@ app.post('/api/arena/move', authMiddleware, async (req, res) => {
                     player1Team: battle.player1Team,
                     player2Team: battle.player2Team,
                     skillResult: result.skillResult || null,
+                    poisonLog: result.poisonLog || [],
                     timeLeft: result.timeLeft || 30,
                     serverTimestamp: result.serverTimestamp || Date.now()
                 };
@@ -2917,17 +2931,16 @@ app.post('/api/arena/surrender', authMiddleware, async (req, res) => {
         if (result.success) {
             const battle = await ArenaBattle.findById(battleId);
             if (battle) {
-                const _lcSurr = ArenaModule?.LEAGUE_CONFIG?.[battle.league] || { dustWin: 0, dustLose: 0, xpWin: 0, xpLose: 0 };
+                const _lcSurr = ArenaModule?.LEAGUE_CONFIG?.[battle.league] || { dustWin: 0 };
                 arenaSocketManager?.sendBoth(battle, 'battle_end', {
                     battleId: battle._id,
                     winnerId: battle.winnerId?.toString(),
                     surrendered: true,
                     prizePool: battle.prizePool,
-                    dustWin: _lcSurr.dustWin || 0,
-                    dustLose: _lcSurr.dustLose || 0,
-                    xpWin: _lcSurr.xpWin || 0,
-                    xpLose: _lcSurr.xpLose || 0
+                    dustWin: _lcSurr.dustWin || 0
                 });
+                resetRateLimitForUser(battle.player1Id);
+                resetRateLimitForUser(battle.player2Id);
             }
         }
         

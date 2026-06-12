@@ -7,11 +7,9 @@ const LEAGUE_CONFIG = {
         minRating: 0,
         maxRating: 1299,
         entryFee: 10,
-        prizePool: 16,
+        prizePool: 15,
         dustWin: 1,
         dustLose: 0,
-        xpWin: 10,
-        xpLose: 2,
         color: '#cd7c3a',
         name: '🥉 Бронзовая'
     },
@@ -22,8 +20,6 @@ const LEAGUE_CONFIG = {
         prizePool: 80,
         dustWin: 5,
         dustLose: 1,
-        xpWin: 30,
-        xpLose: 5,
         color: '#94a3b8',
         name: '🥈 Серебряная'
     },
@@ -32,22 +28,18 @@ const LEAGUE_CONFIG = {
         maxRating: 1899,
         entryFee: 500,
         prizePool: 800,
-        dustWin: 55,
-        dustLose: 11,
-        xpWin: 50,
-        xpLose: 10,
+        dustWin: 50,
+        dustLose: 10,
         color: '#f59e0b',
         name: '🥇 Золотая'
     },
     platinum: {
         minRating: 1900,
         maxRating: 2199,
-        entryFee: 25000,
-        prizePool: 40000,
-        dustWin: 3250,
-        dustLose: 750,
-        xpWin: 100,
-        xpLose: 30,
+        entryFee: 2000,
+        prizePool: 3200,
+        dustWin: 100,
+        dustLose: 20,
         color: '#a855f7',
         name: '💎 Платиновая'
     },
@@ -56,10 +48,8 @@ const LEAGUE_CONFIG = {
         maxRating: 9999,
         entryFee: 5000,
         prizePool: 8000,
-        dustWin: 600,
-        dustLose: 125,
-        xpWin: 75,
-        xpLose: 20,
+        dustWin: 200,
+        dustLose: 40,
         color: '#06b6d4',
         name: '🏆 Алмазная'
     }
@@ -428,8 +418,9 @@ class ArenaBattleManager {
                 battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
                 battle.markModified('player1Team');
                 battle.markModified('player2Team');
-                await this.finishBattle(battle);
-                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, dustLose: leagueCfg.dustLose || 0, xpWin: leagueCfg.xpWin || 0, xpLose: leagueCfg.xpLose || 0, poisonLog };
+                const fbRes1 = await this.finishBattle(battle);
+                const _isWin1 = battle.winnerId?.toString() === userId.toString();
+                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, xpGained: _isWin1 ? (fbRes1?.xpWin||0) : (fbRes1?.xpLose||0), ratingChange: fbRes1?.ratingChange||0, entryFee: fbRes1?.entryFee||0, poisonLog };
             }
             
             let attackerIndex = -1;
@@ -447,8 +438,9 @@ class ArenaBattleManager {
                 battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
                 battle.markModified('player1Team');
                 battle.markModified('player2Team');
-                await this.finishBattle(battle);
-                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, dustLose: leagueCfg.dustLose || 0, xpWin: leagueCfg.xpWin || 0, xpLose: leagueCfg.xpLose || 0 };
+                const fbRes2 = await this.finishBattle(battle);
+                const _isWin2 = battle.winnerId?.toString() === userId.toString();
+                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, xpGained: _isWin2 ? (fbRes2?.xpWin||0) : (fbRes2?.xpLose||0), ratingChange: fbRes2?.ratingChange||0, entryFee: fbRes2?.entryFee||0 };
             }
             
             let targetIndex = -1;
@@ -462,21 +454,27 @@ class ArenaBattleManager {
             }
             
             if (targetIndex === -1) {
+                // Все враги мертвы — текущий игрок победил
                 battle.status = 'finished';
                 battle.winnerId = isPlayer1 ? battle.player1Id : battle.player2Id;
-                await this.finishBattle(battle);
-                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, dustLose: leagueCfg.dustLose || 0, xpWin: leagueCfg.xpWin || 0, xpLose: leagueCfg.xpLose || 0 };
+                battle.markModified('player1Team');
+                battle.markModified('player2Team');
+                const fbRes3 = await this.finishBattle(battle);
+                const _isWin3 = battle.winnerId?.toString() === userId.toString();
+                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, xpGained: _isWin3 ? (fbRes3?.xpWin||0) : (fbRes3?.xpLose||0), ratingChange: fbRes3?.ratingChange||0, entryFee: fbRes3?.entryFee||0 };
             }
             
             const target = enemyTeam[targetIndex];
             
             if (ArenaSkills.checkAndClearStun(attacker)) {
-                battle.currentTurn = battle.currentTurn === 'player1' ? 'player2' : 'player1';
+                const nextTurn = expectedTurn === 'player1' ? 'player2' : 'player1';
+                battle.currentTurn = nextTurn;
                 battle.turnCount++;
                 battle.lastMoveAt = new Date();
-                if (isPlayer1) { battle.markModified('player1Team'); } else { battle.markModified('player2Team'); }
+                battle.markModified('player1Team');
+                battle.markModified('player2Team');
                 await battle.save();
-                return { success: true, finished: false, stunSkipped: true, currentTurn: battle.currentTurn, turnCount: battle.turnCount, myTeam, enemyTeam, timeLeft: 30, serverTimestamp: Date.now() };
+                return { success: true, finished: false, stunSkipped: true, currentTurn: nextTurn, turnCount: battle.turnCount, myTeam, enemyTeam, timeLeft: 30, serverTimestamp: Date.now() };
             }
 
             const isCrit = Math.random() < attacker.critChance;
@@ -534,8 +532,8 @@ class ArenaBattleManager {
                 battle.turnCount++;
                 battle.markModified('player1Team');
                 battle.markModified('player2Team');
-                await this.finishBattle(battle);
-                return { success: true, finished: true, draw: true, winnerId: null, prizePool: 0, dustWin: 0 };
+                const fbRes4 = await this.finishBattle(battle);
+                return { success: true, finished: true, draw: true, winnerId: null, prizePool: 0, dustWin: 0, xpGained: 0, ratingChange: 0, entryFee: 0 };
             }
 
             if (allMyDead) {
@@ -544,8 +542,9 @@ class ArenaBattleManager {
                 battle.turnCount++;
                 battle.markModified('player1Team');
                 battle.markModified('player2Team');
-                await this.finishBattle(battle);
-                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, dustLose: leagueCfg.dustLose || 0, xpWin: leagueCfg.xpWin || 0, xpLose: leagueCfg.xpLose || 0, lastMove: { damage, isCrit, targetIndex, targetHp: target.currentHp, targetDead: true } };
+                const fbRes5 = await this.finishBattle(battle);
+                const _isWin5 = battle.winnerId?.toString() === userId.toString();
+                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, xpGained: _isWin5 ? (fbRes5?.xpWin||0) : (fbRes5?.xpLose||0), ratingChange: fbRes5?.ratingChange||0, entryFee: fbRes5?.entryFee||0, lastMove: { damage, isCrit, targetIndex, targetHp: target.currentHp, targetDead: true } };
             }
 
             if (allEnemyDead) {
@@ -554,17 +553,17 @@ class ArenaBattleManager {
                 battle.turnCount++;
                 battle.markModified('player1Team');
                 battle.markModified('player2Team');
-                await this.finishBattle(battle);
-                
+                const fbRes6 = await this.finishBattle(battle);
+                const _isWin6 = battle.winnerId?.toString() === userId.toString();
                 return {
                     success: true,
                     finished: true,
                     winnerId: battle.winnerId?.toString(),
                     prizePool: battle.prizePool,
                     dustWin: leagueCfg.dustWin || 0,
-                    dustLose: leagueCfg.dustLose || 0,
-                    xpWin: leagueCfg.xpWin || 0,
-                    xpLose: leagueCfg.xpLose || 0,
+                    xpGained: _isWin6 ? (fbRes6?.xpWin||0) : (fbRes6?.xpLose||0),
+                    ratingChange: fbRes6?.ratingChange||0,
+                    entryFee: fbRes6?.entryFee||0,
                     lastMove: { damage, isCrit, targetIndex, targetHp: target.currentHp, targetDead: true }
                 };
             }
@@ -639,6 +638,7 @@ class ArenaBattleManager {
         const ids = [battle.player1Id, battle.player2Id].filter(Boolean);
 
         if (!winnerId) {
+            battle.status = 'finished';
             await this.User.updateMany(
                 { _id: { $in: ids } },
                 { $inc: { balance: battle.entryFee }, $set: { currentBattleId: null, arenaCooldownUntil: cooldown } }
@@ -651,23 +651,19 @@ class ArenaBattleManager {
         const leagueCfg = LEAGUE_CONFIG[battle.league] || LEAGUE_CONFIG.bronze;
         const xpCalc = (level) => level <= 15 ? level * 100 : 1500 + (level - 15) * 1000;
 
-        const xpWin  = leagueCfg.xpWin  || 0;
-        const xpLose = leagueCfg.xpLose || 0;
-
-        const balanceOps = [
-            this.User.findByIdAndUpdate(winnerId, { $inc: { balance: battle.prizePool, dust: leagueCfg.dustWin || 0 } }, { new: true })
-        ];
-        if ((leagueCfg.dustLose || 0) > 0) {
-            balanceOps.push(this.User.findByIdAndUpdate(loserId, { $inc: { dust: leagueCfg.dustLose } }, { new: true }));
-        }
-
+        // Сначала получаем данные пользователей и статистику
         let [winnerUser, loserUser, winnerStats, loserStats] = await Promise.all([
             this.User.findById(winnerId),
             this.User.findById(loserId),
             this.ArenaStats.findOne({ userId: winnerId }),
-            this.ArenaStats.findOne({ userId: loserId }),
-            ...balanceOps
+            this.ArenaStats.findOne({ userId: loserId })
         ]);
+
+        // Зачисляем приз и пыль победителю атомарно
+        await this.User.findByIdAndUpdate(winnerId, { $inc: { balance: battle.prizePool, dust: leagueCfg.dustWin || 0 } });
+        if ((leagueCfg.dustLose || 0) > 0) {
+            await this.User.findByIdAndUpdate(loserId, { $inc: { dust: leagueCfg.dustLose } });
+        }
 
         if (!winnerStats) winnerStats = await this.ArenaStats.create({ userId: winnerId });
         if (!loserStats)  loserStats  = await this.ArenaStats.create({ userId: loserId });
@@ -726,17 +722,19 @@ class ArenaBattleManager {
         loserStats.totalLost = (loserStats.totalLost || 0) + battle.entryFee;
         loserStats.lastBattleAt = new Date();
 
+        const xpWin  = leagueCfg.xpWin  || 10;
+        const xpLose = leagueCfg.xpLose || 2;
         const xpOps = [];
-        if (xpWin > 0 && winnerUser) {
-            const winXpNew = winnerUser.xp + xpWin;
-            xpOps.push(winXpNew >= xpCalc(winnerUser.level)
-                ? this.User.updateOne({ _id: winnerId }, { $inc: { level: 1 }, $set: { xp: winXpNew - xpCalc(winnerUser.level) } })
+        if (winnerUser) {
+            const winXp = (winnerUser.xp || 0) + xpWin;
+            xpOps.push(winXp >= xpCalc(winnerUser.level)
+                ? this.User.updateOne({ _id: winnerId }, { $inc: { level: 1 }, $set: { xp: winXp - xpCalc(winnerUser.level) } })
                 : this.User.updateOne({ _id: winnerId }, { $inc: { xp: xpWin } }));
         }
-        if (xpLose > 0 && loserUser) {
-            const loseXpNew = loserUser.xp + xpLose;
-            xpOps.push(loseXpNew >= xpCalc(loserUser.level)
-                ? this.User.updateOne({ _id: loserId }, { $inc: { level: 1 }, $set: { xp: loseXpNew - xpCalc(loserUser.level) } })
+        if (loserUser) {
+            const loseXp = (loserUser.xp || 0) + xpLose;
+            xpOps.push(loseXp >= xpCalc(loserUser.level)
+                ? this.User.updateOne({ _id: loserId }, { $inc: { level: 1 }, $set: { xp: loseXp - xpCalc(loserUser.level) } })
                 : this.User.updateOne({ _id: loserId }, { $inc: { xp: xpLose } }));
         }
 
@@ -754,15 +752,12 @@ class ArenaBattleManager {
         ]);
 
         if (this.sendNotification) {
-            const dustWinStr = (leagueCfg.dustWin || 0) > 0 ? `\n🌫️ Пыль: +${leagueCfg.dustWin}` : '';
-            const xpWinStr   = xpWin  > 0 ? `\n⭐ Опыт: +${xpWin}`  : '';
-            const dustLoseStr = (leagueCfg.dustLose || 0) > 0 ? `\n🌫️ Пыль: +${leagueCfg.dustLose}` : '';
-            const xpLoseStr  = xpLose > 0 ? `\n⭐ Опыт: +${xpLose}` : '';
+            const dustStr = (leagueCfg.dustWin || 0) > 0 ? `\n🌫️ Пыль: +${leagueCfg.dustWin}` : '';
             if (winnerUser) {
                 this.sendNotification(winnerUser.telegramId,
                     `🏆 <b>ПОБЕДА В АРЕНЕ!</b>\n\n` +
                     `Вы победили ${loserUser?.username || loserUser?.firstName || 'игрока'}!\n` +
-                    `💰 Выигрыш: +${battle.prizePool.toLocaleString()} MMO${dustWinStr}${xpWinStr}\n` +
+                    `💰 Выигрыш: +${battle.prizePool.toLocaleString()} MMO${dustStr}\n` +
                     `📊 Рейтинг: ${winnerStats.rating} (+${ratingChange})\n` +
                     `🔥 Серия побед: ${winnerStats.streak}\n` +
                     `${promotionMessage ? `\n${promotionMessage}` : ''}\n` +
@@ -773,7 +768,7 @@ class ArenaBattleManager {
                 this.sendNotification(loserUser.telegramId,
                     `💀 <b>ПОРАЖЕНИЕ В АРЕНЕ</b>\n\n` +
                     `Вы проиграли ${winnerUser?.username || winnerUser?.firstName || 'игроку'}.\n` +
-                    `📊 Рейтинг: ${loserStats.rating} (-${ratingChange})${dustLoseStr}${xpLoseStr}\n` +
+                    `📊 Рейтинг: ${loserStats.rating} (-${ratingChange})\n` +
                     `${demotionMessage ? `\n${demotionMessage}` : ''}\n` +
                     `💪 Следующий бой будет лучше!`
                 ).catch(() => {});
@@ -781,7 +776,7 @@ class ArenaBattleManager {
         }
 
         await battle.save();
-        return { winnerId, loserId, xpWin, xpLose };
+        return { winnerId, loserId, xpWin, xpLose, ratingChange, entryFee: battle.entryFee || 0 };
     }
 
     async surrenderBattle(battleId, userId) {

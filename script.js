@@ -466,7 +466,7 @@ function showArenaClosedModal() {
 }
 
 // Расписание арены (UTC+3)
-const ARENA_SCHEDULE_CLIENT = [[10, 20], [21, 02]];
+const ARENA_SCHEDULE_CLIENT = [[03, 12], [20, 22]];
 
 function isArenaOpenClient() {
     const nowUTC = new Date();
@@ -2492,66 +2492,65 @@ async function rejectBattleFromModal(battleId) {
     }
 }
 
-function showNativeBattleResult(isWin, prizePool, dustWin = 0, dustLose = 0, xpWin = 0, xpLose = 0) {
+function showNativeBattleResult(isWin, prizePool, dustWin = 0, xpGained = 0, ratingChange = 0, entryFee = 0) {
     const overlay = document.getElementById('overlay');
     const popup = document.getElementById('popup');
     if (!overlay || !popup) return;
 
     const D = 'https://ndammo.github.io/Mmodna/dust.png';
-    const dust = isWin ? dustWin : dustLose;
-    const xp   = isWin ? xpWin   : xpLose;
-
     let html = '';
     html += '<div class="popup-close" onclick="closeOverlay(); renderArenaFightTab();"><i class="fa-solid fa-xmark"></i></div>';
     html += '<div style="text-align:center;padding:8px 0 4px;">';
-    html += '<div style="font-size:64px;line-height:1;margin-bottom:10px;filter:drop-shadow(0 0 20px ' + (isWin ? '#fbbf24' : '#ef4444') + ');">' + (isWin ? '🏆' : '💀') + '</div>';
-    html += '<div style="font-size:28px;font-weight:900;letter-spacing:2px;font-family:Orbitron,monospace;background:' + (isWin ? 'linear-gradient(135deg,#fbbf24,#f59e0b,#fde68a)' : 'linear-gradient(135deg,#ef4444,#dc2626,#fca5a5)') + ';-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:6px;">' + (isWin ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ') + '</div>';
-    html += '<div style="font-size:13px;color:var(--text3);margin-bottom:4px;">' + (isWin ? '🎉 Отличная битва!' : '💪 В следующий раз повезёт!') + '</div>';
+    html += '<div style="font-size:64px;line-height:1;margin-bottom:10px;filter:drop-shadow(0 0 20px ' + (isWin ? '#fbbf24' : '#ef4444') + ');">' + (isWin ? '\uD83C\uDFC6' : '\uD83D\uDC80') + '</div>';
+    html += '<div style="font-size:28px;font-weight:900;letter-spacing:2px;font-family:Orbitron,monospace;background:' + (isWin ? 'linear-gradient(135deg,#fbbf24,#f59e0b,#fde68a)' : 'linear-gradient(135deg,#ef4444,#dc2626,#fca5a5)') + ';-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:6px;">' + (isWin ? '\u041f\u041e\u0411\u0415\u0414\u0410!' : '\u041f\u041e\u0420\u0410\u0416\u0415\u041d\u0418\u0415') + '</div>';
+    html += '<div style="font-size:13px;color:var(--text3);margin-bottom:4px;">' + (isWin ? '\uD83C\uDF89 \u041e\u0442\u043b\u0438\u0447\u043d\u0430\u044f \u0431\u0438\u0442\u0432\u0430!' : '\uD83D\uDCAA \u0412 \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0439 \u0440\u0430\u0437 \u043f\u043e\u0432\u0435\u0437\u0435\u0442!') + '</div>';
     html += '</div>';
 
-    html += '<div style="display:flex;flex-direction:column;gap:8px;margin:16px 0;">';
-
     if (isWin) {
-        // MMO выигрыш
-        html += '<div style="background:linear-gradient(135deg,#1a2e1a,#0d1f0d);border:1px solid #22c55e44;border-radius:14px;padding:13px 18px;display:flex;align-items:center;justify-content:space-between;">';
-        html += '<div style="display:flex;align-items:center;gap:8px;color:#86efac;font-size:13px;"><i class="fa-solid fa-coins" style="color:#fbbf24"></i><span>Выигрыш</span></div>';
+        html += '<div style="display:flex;flex-direction:column;gap:10px;margin:18px 0;">';
+        html += '<div style="background:linear-gradient(135deg,#1a2e1a,#0d1f0d);border:1px solid #22c55e44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
+        html += '<div style="display:flex;align-items:center;gap:8px;color:#86efac;font-size:13px;"><i class="fa-solid fa-coins" style="color:#fbbf24"></i><span>\u0412\u044b\u0438\u0433\u0440\u044b\u0448</span></div>';
         html += '<span style="font-size:18px;font-weight:800;color:#4ade80;">+' + (prizePool || 0).toLocaleString() + ' MMO</span>';
         html += '</div>';
+        if (dustWin > 0) {
+            html += '<div style="background:linear-gradient(135deg,#1e1a2e,#130d1f);border:1px solid #a78bfa44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
+            html += '<div style="display:flex;align-items:center;gap:8px;color:#c4b5fd;font-size:13px;"><img src="' + D + '" style="width:16px;height:16px;vertical-align:middle" onerror="this.style.display=\'none\'"><span>\u041f\u044b\u043b\u044c</span></div>';
+            html += '<span style="font-size:18px;font-weight:800;color:#a78bfa;">+' + dustWin + ' \uD83C\uDF2B\uFE0F</span>';
+            html += '</div>';
+        }
+        if (xpGained > 0) {
+            html += '<div style="background:linear-gradient(135deg,#1a2414,#0d1f18);border:1px solid #fbbf2444;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
+            html += '<div style="display:flex;align-items:center;gap:8px;color:#fde68a;font-size:13px;"><i class="fa-solid fa-star" style="color:#fbbf24"></i><span>\u041e\u043f\u044b\u0442</span></div>';
+            html += '<span style="font-size:18px;font-weight:800;color:#fde68a;">+' + xpGained + ' XP</span>';
+            html += '</div>';
+        }
+        html += '<div style="background:linear-gradient(135deg,#1a1f2e,#0d1220);border:1px solid #60a5fa44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
+        html += '<div style="display:flex;align-items:center;gap:8px;color:#93c5fd;font-size:13px;"><i class="fa-solid fa-chart-line" style="color:#60a5fa"></i><span>\u0420\u0435\u0439\u0442\u0438\u043d\u0433</span></div>';
+        html += '<span style="font-size:15px;font-weight:700;color:#60a5fa;">\u2191 +' + (ratingChange || 0) + '</span>';
+        html += '</div>';
+        html += '</div>';
     } else {
-        // Рейтинг вниз
-        html += '<div style="background:linear-gradient(135deg,#2e1a1a,#1f0d0d);border:1px solid #ef444444;border-radius:14px;padding:13px 18px;display:flex;align-items:center;justify-content:space-between;">';
-        html += '<div style="display:flex;align-items:center;gap:8px;color:#fca5a5;font-size:13px;"><i class="fa-solid fa-arrow-trend-down" style="color:#ef4444"></i><span>Рейтинг</span></div>';
-        html += '<span style="font-size:15px;font-weight:700;color:#f87171;">↓ Понижается</span>';
+        html += '<div style="display:flex;flex-direction:column;gap:10px;margin:18px 0;">';
+        if (entryFee > 0) {
+            html += '<div style="background:linear-gradient(135deg,#2e1a1a,#1f0d0d);border:1px solid #ef444444;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
+            html += '<div style="display:flex;align-items:center;gap:8px;color:#fca5a5;font-size:13px;"><i class="fa-solid fa-coins" style="color:#ef4444"></i><span>\u041f\u043e\u0442\u0440\u0430\u0447\u0435\u043d\u043e</span></div>';
+            html += '<span style="font-size:18px;font-weight:800;color:#f87171;">-' + (entryFee || 0).toLocaleString() + ' MMO</span>';
+            html += '</div>';
+        }
+        if (xpGained > 0) {
+            html += '<div style="background:linear-gradient(135deg,#1a2414,#0d1f18);border:1px solid #fbbf2444;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
+            html += '<div style="display:flex;align-items:center;gap:8px;color:#fde68a;font-size:13px;"><i class="fa-solid fa-star" style="color:#fbbf24"></i><span>\u041e\u043f\u044b\u0442</span></div>';
+            html += '<span style="font-size:18px;font-weight:800;color:#fde68a;">+' + xpGained + ' XP</span>';
+            html += '</div>';
+        }
+        html += '<div style="background:linear-gradient(135deg,#2e1a1a,#1f0d0d);border:1px solid #ef444444;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
+        html += '<div style="display:flex;align-items:center;gap:8px;color:#fca5a5;font-size:13px;"><i class="fa-solid fa-arrow-trend-down" style="color:#ef4444"></i><span>\u0420\u0435\u0439\u0442\u0438\u043d\u0433</span></div>';
+        html += '<span style="font-size:15px;font-weight:700;color:#f87171;">\u2193 -' + (ratingChange || 0) + '</span>';
+        html += '</div>';
         html += '</div>';
     }
 
-    // Пыль
-    if (dust > 0) {
-        html += '<div style="background:linear-gradient(135deg,#1e1a2e,#130d1f);border:1px solid #a78bfa44;border-radius:14px;padding:13px 18px;display:flex;align-items:center;justify-content:space-between;">';
-        html += '<div style="display:flex;align-items:center;gap:8px;color:#c4b5fd;font-size:13px;"><img src="' + D + '" style="width:16px;height:16px;vertical-align:middle" onerror="this.style.display=\'none\'"><span>Пыль</span></div>';
-        html += '<span style="font-size:18px;font-weight:800;color:#a78bfa;">+' + dust + ' 🌫️</span>';
-        html += '</div>';
-    }
-
-    // XP
-    if (xp > 0) {
-        html += '<div style="background:linear-gradient(135deg,#1a2a1a,#0d1a0d);border:1px solid #86efac44;border-radius:14px;padding:13px 18px;display:flex;align-items:center;justify-content:space-between;">';
-        html += '<div style="display:flex;align-items:center;gap:8px;color:#86efac;font-size:13px;"><i class="fa-solid fa-star" style="color:#facc15"></i><span>Опыт</span></div>';
-        html += '<span style="font-size:18px;font-weight:800;color:#4ade80;">+' + xp + ' XP</span>';
-        html += '</div>';
-    }
-
-    // Рейтинг вверх (для победителя)
-    if (isWin) {
-        html += '<div style="background:linear-gradient(135deg,#1a1f2e,#0d1220);border:1px solid #60a5fa44;border-radius:14px;padding:13px 18px;display:flex;align-items:center;justify-content:space-between;">';
-        html += '<div style="display:flex;align-items:center;gap:8px;color:#93c5fd;font-size:13px;"><i class="fa-solid fa-chart-line" style="color:#60a5fa"></i><span>Рейтинг</span></div>';
-        html += '<span style="font-size:15px;font-weight:700;color:#60a5fa;">↑ Повышается</span>';
-        html += '</div>';
-    }
-
-    html += '</div>';
-
-    html += '<button class="popup-btn" style="background:' + (isWin ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'linear-gradient(135deg,#1d4ed8,#1e40af)') + ';margin-top:4px;font-size:15px;font-weight:700;padding:14px;" onclick="closeOverlay(); renderArenaFightTab();">' + (isWin ? '🏆 Продолжить' : '🔄 Попробовать снова') + '</button>';
+    html += '<button class="popup-btn" style="background:' + (isWin ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'linear-gradient(135deg,#1d4ed8,#1e40af)') + ';margin-top:4px;font-size:15px;font-weight:700;padding:14px;" onclick="closeOverlay(); renderArenaFightTab();">' + (isWin ? '\uD83C\uDFC6 \u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c' : '\uD83D\uDD04 \u041f\u043e\u043f\u0440\u043e\u0431\u043e\u0432\u0430\u0442\u044c \u0441\u043d\u043e\u0432\u0430') + '</button>';
 
     popup.innerHTML = html;
     overlay.classList.add('show');
@@ -2748,6 +2747,25 @@ async function cancelBattleSearch() {
     showToast('Поиск отменён', '⚠️');
 }
 
+async function surrenderBattle() {
+    const battleId = arenaClient?.getBattleId();
+    if (!battleId) {
+        showToast('Нет активного боя', '⚠️');
+        return;
+    }
+    if (!confirm('Сдаться? Противник получит победу и приз.')) return;
+    try {
+        const res = await apiRequest('POST', '/api/arena/surrender', { battleId });
+        if (res?.success) {
+            showToast('Вы сдались 🏳️', '⚠️');
+        } else {
+            showToast(res?.message || 'Ошибка при сдаче', '❌');
+        }
+    } catch(e) {
+        showToast('Ошибка соединения', '❌');
+    }
+}
+
 async function acceptBattleWebhook() {
     const battleId = arenaClient?.getBattleId();
     if (!battleId) return;
@@ -2841,9 +2859,9 @@ async function makeAttack(targetIndex) {
         }
 
         if (res.finished) {
-            arenaClient?.endBattle(res.winnerId || null, res.prizePool || 0, res.dustWin || 0, res.dustLose || 0, res.xpWin || 0, res.xpLose || 0);
+            arenaClient?.endBattle(res.winnerId || null, res.prizePool || 0, res.dustWin || 0, res.xpGained || 0, res.ratingChange || 0, res.entryFee || 0);
             const isWin = !!res.winnerId && res.winnerId === arenaClient?.getCurrentUserId();
-            showNativeBattleResult(isWin, res.prizePool || 0, res.dustWin || 0, res.dustLose || 0, res.xpWin || 0, res.xpLose || 0);
+            showNativeBattleResult(isWin, res.prizePool || 0, res.dustWin || 0, res.xpGained || 0, res.ratingChange || 0, res.entryFee || 0);
             renderArenaFightTab();
         } else {
             const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
@@ -3629,8 +3647,8 @@ await loadCreaturesFromServer();
             }
             updateBattleUIFromClient(data, isPlayer1);
         });
-        arenaClient.on('onBattleEnd', (isWin, prizePool, dustWin = 0, dustLose = 0, xpWin = 0, xpLose = 0) => { 
-            showNativeBattleResult(isWin, prizePool, dustWin, dustLose, xpWin, xpLose); 
+        arenaClient.on('onBattleEnd', (isWin, prizePool, dustWin = 0, xpGained = 0, ratingChange = 0, entryFee = 0) => { 
+            showNativeBattleResult(isWin, prizePool, dustWin, xpGained, ratingChange, entryFee); 
             refreshUserProfile();
             setTimeout(() => {
                 renderArenaFightTab();
