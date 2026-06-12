@@ -418,8 +418,9 @@ class ArenaBattleManager {
                 battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
                 battle.markModified('player1Team');
                 battle.markModified('player2Team');
-                await this.finishBattle(battle);
-                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, poisonLog };
+                const _fbR1 = await this.finishBattle(battle);
+                const _w1 = battle.winnerId?.toString() === userId.toString();
+                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, xpGained: _w1?(_fbR1?.xpWin||0):(_fbR1?.xpLose||0), ratingChange: _fbR1?.ratingChange||0, entryFee: _fbR1?.entryFee||0, poisonLog };
             }
             
             let attackerIndex = -1;
@@ -437,8 +438,9 @@ class ArenaBattleManager {
                 battle.winnerId = isPlayer1 ? battle.player2Id : battle.player1Id;
                 battle.markModified('player1Team');
                 battle.markModified('player2Team');
-                await this.finishBattle(battle);
-                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0 };
+                const _fbR2 = await this.finishBattle(battle);
+                const _w2 = battle.winnerId?.toString() === userId.toString();
+                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, xpGained: _w2?(_fbR2?.xpWin||0):(_fbR2?.xpLose||0), ratingChange: _fbR2?.ratingChange||0, entryFee: _fbR2?.entryFee||0 };
             }
             
             let targetIndex = -1;
@@ -457,8 +459,9 @@ class ArenaBattleManager {
                 battle.winnerId = isPlayer1 ? battle.player1Id : battle.player2Id;
                 battle.markModified('player1Team');
                 battle.markModified('player2Team');
-                await this.finishBattle(battle);
-                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0 };
+                const _fbR3 = await this.finishBattle(battle);
+                const _w3 = battle.winnerId?.toString() === userId.toString();
+                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, xpGained: _w3?(_fbR3?.xpWin||0):(_fbR3?.xpLose||0), ratingChange: _fbR3?.ratingChange||0, entryFee: _fbR3?.entryFee||0 };
             }
             
             const target = enemyTeam[targetIndex];
@@ -530,7 +533,7 @@ class ArenaBattleManager {
                 battle.markModified('player1Team');
                 battle.markModified('player2Team');
                 await this.finishBattle(battle);
-                return { success: true, finished: true, draw: true, winnerId: null, prizePool: 0, dustWin: 0 };
+                return { success: true, finished: true, draw: true, winnerId: null, prizePool: 0, dustWin: 0, xpGained: 0, ratingChange: 0, entryFee: 0 };
             }
 
             if (allMyDead) {
@@ -539,8 +542,9 @@ class ArenaBattleManager {
                 battle.turnCount++;
                 battle.markModified('player1Team');
                 battle.markModified('player2Team');
-                await this.finishBattle(battle);
-                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, lastMove: { damage, isCrit, targetIndex, targetHp: target.currentHp, targetDead: true } };
+                const _fbR5 = await this.finishBattle(battle);
+                const _w5 = battle.winnerId?.toString() === userId.toString();
+                return { success: true, finished: true, winnerId: battle.winnerId?.toString(), prizePool: battle.prizePool, dustWin: leagueCfg.dustWin || 0, xpGained: _w5?(_fbR5?.xpWin||0):(_fbR5?.xpLose||0), ratingChange: _fbR5?.ratingChange||0, entryFee: _fbR5?.entryFee||0, lastMove: { damage, isCrit, targetIndex, targetHp: target.currentHp, targetDead: true } };
             }
 
             if (allEnemyDead) {
@@ -549,14 +553,17 @@ class ArenaBattleManager {
                 battle.turnCount++;
                 battle.markModified('player1Team');
                 battle.markModified('player2Team');
-                await this.finishBattle(battle);
-                
+                const _fbR6 = await this.finishBattle(battle);
+                const _w6 = battle.winnerId?.toString() === userId.toString();
                 return {
                     success: true,
                     finished: true,
                     winnerId: battle.winnerId?.toString(),
                     prizePool: battle.prizePool,
                     dustWin: leagueCfg.dustWin || 0,
+                    xpGained: _w6?(_fbR6?.xpWin||0):(_fbR6?.xpLose||0),
+                    ratingChange: _fbR6?.ratingChange||0,
+                    entryFee: _fbR6?.entryFee||0,
                     lastMove: { damage, isCrit, targetIndex, targetHp: target.currentHp, targetDead: true }
                 };
             }
@@ -788,11 +795,7 @@ class ArenaBattleManager {
         battle.markModified('player1Team');
         battle.markModified('player2Team');
         const fbResSurr = await this.finishBattle(battle);
-
-        // Сдавшийся — проигравший
-        const xpGained = fbResSurr?.xpWin || 0;  // победитель получит это
-        const xpLose = fbResSurr?.xpLose || 0;    // проигравший получит это
-        return { success: true, message: 'Вы сдались', xpGained, xpLose, ratingChange: fbResSurr?.ratingChange || 0, entryFee: battle.entryFee || 0 };
+        return { success: true, message: 'Вы сдались', xpGained: fbResSurr?.xpWin||0, xpLose: fbResSurr?.xpLose||0, ratingChange: fbResSurr?.ratingChange||0, entryFee: battle.entryFee||0 };
     }
 
     async expireOldBattles() {
@@ -855,27 +858,13 @@ class ArenaBattleManager {
             const lastMovePlayer = battle.currentTurn === 'player1' ? 'player1' : 'player2';
             battle.winnerId = lastMovePlayer === 'player1' ? battle.player2Id : battle.player1Id;
             battle.status = 'finished';
-            const fbResTimeout = await this.finishBattle(battle);
-            const leagueCfgTimeout = LEAGUE_CONFIG[battle.league] || LEAGUE_CONFIG.bronze;
-            const _toWinnerId = battle.winnerId?.toString();
-            const _isP1WinTimeout = _toWinnerId && battle.player1Id.toString() === _toWinnerId;
-            const _baseTimeout = {
-                battleId: battle._id,
-                winnerId: _toWinnerId,
-                prizePool: battle.prizePool,
-                dustWin: leagueCfgTimeout.dustWin || 0,
-                ratingChange: fbResTimeout?.ratingChange || 0,
-                entryFee: battle.entryFee || 0,
-                reason: 'timeout'
-            };
-            this.socketManager.send(battle.player1Id, 'battle_end', {
-                ..._baseTimeout,
-                xpGained: _isP1WinTimeout ? (fbResTimeout?.xpWin || 0) : (fbResTimeout?.xpLose || 0)
-            });
-            this.socketManager.send(battle.player2Id, 'battle_end', {
-                ..._baseTimeout,
-                xpGained: _isP1WinTimeout ? (fbResTimeout?.xpLose || 0) : (fbResTimeout?.xpWin || 0)
-            });
+            const fbResTO = await this.finishBattle(battle);
+            const lcTO = LEAGUE_CONFIG[battle.league] || LEAGUE_CONFIG.bronze;
+            const toWinnerId = battle.winnerId?.toString();
+            const isP1WinTO = toWinnerId && battle.player1Id.toString() === toWinnerId;
+            const baseTO = { battleId: battle._id, winnerId: toWinnerId, prizePool: battle.prizePool, dustWin: lcTO.dustWin||0, ratingChange: fbResTO?.ratingChange||0, entryFee: battle.entryFee||0, reason: 'timeout' };
+            this.socketManager.send(battle.player1Id, 'battle_end', { ...baseTO, xpGained: isP1WinTO?(fbResTO?.xpWin||0):(fbResTO?.xpLose||0) });
+            this.socketManager.send(battle.player2Id, 'battle_end', { ...baseTO, xpGained: isP1WinTO?(fbResTO?.xpLose||0):(fbResTO?.xpWin||0) });
             expiredCount++;
         }
 

@@ -152,8 +152,6 @@ class ArenaClient {
             this.callbacks.onBattleStart(battleId, isPlayer1, myTeam, enemyTeam);
         }
         
-        // Определяем реальный ход: если пришёл currentTurn — используем его,
-        // иначе fallback на предположение по isPlayer1
         const resolvedTurn = currentTurn || (isPlayer1 ? 'player1' : 'player2');
         
         if (this.callbacks.onBattleStartUI) {
@@ -168,9 +166,7 @@ class ArenaClient {
                 battleLog: []
             });
         }
-        // Start timer if timeLeft provided (page reload recovery)
         if (timeLeft !== undefined) this.startBattleTimer(timeLeft);
-
     }
     
     updateBattle(data) {
@@ -219,7 +215,7 @@ class ArenaClient {
         }
     }
     
-    endBattle(winnerId, prizePool, dustWin = 0) {
+    endBattle(winnerId, prizePool, dustWin = 0, xpGained = 0, ratingChange = 0, entryFee = 0) {
         // Идемпотентная защита: если бой уже завершён — не вызываем onBattleEnd повторно.
         // Это предотвращает двойной popup: HTTP ответ makeAttack + WS battle_end.
         if (!this.state.battleActive) return;
@@ -235,7 +231,7 @@ class ArenaClient {
         const isWin = winnerId === this.getCurrentUserId();
         
         if (this.callbacks.onBattleEnd) {
-            this.callbacks.onBattleEnd(isWin, prizePool, dustWin);
+            this.callbacks.onBattleEnd(isWin, prizePool, dustWin, xpGained, ratingChange, entryFee);
         }
         
         setTimeout(() => {
@@ -327,14 +323,7 @@ connectSocket(token, apiUrl) {
         socket.on('battle_status', (data) => {
             console.log('📡 Battle status received', data);
             if (data.hasBattle && data.status === 'active' && !this.state.battleActive) {
-                this.startBattle(
-                    data.battleId,
-                    data.isPlayer1,
-                    data.myTeam,
-                    data.opponentTeam,
-                    data.timeLeft,
-                    data.currentTurn
-                );
+                this.startBattle(data.battleId, data.isPlayer1, data.myTeam, data.opponentTeam, data.timeLeft, data.currentTurn);
             } else if (data.hasBattle && data.status === 'pending_confirmation' && !this.state.confirmationShown) {
                 this.stopSearch();
                 this.state.confirmationShown = true;
@@ -365,15 +354,7 @@ connectSocket(token, apiUrl) {
         socket.on('battle_start', (data) => {
             console.log('⚔️ Battle start!', data);
             this.state.confirmationShown = false;
-            this.startBattle(
-                data.battleId,
-                data.isPlayer1,
-                data.myTeam,
-                data.opponentTeam,
-                data.timeLeft !== undefined ? data.timeLeft : 30,
-                data.currentTurn
-            );
-            // startBattle уже запускает таймер если timeLeft передан
+            this.startBattle(data.battleId, data.isPlayer1, data.myTeam, data.opponentTeam, data.timeLeft !== undefined ? data.timeLeft : 30, data.currentTurn);
         });
         
         socket.on('move_update', (data) => {
@@ -382,7 +363,7 @@ connectSocket(token, apiUrl) {
         
         socket.on('battle_end', (data) => {
             console.log('🏆 Battle end!', data);
-            this.endBattle(data.winnerId, data.prizePool, data.dustWin || 0);
+            this.endBattle(data.winnerId, data.prizePool, data.dustWin || 0, data.xpGained || 0, data.ratingChange || 0, data.entryFee || 0);
         });
         
         socket.on('confirmation_update', (data) => {
@@ -436,10 +417,7 @@ connectSocket(token, apiUrl) {
         socket.on('reconnect', () => {
             console.log('Reconnected successfully');
             if (window.addDebugLog) window.addDebugLog('Переподключено!', 'success');
-            if (this.callbacks.onConnected) {
-                this.callbacks.onConnected();
-            }
-            // После реконнекта всегда запрашиваем статус боя
+            if (this.callbacks.onConnected) this.callbacks.onConnected();
             const checkId = this.state.currentBattleId;
             this.state.socket.emit('check_battle_status', checkId ? { battleId: checkId } : {});
         });
