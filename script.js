@@ -5,12 +5,28 @@
 // ============================================================
 // CONFIG
 // ============================================================
-const API_URL = 'https://serv-production-765e.up.railway.app';
+const API_URL = 'https://serv-production-dbf3.up.railway.app';
 
 // STAKING PLANS (вверху файла — доступен сразу при любом onclick)
+// script.js
 var STAKING_PLANS_CLIENT = {
-    10: { days: 10, rate: 0.10, minAmount: 300000, label: '+10%', capybara: true },
-    30: { days: 30, rate: 0.20, minAmount: 50000,  label: '+20%' }
+    // старые
+    10: { days: 10, rate: 0.10, minAmount: 300000, label: '+10%', rewardText: '+10% MMO + 🦫 Capybara Rare' },
+    30: { days: 30, rate: 0.20, minAmount: 50000,  label: '+20%', rewardText: '+20% MMO' },
+    
+    // НОВЫЕ (14 дней, 10%)
+    14: { 
+        days: 14, rate: 0.10, minAmount: 200000, label: '+10%',
+        rewardText: '+10% MMO + 👕 Кросс (1 месяц)'
+    },
+    28: { 
+        days: 14, rate: 0.10, minAmount: 500000, label: '+10%',
+        rewardText: '+10% MMO + 🥷 Ниндзя (3 месяца)'
+    },
+    56: { 
+        days: 14, rate: 0.10, minAmount: 1000000, label: '+10%',
+        rewardText: '+10% MMO + 👘 Любой (12 месяцев)'
+    }
 };
 window.STAKING_PLANS_CLIENT = STAKING_PLANS_CLIENT;
 var stakingTimerInterval = null;
@@ -59,7 +75,7 @@ let RARITY_WEIGHTS = {
     basic: { common: 100, uncommon: 0, rare: 0, epic: 0, legendary: 0 },
     premium: { common: 70, uncommon: 20, rare: 10, epic: 0, legendary: 0 }
 };
-let AD_REWARD = 50;
+let AD_REWARD = 5;
 let AD_COOLDOWN = 60;
 let UPGRADE_BASE_COST = 300;
 let UPGRADE_MULTIPLIER = 1.4;
@@ -86,6 +102,14 @@ let currentPaymentMemo = null;
 let currentPaymentAmount = null;
 const MIN_TRANSACTION_AMOUNT = 10000;
 const MAX_ACTIVE_REQUESTS = 2;
+
+let currentMarketplaceFilter = 'all';
+let allMarketplaceListings = [];
+
+// Raid Boss
+let currentRaid = null;
+let raidUpdateInterval = null;
+let raidTurnTimerInterval = null;
 
 // ============================================================
 // HELPER FUNCTIONS
@@ -227,7 +251,7 @@ async function loadGameConfig() {
         const cfg = res.config;
         CAPSULE_COSTS = cfg.capsuleCosts || { basic: 1000, premium: 6000 };
         RARITY_WEIGHTS = cfg.capsuleRarities || RARITY_WEIGHTS;
-        AD_REWARD = cfg.adReward || 50;
+        AD_REWARD = cfg.adReward || 5;
         AD_COOLDOWN = cfg.adCooldown || 60;
         UPGRADE_BASE_COST = cfg.upgradeBaseCost || 300;
         UPGRADE_MULTIPLIER = cfg.upgradeMultiplier || 1.4;
@@ -466,7 +490,7 @@ function showArenaClosedModal() {
 }
 
 // Расписание арены (UTC+3)
-const ARENA_SCHEDULE_CLIENT = [[03, 12], [20, 22]];
+const ARENA_SCHEDULE_CLIENT = [[10, 12], [20, 22]];
 
 function isArenaOpenClient() {
     const nowUTC = new Date();
@@ -1260,13 +1284,30 @@ function renderMarketplaceListings(listings) {
     const container = document.getElementById('marketplaceListings');
     if (!container) return;
     
-    if (!listings.length) {
-        container.innerHTML = `<div style="text-align:center;color:#4a5568;padding:30px 20px;font-size:12px">No listings available</div>`;
+    // Сохраняем все листинги для фильтрации
+    allMarketplaceListings = listings;
+    
+    // Применяем фильтр
+    let filteredListings = [...listings];
+    
+    if (currentMarketplaceFilter === 'dust') {
+        filteredListings = listings.filter(l => l.isDust === true);
+    } else if (currentMarketplaceFilter !== 'all') {
+        // Фильтр по редкости (только для существ, не для пыли)
+        filteredListings = listings.filter(l => {
+            if (l.isDust) return false;
+            const c = getCreature(l.creatureId);
+            return c && c.rarity === currentMarketplaceFilter;
+        });
+    }
+    
+    if (filteredListings.length === 0) {
+        container.innerHTML = `<div style="text-align:center;color:#4a5568;padding:30px 20px;font-size:12px">Нет лотов с выбранным фильтром</div>`;
         return;
     }
 
     const userLevel = state.user?.level || 1;
-    container.innerHTML = listings.map(l => {
+    container.innerHTML = filteredListings.map(l => {
         const isOwn = l.sellerTgId === state.user?.telegramId;
         const locked = !isOwn && userLevel < 5;
 
@@ -1316,7 +1357,7 @@ function renderMarketplaceListings(listings) {
     }).join('');
 }
 
-function renderMarketplaceSell() {
+async function renderMarketplaceSell() {
     const cards = document.getElementById('marketplaceSellCards');
     if (!cards) return;
 
@@ -1341,11 +1382,22 @@ function renderMarketplaceSell() {
     const creatureCards = state.inventory.map(item => {
         const c = getCreature(item.creatureId);
         if (!c || !item.count) return '';
+        
+        // --- ДОБАВЛЯЕМ ПЕРЕМЕННЫЕ ДЛЯ РЕДКОСТИ ---
+        const rarityText = c.rarity.charAt(0).toUpperCase() + c.rarity.slice(1);
+        const rarityColor = RARITY_COLORS[c.rarity] || '#94a3b8';
+        // ---------------------------------------
+        
         return `<div class="marketplace-sell-card" style="cursor:pointer" onclick="openSellModal('${item.creatureId}', '${c.name}', ${item.count})">
             <div class="marketplace-sell-card-icon">${getIconHtml(c)}</div>
             <div class="marketplace-sell-card-name">${escapeHtml(c.name)}</div>
-            <div style="font-size:9px;color:#4a5568">x${item.count}</div>
-            <div style="font-size:10px;color:#06b6d4;font-weight:600;margin-top:4px">SET PRICE</div>
+            <!-- --- НОВЫЙ БЛОК С РЕДКОСТЬЮ --- -->
+            <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: ${rarityColor}; background: ${rarityColor}22; padding: 2px 6px; border-radius: 10px; margin: 4px 0;">
+                ${rarityText}
+            </div>
+            <!-- ---------------------------- -->
+            <div style="font-size:9px; color:#4a5568">x${item.count}</div>
+            <div style="font-size:10px; color:#06b6d4; font-weight:600; margin-top:4px">SET PRICE</div>
         </div>`;
     }).filter(Boolean).join('');
 
@@ -1386,7 +1438,7 @@ function openDustSellModal(maxDust) {
             </div>
             <div>
                 <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Цена за 1 пыль (MMO)</div>
-                <input type="number" class="price-input-field" id="dustPriceInput" placeholder="Цена за 1 шт" min="15" value="15" oninput="updateDustFeeCalculator(${maxDust})">
+                <input type="number" class="price-input-field" id="dustPriceInput" placeholder="Цена за 1 шт" min="3" value="3" oninput="updateDustFeeCalculator(${maxDust})">
             </div>
             <div class="fee-calculator" style="margin-top:12px">
                 <div class="fee-row"><span class="fee-label">Итого</span><span class="fee-value" id="dustTotalDisplay">15</span></div>
@@ -1403,7 +1455,7 @@ function openDustSellModal(maxDust) {
 
 function updateDustFeeCalculator(maxDust) {
     const amount = Math.max(1, Math.min(maxDust, parseInt(document.getElementById('dustAmountInput')?.value) || 1));
-    const priceEach = Math.max(15, parseInt(document.getElementById('dustPriceInput')?.value) || 15);
+    const priceEach = Math.max(3, parseInt(document.getElementById('dustPriceInput')?.value) || 15);
     const total = amount * priceEach;
     const fee = Math.floor(total * 0.1);
     const el = (id) => document.getElementById(id);
@@ -1416,7 +1468,7 @@ async function confirmDustSellListing() {
     const amount = parseInt(document.getElementById('dustAmountInput')?.value) || 0;
     const priceEach = parseInt(document.getElementById('dustPriceInput')?.value) || 0;
     if (amount < 1) { showToast('Укажите количество пыли', '❌'); return; }
-    if (priceEach < 15) { showToast('Минимальная цена 15 MMO за 1 пыль', '❌'); return; }
+    if (priceEach < 3) { showToast('Минимальная цена 15 MMO за 1 пыль', '❌'); return; }
     const total = amount * priceEach;
     state.isLoading = true;
     const res = await apiRequest('POST', '/api/marketplace/list', { isDust: true, dustAmount: amount, price: total });
@@ -3087,11 +3139,15 @@ function renderBattleInterface(battleData) {
                     `).join('')}
                 </div>
             </div>
-            <div class="arena-battle-log" id="arenaBattleLog">
-                ${battleData.battleLog && battleData.battleLog.length ? 
-                    battleData.battleLog.slice(-10).map(log => `<div class="arena-log-entry ${log.isCrit ? 'crit' : ''}">Ход ${log.turn}: ${log.attackerName || 'Питомец'} → ${log.targetName || 'Враг'}: ${log.damage} урона ${log.isCrit ? '💥 КРИТ!' : ''}</div>`).join('') : 
-                    '<div class="arena-log-entry">Бой начинается...</div>'}
-            </div>
+     <div class="arena-battle-log" id="arenaBattleLog">
+    ${battleData.battleLog && battleData.battleLog.length ? 
+        battleData.battleLog.slice(-10).map(log => {
+            const isMyTurn = (log.player === 'player1' && battleData.isPlayer1) || (log.player === 'player2' && !battleData.isPlayer1);
+            const turnLabel = isMyTurn ? '⚔️ Мой ход' : '🛡️ Ход соперника';
+            return `<div class="arena-log-entry ${log.isCrit ? 'crit' : ''}">${turnLabel}: ${log.attackerName || 'Питомец'} → ${log.targetName || 'Враг'}: ${log.damage} урона ${log.isCrit ? '💥 КРИТ!' : ''}</div>`;
+        }).join('') : 
+        '<div class="arena-log-entry">Бой начинается...</div>'}
+</div>
             <div class="arena-battle-timer" id="arenaBattleTimer">⏱ ${battleData.timeLeft !== undefined ? battleData.timeLeft : 30}</div>
             <button class="arena-surrender-btn" onclick="surrenderBattle()"><i class="fa-solid fa-flag"></i> Сдаться</button>
         </div>
@@ -3182,18 +3238,20 @@ function updateBattleUIFromClient(data, isPlayer1) {
     }
     
     // Обновляем лог боя
-    if (data.lastMove) {
-        const logContainer = document.getElementById('arenaBattleLog');
-        if (logContainer) {
-            const logEntry = document.createElement('div');
-            logEntry.className = `arena-log-entry ${data.lastMove.isCrit ? 'crit' : ''}`;
-            logEntry.innerHTML = `Ход ${data.turnCount || '?'}: Нанесено ${data.lastMove.damage} урона ${data.lastMove.isCrit ? '💥 КРИТ!' : ''}`;
-            logContainer.insertBefore(logEntry, logContainer.firstChild);
-            if (logContainer.children.length > 10) {
-                logContainer.removeChild(logContainer.lastChild);
-            }
+if (data.lastMove) {
+    const logContainer = document.getElementById('arenaBattleLog');
+    if (logContainer) {
+        const logEntry = document.createElement('div');
+        logEntry.className = `arena-log-entry ${data.lastMove.isCrit ? 'crit' : ''}`;
+        const isMyTurn = (data.currentTurn === 'player1' && data.isPlayer1) || (data.currentTurn === 'player2' && !data.isPlayer1);
+        const turnLabel = isMyTurn ? '⚔️ Мой ход' : '🛡️ Ход соперника';
+        logEntry.innerHTML = `${turnLabel}: Нанесено ${data.lastMove.damage} урона ${data.lastMove.isCrit ? '💥 КРИТ!' : ''}`;
+        logContainer.insertBefore(logEntry, logContainer.firstChild);
+        if (logContainer.children.length > 10) {
+            logContainer.removeChild(logContainer.lastChild);
         }
     }
+}
 }
 
 // ============================================================
@@ -3815,43 +3873,73 @@ window.renderArenaFightTab = renderArenaFightTab;
 async function loadStakingStatus() {
     try {
         const data = await apiRequest('GET', '/api/staking/status');
-        if (data && data.success && data.staking) {
-            renderActiveStaking(data.staking);
+        if (data && data.success && data.stakings && data.stakings.length > 0) {
+            renderActiveStakings(data.stakings);
         } else {
             const block = document.getElementById('activeStakingBlock');
             if (block) block.style.display = 'none';
-            const plansEl = document.querySelector('.staking-plans');
-            if (plansEl) plansEl.style.display = 'grid';
         }
+        // ПЛАНЫ ВСЕГДА ПОКАЗЫВАЕМ, НЕ СКРЫВАЕМ!
+        const plansEl = document.querySelector('.staking-plans');
+        if (plansEl) plansEl.style.display = 'grid';
     } catch (e) {}
 }
 
-function renderActiveStaking(s) {
+function renderActiveStakings(stakings) {
     const block = document.getElementById('activeStakingBlock');
     if (!block) return;
     block.style.display = 'block';
-    // Скрываем карточки планов — нельзя запустить второй стейкинг
-    const plansEl = document.querySelector('.staking-plans');
-    if (plansEl) plansEl.style.display = 'none';
-    document.getElementById('stakeAmount').textContent = formatNum(s.amount) + ' MMO';
-    document.getElementById('stakeReward').innerHTML = '+' + formatNum(s.reward) + ' MMO'
-        + (s.days === 10 ? ' + 🦫 Capybara Rare' : '');
+    
+    // Очищаем и показываем список
+    const container = document.getElementById('activeStakingsList');
+    if (!container) {
+        // Если контейнера нет — создаём
+        const card = document.querySelector('.staking-active-card');
+        if (card) {
+            card.innerHTML = '<div id="activeStakingsList"></div>';
+        }
+    }
+    
+    const listContainer = document.getElementById('activeStakingsList') || block.querySelector('.staking-active-card');
+    if (listContainer) {
+        listContainer.innerHTML = stakings.map(s => `
+            <div class="staking-active-item" data-staking-id="${s._id}" style="border-bottom:1px solid rgba(255,255,255,0.1); padding:12px 0;">
+                <div class="staking-active-row">
+                    <span class="staking-active-label">Сумма</span>
+                    <span class="staking-active-val">${formatNum(s.amount)} MMO</span>
+                </div>
+                <div class="staking-active-row">
+                    <span class="staking-active-label">Доход</span>
+                    <span class="staking-active-val green" id="stakeReward_${s._id}">+${formatNum(s.reward)} MMO${s.days === 10 ? ' + 🦫 Capybara' : (s.days === 14 && s.amount >= 1000000 ? ' + 👘 Любо (12 мес)' : (s.days === 14 && s.amount >= 500000 ? ' + 🥷 Ниндзя (3 мес)' : (s.days === 14 && s.amount >= 200000 ? ' + 👕 CroSS (1 мес)' : '')))}</span>
+                </div>
+                <div class="staking-active-row">
+                    <span class="staking-active-label">Осталось</span>
+                    <span class="staking-active-val" id="stakeTimer_${s._id}">—</span>
+                </div>
+                <button class="staking-claim-btn" id="stakeClaimBtn_${s._id}" onclick="claimStakingById('${s._id}')" style="display:none; margin-top:8px;">
+                    <i class="fa-solid fa-coins"></i> Забрать награду
+                </button>
+            </div>
+        `).join('');
+        
+        // Запускаем таймеры для каждого стейкинга
+        stakings.forEach(s => startStakingTimer(s._id, s.endsAt, s.days, s.amount));
+    }
+}
 
-    if (stakingTimerInterval) clearInterval(stakingTimerInterval);
-
+function startStakingTimer(stakingId, endsAt, days, amount) {
     function tick() {
-        const diff = new Date(s.endsAt).getTime() - Date.now();
-        const claimBtn = document.getElementById('stakeClaimBtn');
-        const timerEl  = document.getElementById('stakeTimer');
+        const diff = new Date(endsAt).getTime() - Date.now();
+        const claimBtn = document.getElementById(`stakeClaimBtn_${stakingId}`);
+        const timerEl = document.getElementById(`stakeTimer_${stakingId}`);
         if (!timerEl) return;
         if (diff <= 0) {
             timerEl.textContent = 'Готово! ✅';
             if (claimBtn) claimBtn.style.display = 'flex';
-            clearInterval(stakingTimerInterval);
         } else {
-            const d   = Math.floor(diff / 86400000);
-            const h   = Math.floor((diff % 86400000) / 3600000);
-            const m   = Math.floor((diff % 3600000) / 60000);
+            const d = Math.floor(diff / 86400000);
+            const h = Math.floor((diff % 86400000) / 3600000);
+            const m = Math.floor((diff % 3600000) / 60000);
             const sec = Math.floor((diff % 60000) / 1000);
             timerEl.textContent = (d > 0 ? d + 'д ' : '') +
                 String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
@@ -3859,7 +3947,8 @@ function renderActiveStaking(s) {
         }
     }
     tick();
-    stakingTimerInterval = setInterval(tick, 1000);
+    const interval = setInterval(tick, 1000);
+    // сохраняем interval для очистки при необходимости
 }
 
 function selectStakingPlan(days) {
@@ -3873,13 +3962,13 @@ function openStakingModal(days) {
     const plan = STAKING_PLANS_CLIENT[days];
     if (!plan) return;
     currentStakingPlan = plan;
-    document.getElementById('stakingModalDays').textContent = days;
+    document.getElementById('stakingModalDays').textContent = plan.days;  // ← plan.days, а не days!
     document.getElementById('stakingModalRate').textContent = plan.label;
-    document.getElementById('stakingModalMin').textContent  = 'Минимум: ' + formatNum(plan.minAmount) + ' MMO';
-    document.getElementById('stakingAmountInput').value     = '';
+    document.getElementById('stakingModalMin').textContent = 'Минимум: ' + formatNum(plan.minAmount) + ' MMO';
+    document.getElementById('stakingAmountInput').value = '';
     document.getElementById('stakingModalPreview').textContent = '';
-    document.getElementById('stakingModal').style.display   = 'flex';
-
+    document.getElementById('stakingModal').style.display = 'flex';
+    
     document.getElementById('stakingAmountInput').oninput = function() {
         const val     = Math.floor(Number(this.value));
         const preview = document.getElementById('stakingModalPreview');
@@ -3924,23 +4013,14 @@ async function confirmStaking() {
     }
 }
 
-async function claimStaking() {
-    const data = await apiRequest('POST', '/api/staking/claim');
+async function claimStakingById(stakingId) {
+    const data = await apiRequest('POST', '/api/staking/claim', { stakingId });
     if (data && data.success) {
-        if (stakingTimerInterval) clearInterval(stakingTimerInterval);
-        const block = document.getElementById('activeStakingBlock');
-        if (block) block.style.display = 'none';
-        // Показываем карточки планов снова
-        const plansEl = document.querySelector('.staking-plans');
-        if (plansEl) plansEl.style.display = 'grid';
-        if (data.user) { state.user = data.user; updateHeader(); }
-        if (data.capybara) {
-            showToast('+' + formatNum(data.reward) + ' MMO + 🦫 Capybara Rare!', '🎉');
-        } else {
-            showToast('+' + formatNum(data.reward) + ' MMO получено!', '🎉');
-        }
+        showToast('+' + formatNum(data.reward) + ' MMO получено!', '🎉');
+        if (data.capybara) showToast('Получен Capybara Rare!', '🦫');
+        loadStakingStatus(); // обновляем список
     } else {
-        showToast((data && data.message) || 'Ошибка', '❌');
+        showToast(data?.message || 'Ошибка', '❌');
     }
 }
 
@@ -3987,6 +4067,399 @@ window.addEventListener('offline', () => {
         showToast('Потеряно соединение с интернетом', '⚠️');
     }
 });
+
+// ============================================================
+// ФИЛЬТРЫ МАРКЕТПЛЕЙСА
+// ============================================================
+function setMarketplaceFilter(filter) {
+    currentMarketplaceFilter = filter;
+    
+    // Обновляем активный класс на кнопках
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        const btnFilter = btn.getAttribute('data-filter');
+        if (btnFilter === filter) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+    
+    // Перерисовываем листинги с новым фильтром
+    if (allMarketplaceListings.length > 0) {
+        renderMarketplaceListings(allMarketplaceListings);
+    } else {
+        renderMarketplaceBuy();
+    }
+}
+
+// ============================================
+// RAID BOSS FUNCTIONS
+// ============================================
+
+async function loadRaidData() {
+    try {
+        const res = await apiRequest('GET', '/api/raid/current');
+        if (res?.success) {
+            currentRaid = res.raid;
+            updateRaidUI();
+        }
+    } catch (e) {
+        console.error('loadRaidData error:', e);
+    }
+}
+
+function updateRaidUI() {
+    if (!currentRaid) return;
+    
+    document.getElementById('raidBossIcon').textContent = '🐉';
+    document.getElementById('raidBossName').textContent = 'Ежедневный Рейд';
+    
+    document.getElementById('raidParticipantsCount').textContent = currentRaid.participantsCount || 0;
+    document.getElementById('raidPrizePool').textContent = (currentRaid.totalPrizePool || 0).toLocaleString();
+    document.getElementById('raidCurrentTurn').textContent = currentRaid.currentTurn || 0;
+    
+    const hasJoined = currentRaid.isRegistered;
+    if (hasJoined) {
+        document.getElementById('raidNotJoined').style.display = 'none';
+        document.getElementById('raidJoined').style.display = 'block';
+        document.getElementById('raidMyStats').style.display = 'flex';
+        document.getElementById('raidMyDamage').textContent = (currentRaid.myDamage || 0).toLocaleString();
+        document.getElementById('raidMyAttacks').textContent = currentRaid.myAttacks || 0;
+        document.getElementById('raidMyPetName').textContent = currentRaid.myPetId || '?';
+    } else {
+        document.getElementById('raidNotJoined').style.display = 'block';
+        document.getElementById('raidJoined').style.display = 'none';
+        document.getElementById('raidMyStats').style.display = 'none';
+        renderPetSelector();
+    }
+    
+    // Обновляем таймер
+    updateRaidTimer();
+    
+    // Обновляем кнопку атаки
+    updateAttackButton();
+    
+    // Топ участников
+    const topList = document.getElementById('raidTopList');
+    if (currentRaid.topParticipants?.length) {
+        topList.innerHTML = currentRaid.topParticipants.map((p, i) => `
+            <div class="raid-top-item">
+                <div class="raid-top-rank">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</div>
+                <div class="raid-top-name">${escapeHtml(p.username)}</div>
+                <div class="raid-top-damage">${p.damage.toLocaleString()}</div>
+            </div>
+        `).join('');
+    } else {
+        topList.innerHTML = '<div class="empty-listings">Нет участников</div>';
+    }
+    
+    // История рейдов
+    loadRaidHistory();
+}
+
+function updateRaidTimer() {
+    const timerLabel = document.getElementById('raidTimerLabel');
+    const timerValue = document.getElementById('raidTimerValue');
+    
+    if (!timerValue) return;
+    
+    const now = new Date();
+    let targetTime = null;
+    let label = '';
+    
+    if (currentRaid.phase === 'registration') {
+        targetTime = new Date(currentRaid.raidStartTime);
+        label = 'До начала рейда';
+    } else if (currentRaid.phase === 'fighting') {
+        targetTime = new Date(currentRaid.raidEndTime);
+        label = 'До завершения';
+    } else {
+        timerValue.textContent = 'Завершён';
+        if (timerLabel) timerLabel.textContent = 'Рейд окончен';
+        return;
+    }
+    
+    if (timerLabel) timerLabel.textContent = label;
+    
+    const diff = targetTime.getTime() - now.getTime();
+    if (diff <= 0) {
+        timerValue.textContent = 'ИДЁТ БОЙ!';
+        return;
+    }
+    
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    
+    timerValue.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function updateAttackButton() {
+    const attackBtn = document.getElementById('raidAttackBtn');
+    const turnTimer = document.getElementById('raidTurnTimer');
+    const turnSeconds = document.getElementById('raidTurnSeconds');
+    
+    if (!attackBtn) return;
+    
+    if (currentRaid.phase !== 'fighting') {
+        attackBtn.disabled = true;
+        attackBtn.innerHTML = '<i class="fa-solid fa-hourglass-half"></i> Рейд не активен';
+        if (turnTimer) turnTimer.style.display = 'none';
+        return;
+    }
+    
+    // Проверяем, не закончился ли ход
+    if (currentRaid.turnEndsAt) {
+        const now = Date.now();
+        const timeLeft = Math.max(0, Math.floor((currentRaid.turnEndsAt - now) / 1000));
+        
+        if (turnTimer) turnTimer.style.display = 'block';
+        if (turnSeconds) turnSeconds.textContent = timeLeft;
+        
+        if (timeLeft <= 0) {
+            attackBtn.disabled = true;
+            attackBtn.innerHTML = '<i class="fa-solid fa-hourglass-end"></i> Ход закончился';
+            return;
+        }
+    }
+    
+    attackBtn.disabled = false;
+    attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> Атаковать!';
+}
+
+function renderPetSelector() {
+    const container = document.getElementById('raidPetSelector');
+    if (!container) return;
+    
+    const creatures = state.inventory.filter(item => {
+        const c = getCreature(item.creatureId);
+        return c && item.count >= 1;
+    });
+    
+    if (creatures.length === 0) {
+        container.innerHTML = '<div class="pet-selector" style="text-align:center;color:#ef4444">⚠️ У вас нет существ для участия в рейде!</div>';
+        return;
+    }
+    
+    const selectedPetId = localStorage.getItem('raid_selected_pet');
+    
+    container.innerHTML = `
+        <div class="pet-selector">
+            <div style="font-size:11px;color:#94a3b8;margin-bottom:8px">Выберите питомца для рейда:</div>
+            ${creatures.map(item => {
+                const c = getCreature(item.creatureId);
+                const isSelected = selectedPetId === c.id;
+                const skill = window.ARENA_SKILLS_MAP?.[c.id];
+                return `
+                    <div class="pet-option ${isSelected ? 'selected' : ''}" onclick="selectRaidPet('${c.id}')">
+                        <div class="pet-option-icon">${getIconHtml(c)}</div>
+                        <div class="pet-option-info">
+                            <div class="pet-option-name">${escapeHtml(c.name)}</div>
+                            <div class="pet-option-stats">
+                                <span>⚔️ ${c.incomeBase * 2} урона</span>
+                                <span>⭐ ${c.rarity}</span>
+                            </div>
+                            ${skill ? `<div class="pet-option-skill">✨ ${skill.name} (${Math.round(skill.chance * 100)}%)</div>` : ''}
+                        </div>
+                        ${isSelected ? '<div style="color:#a855f7">✓</div>' : ''}
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function selectRaidPet(petId) {
+    localStorage.setItem('raid_selected_pet', petId);
+    renderPetSelector();
+}
+
+async function joinRaid() {
+    const selectedPetId = localStorage.getItem('raid_selected_pet');
+    if (!selectedPetId) {
+        showToast('Сначала выберите питомца для рейда!', '⚠️');
+        return;
+    }
+    
+    try {
+        const res = await apiRequest('POST', '/api/raid/join', { petId: selectedPetId });
+        if (res.success) {
+            showToast(res.message, 'success');
+            loadRaidData();
+            updateUserBalance();
+        } else {
+            showToast(res.message, 'error');
+        }
+    } catch (e) {
+        showToast('Ошибка при записи', 'error');
+    }
+}
+
+async function attackRaidBoss() {
+    if (!currentRaid || currentRaid.phase !== 'fighting') {
+        showToast('Рейд не активен', '⚠️');
+        return;
+    }
+    
+    const attackBtn = document.getElementById('raidAttackBtn');
+    if (attackBtn) {
+        attackBtn.disabled = true;
+        attackBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Атака...';
+    }
+    
+    try {
+        const res = await apiRequest('POST', '/api/raid/attack', {});
+        
+        if (res.success) {
+            showToast(res.message, 'success');
+            
+            // Анимация урона
+            const bossCard = document.getElementById('raidBossCard');
+            bossCard.classList.add('raid-taking-damage');
+            setTimeout(() => bossCard.classList.remove('raid-taking-damage'), 300);
+            
+            loadRaidData();
+        } else {
+            showToast(res.message, 'error');
+            if (attackBtn) {
+                attackBtn.disabled = false;
+                attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> Атаковать!';
+            }
+        }
+    } catch (e) {
+        showToast('Ошибка при атаке', 'error');
+        if (attackBtn) {
+            attackBtn.disabled = false;
+            attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> Атаковать!';
+        }
+    }
+}
+
+async function loadRaidHistory() {
+    const container = document.getElementById('raidHistoryList');
+    if (!container) return;
+    
+    try {
+        const res = await apiRequest('GET', '/api/raid/history');
+        if (res?.success && res.history?.length) {
+            container.innerHTML = res.history.map(h => `
+                <div class="raid-history-item">
+                    <div class="raid-history-name">${escapeHtml(h.raidId || 'Рейд')}</div>
+                    <div class="raid-history-details">
+                        👥 ${h.totalParticipants} участников | 💰 ${h.totalPrizePool.toLocaleString()} MMO пул
+                    </div>
+                    <div class="raid-history-details" style="font-size:9px;color:#64748b">
+                        🏆 Топ: ${h.topDamage?.slice(0, 3).map(t => `${t.username}: ${t.damage}`).join(', ') || '—'}
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            container.innerHTML = '<div class="empty-listings">История рейдов пуста</div>';
+        }
+    } catch (e) {
+        container.innerHTML = '<div class="empty-listings">Ошибка загрузки истории</div>';
+    }
+}
+
+function initRaidWebSocket() {
+    if (window.io && window.socket) {
+        window.socket.on('raid_phase_update', (data) => {
+            if (currentRaid && data.raidId === currentRaid._id) {
+                loadRaidData();
+                if (data.message) showToast(data.message, '⚔️');
+            }
+        });
+        
+        window.socket.on('raid_turn_start', (data) => {
+            if (currentRaid && data.raidId === currentRaid._id) {
+                currentRaid.currentTurn = data.turn;
+                currentRaid.turnEndsAt = data.turnEndsAt;
+                updateRaidUI();
+                showToast(`⚔️ Ход ${data.turn} начался! У вас есть 20 секунд чтобы атаковать!`, '⚔️');
+                startRaidTurnTimer();
+            }
+        });
+        
+        window.socket.on('raid_attack', (data) => {
+            if (currentRaid && data.raidId === currentRaid._id) {
+                const toastMsg = `⚔️ ${data.attackerName} нанёс ${data.damage} урона!${data.skillTriggered ? ` ✨ ${data.skillName}!` : ''}`;
+                showToast(toastMsg, data.isCrit ? '💥' : '⚔️');
+                if (data.attackerName !== (state.user?.username || state.user?.firstName)) {
+                    loadRaidData();
+                }
+            }
+        });
+        
+        window.socket.on('raid_end', (data) => {
+            if (currentRaid && data.raidId === currentRaid._id) {
+                showToast('🏆 Рейд завершён! Награды распределены!', '🏆');
+                loadRaidData();
+            }
+        });
+    }
+}
+
+function startRaidTurnTimer() {
+    if (raidTurnTimerInterval) clearInterval(raidTurnTimerInterval);
+    
+    raidTurnTimerInterval = setInterval(() => {
+        if (currentRaid?.turnEndsAt) {
+            const timeLeft = Math.max(0, Math.floor((currentRaid.turnEndsAt - Date.now()) / 1000));
+            const turnSeconds = document.getElementById('raidTurnSeconds');
+            if (turnSeconds) turnSeconds.textContent = timeLeft;
+            
+            if (timeLeft <= 0) {
+                clearInterval(raidTurnTimerInterval);
+                raidTurnTimerInterval = null;
+                const attackBtn = document.getElementById('raidAttackBtn');
+                if (attackBtn) {
+                    attackBtn.disabled = true;
+                    attackBtn.innerHTML = '<i class="fa-solid fa-hourglass-end"></i> Ход закончился';
+                }
+            } else if (timeLeft <= 5) {
+                const turnTimer = document.getElementById('raidTurnTimer');
+                if (turnTimer) turnTimer.style.color = '#ef4444';
+            }
+        }
+    }, 1000);
+}
+
+// Переключатель вкладок с поддержкой рейда
+const originalSwitchTab = window.switchTab;
+window.switchTab = function(tab) {
+    originalSwitchTab(tab);
+    
+    if (tab === 'raid') {
+        loadRaidData();
+        if (raidUpdateInterval) clearInterval(raidUpdateInterval);
+        raidUpdateInterval = setInterval(loadRaidData, 3000);
+    } else if (raidUpdateInterval) {
+        clearInterval(raidUpdateInterval);
+        raidUpdateInterval = null;
+    }
+};
+
+// Инициализация рейда
+function initRaid() {
+    loadRaidData();
+    initRaidWebSocket();
+    
+    const attackPowerSlider = document.getElementById('attackPower');
+    if (attackPowerSlider) {
+        attackPowerSlider.addEventListener('input', (e) => {
+            document.getElementById('attackPowerValue').textContent = `${e.target.value}x`;
+        });
+    }
+}
+
+// Вызываем после загрузки пользователя
+const originalInitTelegramApp = window.initTelegramApp;
+window.initTelegramApp = async function() {
+    await originalInitTelegramApp();
+    if (state.user) {
+        initRaid();
+    }
+};
 
 // ========== ЭТИ СТРОКИ УЖЕ БЫЛИ, НИЧЕГО НЕ МЕНЯЙТЕ ==========
 window.selectStakingPlan = selectStakingPlan;

@@ -117,7 +117,7 @@
             <i class="fa-solid fa-tv" style="font-size:16px"></i>
             <span style="flex:1;text-align:left" data-i18n="game.watchAd">Watch Ad</span>
             <span style="color:var(--uncommon);font-size:13px;min-width:50px;text-align:right" id="adsTimer">Ready</span>
-            <span style="color:var(--uncommon);font-weight:700" id="adsReward">+20</span>
+            <span style="color:var(--uncommon);font-weight:700" id="adsReward">+5</span>
             <span style="color:var(--text3);font-size:9px;margin-left:4px" id="adsRemaining">0/10</span>
         </button>
         <div class="encyclopedia-btn" onclick="showEncyclopedia()">
@@ -158,9 +158,19 @@
             <i class="fa-solid fa-list"></i> <span data-i18n="marketplace.myListings">My</span>
         </button>
     </div>
-    <div class="marketplace-subtab active" id="marketplace-buy">
-        <div id="marketplaceListings" style="display:flex;flex-direction:column;gap:10px"></div>
+<div class="marketplace-subtab active" id="marketplace-buy">
+    <!-- Блок фильтров -->
+    <div class="marketplace-filters">
+        <button class="filter-btn active" data-filter="all" onclick="setMarketplaceFilter('all')">📦 Все</button>
+        <button class="filter-btn" data-filter="common" onclick="setMarketplaceFilter('common')">⬜ Common</button>
+        <button class="filter-btn" data-filter="uncommon" onclick="setMarketplaceFilter('uncommon')">🟢 Uncommon</button>
+        <button class="filter-btn" data-filter="rare" onclick="setMarketplaceFilter('rare')">🔵 Rare</button>
+        <button class="filter-btn" data-filter="epic" onclick="setMarketplaceFilter('epic')">🟣 Epic</button>
+        <button class="filter-btn" data-filter="legendary" onclick="setMarketplaceFilter('legendary')">🟠 Legendary</button>
+        <button class="filter-btn" data-filter="dust" onclick="setMarketplaceFilter('dust')">🌫️ Пыль</button>
     </div>
+    <div id="marketplaceListings" style="display:flex;flex-direction:column;gap:10px"></div>
+</div>
     <div class="marketplace-subtab" id="marketplace-sell">
         <div class="section-title" style="margin-bottom:12px"><i class="fa-solid fa-hand-holding-dollar" style="color:var(--uncommon)"></i> <span data-i18n="marketplace.yourCreatures">Your Creatures</span></div>
         <div id="marketplaceSellCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"></div>
@@ -473,6 +483,81 @@
     </div>
 </div>
 
+<!-- Вкладка Рейд -->
+<div class="tab-content" id="tab-raid">
+    <div class="section-title"><i class="fa-solid fa-dragon"></i> Рейд Босс</div>
+    
+    <div id="raidBossCard" class="raid-boss-card">
+        <div class="raid-boss-header">
+            <div class="raid-boss-icon" id="raidBossIcon">🐉</div>
+            <div class="raid-boss-name" id="raidBossName">Ежедневный Рейд</div>
+        </div>
+        
+        <div class="raid-boss-stats">
+            <div class="raid-stat">
+                <span class="stat-icon">👥</span>
+                <span id="raidParticipantsCount">0</span>
+                <span class="stat-label">участников</span>
+            </div>
+            <div class="raid-stat">
+                <span class="stat-icon">💰</span>
+                <span id="raidPrizePool">0</span>
+                <span class="stat-label">призовой пул</span>
+            </div>
+            <div class="raid-stat">
+                <span class="stat-icon">⚔️</span>
+                <span id="raidCurrentTurn">0</span>
+                <span class="stat-label">ход</span>
+            </div>
+        </div>
+        
+        <div class="raid-timer" id="raidTimerBlock">
+            <div class="raid-timer-label" id="raidTimerLabel">До начала рейда</div>
+            <div class="raid-timer-value" id="raidTimerValue">--:--:--</div>
+        </div>
+        
+        <div class="raid-my-stats" id="raidMyStats" style="display: none;">
+            <div class="my-damage">
+                <i class="fa-solid fa-bolt"></i>
+                <span id="raidMyDamage">0</span> урона
+            </div>
+            <div class="my-attacks">
+                <i class="fa-solid fa-fist-raised"></i>
+                <span id="raidMyAttacks">0</span> атак
+            </div>
+        </div>
+        
+        <div id="raidNotJoined" class="raid-not-joined">
+            <div id="raidPetSelector" style="margin-bottom: 12px;"></div>
+            <button class="raid-join-btn" onclick="joinRaid()">
+                <i class="fa-solid fa-ticket"></i> Записаться (100 MMO)
+            </button>
+        </div>
+        
+        <div id="raidJoined" style="display: none;">
+            <div class="raid-attack-controls">
+                <div class="attack-power-label">Ваш питомец: <span id="raidMyPetName"></span></div>
+                <button class="raid-attack-btn" onclick="attackRaidBoss()" id="raidAttackBtn">
+                    <i class="fa-solid fa-sword"></i> Атаковать!
+                </button>
+                <div class="attack-info" id="raidAttackInfo">
+                    💡 Урон зависит от силы питомца, критического удара и навыка
+                </div>
+                <div id="raidTurnTimer" class="raid-turn-timer" style="display: none;">
+                    <span>⏱ Ход закончится через: </span>
+                    <span id="raidTurnSeconds">20</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="section-title"><i class="fa-solid fa-trophy"></i> Топ уронщики</div>
+    <div id="raidTopList" class="raid-top-list"></div>
+    
+    <div class="section-title"><i class="fa-solid fa-history"></i> История рейдов</div>
+    <div id="raidHistoryList" class="raid-history-list"></div>
+</div>
+
 <!-- Вкладка Wallet -->
 <div class="tab-content" id="tab-wallet">
     <div class="wallet-hero">
@@ -504,43 +589,52 @@
     </div>
 
     <!-- STAKING -->
-    <div class="staking-section">
-        <div class="staking-title"><i class="fa-solid fa-lock"></i> Стейкинг</div>
-        <div class="staking-subtitle">Заблокируй MMO и получи доход</div>
-        <div class="staking-plans">
-            <div class="staking-plan" id="stakingPlan10" onclick="selectStakingPlan(10)">
-                <div class="staking-plan-days">10 дней</div>
-                <div class="staking-plan-rate">+10%</div>
-                <div class="staking-plan-bonus">🦫 + Capybara Rare</div>
-                <div class="staking-plan-min">мин. 300 000 MMO</div>
-            </div>
-            <div class="staking-plan" id="stakingPlan30" onclick="selectStakingPlan(30)">
-                <div class="staking-plan-days">30 дней</div>
-                <div class="staking-plan-rate">+20%</div>
-                <div class="staking-plan-min">мин. 50 000 MMO</div>
-            </div>
+<!-- STAKING -->
+<div class="staking-section">
+    <div class="staking-title"><i class="fa-solid fa-lock"></i> Стейкинг</div>
+    <div class="staking-subtitle">Заблокируй MMO и получи доход</div>
+    <div class="staking-plans">
+        <!-- старые -->
+        <div class="staking-plan" id="stakingPlan30" onclick="selectStakingPlan(30)">
+            <div class="staking-plan-days">30 дней</div>
+            <div class="staking-plan-rate">+20%</div>
+            <div class="staking-plan-min">мин. 50 000 MMO</div>
         </div>
-        <div id="activeStakingBlock" style="display:none;">
-            <div class="staking-active-title">⏳ Активный стейкинг</div>
-            <div class="staking-active-card">
-                <div class="staking-active-row">
-                    <span class="staking-active-label">Сумма</span>
-                    <span class="staking-active-val" id="stakeAmount">—</span>
-                </div>
-                <div class="staking-active-row">
-                    <span class="staking-active-label">Доход</span>
-                    <span class="staking-active-val green" id="stakeReward">—</span>
-                </div>
-                <div class="staking-active-row">
-                    <span class="staking-active-label">Осталось</span>
-                    <span class="staking-active-val" id="stakeTimer">—</span>
-                </div>
-                <button class="staking-claim-btn" id="stakeClaimBtn" onclick="claimStaking()" style="display:none;">
-                    <i class="fa-solid fa-coins"></i> Забрать награду
-                </button>
-            </div>
+        <div class="staking-plan" id="stakingPlan10" onclick="selectStakingPlan(10)">
+            <div class="staking-plan-days">10 дней</div>
+            <div class="staking-plan-rate">+10%</div>
+            <div class="staking-plan-bonus">+ 🦫 Capybara Rare</div>
+            <div class="staking-plan-min">мин. 300 000 MMO</div>
+        </div>
+
+        <!-- НОВЫЕ 14-дневные стейкинги -->
+        <div class="staking-plan" id="stakingPlan14" onclick="selectStakingPlan(14)">
+            <div class="staking-plan-days">14 дней</div>
+            <div class="staking-plan-rate">+10%</div>
+            <div class="staking-plan-bonus">+ 👕 Кросс (1 месяц)</div>
+            <div class="staking-plan-min">мин. 200 000 MMO</div>
+        </div>
+        <div class="staking-plan" id="stakingPlan28" onclick="selectStakingPlan(28)">
+            <div class="staking-plan-days">14 дней</div>
+            <div class="staking-plan-rate">+10%</div>
+            <div class="staking-plan-bonus">+ 🥷 Ниндзя (3 месяца)</div>
+            <div class="staking-plan-min">мин. 500 000 MMO</div>
+        </div>
+        <div class="staking-plan" id="stakingPlan56" onclick="selectStakingPlan(56)">
+            <div class="staking-plan-days">14 дней</div>
+            <div class="staking-plan-rate">+10%</div>
+            <div class="staking-plan-bonus">+ 👘 Любой скин (12 месяцев)</div>
+            <div class="staking-plan-min">мин. 1 000 000 MMO</div>
         </div>
     </div>
+    
+    <div id="activeStakingBlock" style="display:none;">
+        <div class="staking-active-title">⏳ Активные стейкинги</div>
+        <div class="staking-active-card" id="activeStakingsList">
+            <!-- Сюда будут добавляться все активные стейкинги -->
+        </div>
+    </div>
+</div>
 
     <div id="pendingRequests"></div>
 </div>
@@ -591,6 +685,12 @@
         <i class="fa-solid fa-wallet"></i>
         <span data-i18n="nav.wallet">Wallet</span>
     </div>
+    
+    <div class="nav-item" onclick="switchTab('raid')" id="nav-raid">
+    <i class="fa-solid fa-dragon"></i>
+    <span>Рейд</span>
+</div>
+    
 </div>
 
 <!-- OVERLAYS -->

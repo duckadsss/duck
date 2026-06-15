@@ -369,7 +369,8 @@ function applySkill(skillId, attacker, target, myTeam, enemyTeam, baseDamage) {
             break;
 
         case 'kraken_call':
-            // Урон всем врагам + восстановить 20% maxHP себе
+            // Урон всем врагам (включая основную цель) + восстановить 20% maxHP себе
+            result.damage = baseDamage;
             result.splashDamage = baseDamage;
             result.splashTargets = _getOtherAliveIndices(enemyTeam, enemyTeam.indexOf(target));
             result.healAmount = Math.floor(attacker.maxHp * 0.20);

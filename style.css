@@ -2661,3 +2661,332 @@ img {
     gap: 8px;
 }
 .arena-reset-btn:active { transform: scale(0.97); }
+
+/* ============================================
+   ФИЛЬТРЫ МАРКЕТПЛЕЙСА
+   ============================================ */
+.marketplace-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 16px;
+    padding: 4px 0;
+}
+
+.filter-btn {
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 20px;
+    color: var(--text2);
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'Orbitron', monospace;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.filter-btn:active {
+    transform: scale(0.95);
+}
+
+.filter-btn.active {
+    background: linear-gradient(135deg, var(--accent), var(--accent3));
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 0 8px rgba(124,58,237,0.4);
+}
+
+.filter-btn[data-filter="common"].active { background: linear-gradient(135deg, #64748b, #475569); }
+.filter-btn[data-filter="uncommon"].active { background: linear-gradient(135deg, #16a34a, #15803d); }
+.filter-btn[data-filter="rare"].active { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
+.filter-btn[data-filter="epic"].active { background: linear-gradient(135deg, #9333ea, #7e22ce); }
+.filter-btn[data-filter="legendary"].active { background: linear-gradient(135deg, #d97706, #b45309); }
+.filter-btn[data-filter="dust"].active { background: linear-gradient(135deg, #7c3aed, #6d28d9); }
+/* ============================================
+   RAID BOSS STYLES
+   ============================================ */
+
+.raid-boss-card {
+    background: linear-gradient(135deg, var(--surface), var(--surface2));
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 20px;
+    margin-bottom: 16px;
+}
+
+.raid-boss-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.raid-boss-icon {
+    font-size: 64px;
+    filter: drop-shadow(0 0 12px rgba(168,85,247,0.5));
+}
+
+.raid-boss-name {
+    font-family: 'Orbitron', monospace;
+    font-size: 20px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #fff, var(--accent3));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.raid-boss-stats {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    margin-bottom: 20px;
+    padding: 12px;
+    background: var(--bg2);
+    border-radius: 16px;
+}
+
+.raid-stat {
+    text-align: center;
+}
+
+.raid-stat .stat-icon {
+    font-size: 20px;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.raid-stat span:nth-child(2) {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent3);
+    display: block;
+}
+
+.raid-stat .stat-label {
+    font-size: 10px;
+    color: var(--text3);
+}
+
+.raid-timer {
+    background: rgba(168,85,247,0.1);
+    border: 1px solid rgba(168,85,247,0.2);
+    border-radius: 16px;
+    padding: 12px;
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.raid-timer-label {
+    font-size: 11px;
+    color: var(--text2);
+    margin-bottom: 4px;
+}
+
+.raid-timer-value {
+    font-family: 'Orbitron', monospace;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--legendary);
+}
+
+.raid-my-stats {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px;
+    background: rgba(168,85,247,0.1);
+    border-radius: 12px;
+    margin-bottom: 16px;
+}
+
+.my-damage, .my-attacks {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.my-damage i { color: var(--legendary); }
+.my-attacks i { color: var(--accent2); }
+
+.raid-join-btn {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: #fff;
+    font-family: 'Orbitron', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.raid-attack-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.raid-attack-btn {
+    padding: 14px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    color: #fff;
+    font-family: 'Orbitron', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.raid-attack-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.attack-info {
+    font-size: 10px;
+    color: var(--text3);
+    text-align: center;
+    padding: 8px;
+}
+
+.raid-turn-timer {
+    text-align: center;
+    font-size: 12px;
+    color: var(--legendary);
+    padding: 6px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 8px;
+}
+
+.raid-turn-timer span:last-child {
+    font-weight: 700;
+    font-size: 16px;
+}
+
+.raid-top-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.raid-top-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    background: var(--surface);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+}
+
+.raid-top-rank {
+    font-weight: 700;
+    color: var(--legendary);
+    min-width: 30px;
+}
+
+.raid-top-name {
+    flex: 1;
+    font-size: 13px;
+}
+
+.raid-top-damage {
+    font-family: 'Orbitron', monospace;
+    font-weight: 700;
+    color: var(--accent3);
+}
+
+.raid-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.raid-history-item {
+    padding: 12px;
+    background: var(--surface);
+    border-radius: 12px;
+    border-left: 3px solid var(--accent3);
+}
+
+.raid-history-name {
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.raid-history-details {
+    font-size: 11px;
+    color: var(--text2);
+}
+
+.pet-selector {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 12px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.pet-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.pet-option:hover {
+    background: rgba(168,85,247,0.1);
+}
+
+.pet-option.selected {
+    background: rgba(168,85,247,0.2);
+    border: 1px solid var(--accent3);
+}
+
+.pet-option-icon {
+    font-size: 32px;
+    width: 48px;
+    text-align: center;
+}
+
+.pet-option-info {
+    flex: 1;
+}
+
+.pet-option-name {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.pet-option-stats {
+    font-size: 10px;
+    color: var(--text2);
+    display: flex;
+    gap: 10px;
+    margin-top: 2px;
+}
+
+.pet-option-skill {
+    font-size: 9px;
+    color: var(--accent3);
+    margin-top: 2px;
+}
+
+.raid-taking-damage {
+    animation: raidDamage 0.3s ease;
+}
+
+@keyframes raidDamage {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.02); background: rgba(239,68,68,0.2); }
+    100% { transform: scale(1); }
+}

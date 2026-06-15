@@ -424,14 +424,14 @@ class ArenaBattleManager {
             }
             
             let attackerIndex = -1;
-            let attacker = null;
-            for (let i = 0; i < myTeam.length; i++) {
-                if (myTeam[i].isAlive) {
-                    attackerIndex = i;
-                    attacker = myTeam[i];
-                    break;
-                }
-            }
+let attacker = null;
+const aliveIndices = [];                        // ← массив для всех живых
+for (let i = 0; i < myTeam.length; i++) {
+    if (myTeam[i].isAlive) aliveIndices.push(i); // ← добавляем каждого живого
+}
+const randomIdx = Math.floor(Math.random() * aliveIndices.length); // ← случайный выбор
+attackerIndex = aliveIndices[randomIdx];        // ← берем случайного
+attacker = myTeam[attackerIndex];
             
             if (!attacker) {
                 battle.status = 'finished';
