@@ -3840,7 +3840,7 @@ function getRaidTime() {
 
 function getTodayRaidId() {
     const raidTime = getRaidTime();
-    return `raid_${raidTime.toISOString().slice(0, 16).replace('T', '_').replace(':', '-')}`;
+    return `raid_${raidTime.toISOString().slice(0, 16).replace('T', '_').replace(/:/g, '-')}`;
 }
 async function ensureRaidForToday() {
     const raidId = getTodayRaidId();
