@@ -5,7 +5,7 @@
 // ============================================================
 // CONFIG
 // ============================================================
-const API_URL = 'https://serv-production-765e.up.railway.app/';
+const API_URL = 'https://serv-production-765e.up.railway.app';
 
 // STAKING PLANS (вверху файла — доступен сразу при любом onclick)
 // script.js
