@@ -2990,3 +2990,94 @@ img {
     50% { transform: scale(1.02); background: rgba(239,68,68,0.2); }
     100% { transform: scale(1); }
 }
+/* Выбор питомца для рейда */
+.pet-selector-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 4px;
+}
+
+.pet-option-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.pet-option-card:hover {
+    background: rgba(168, 85, 247, 0.08);
+    transform: translateX(4px);
+}
+
+.pet-option-card.selected {
+    background: rgba(168, 85, 247, 0.15);
+    border-color: var(--accent3);
+    box-shadow: 0 0 0 1px var(--accent3);
+}
+
+.pet-option-icon {
+    font-size: 44px;
+    min-width: 56px;
+    text-align: center;
+}
+
+.pet-option-icon img {
+    width: 44px;
+    height: 44px;
+    object-fit: contain;
+}
+
+.pet-option-info {
+    flex: 1;
+}
+
+.pet-option-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+}
+
+.pet-option-stats {
+    display: flex;
+    gap: 12px;
+    font-size: 10px;
+    color: var(--text2);
+    margin-bottom: 4px;
+}
+
+.pet-stat {
+    background: rgba(255,255,255,0.05);
+    padding: 2px 8px;
+    border-radius: 20px;
+}
+
+.pet-option-skill {
+    font-size: 10px;
+    color: var(--accent3);
+    background: rgba(168, 85, 247, 0.1);
+    padding: 2px 8px;
+    border-radius: 20px;
+    display: inline-block;
+}
+
+.pet-option-check {
+    font-size: 20px;
+    color: var(--accent3);
+}
+
+.rarity-common { color: var(--common); }
+.rarity-uncommon { color: var(--uncommon); }
+.rarity-rare { color: var(--rare); }
+.rarity-epic { color: var(--epic); }
+.rarity-legendary { color: var(--legendary); }
+.rarity-mythic { color: var(--mythic); }

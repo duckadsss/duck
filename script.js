@@ -4161,29 +4161,39 @@ function updateRaidTimer() {
     const timerLabel = document.getElementById('raidTimerLabel');
     const timerValue = document.getElementById('raidTimerValue');
     
-    if (!timerValue) return;
+    if (!timerValue || !currentRaid) return;
     
     const now = new Date();
     let targetTime = null;
     let label = '';
     
+    // Определяем фазу рейда
     if (currentRaid.phase === 'registration') {
         targetTime = new Date(currentRaid.raidStartTime);
-        label = 'До начала рейда';
+        label = '⏳ До начала рейда';
     } else if (currentRaid.phase === 'fighting') {
         targetTime = new Date(currentRaid.raidEndTime);
-        label = 'До завершения';
+        label = '⚔️ До завершения';
+    } else if (currentRaid.phase === 'finished') {
+        timerValue.textContent = '✅ Рейд завершён';
+        if (timerLabel) timerLabel.textContent = '🏆 Итоги';
+        return;
     } else {
-        timerValue.textContent = 'Завершён';
-        if (timerLabel) timerLabel.textContent = 'Рейд окончен';
+        timerValue.textContent = '📅 Ожидание';
+        if (timerLabel) timerLabel.textContent = 'Следующий рейд';
         return;
     }
     
     if (timerLabel) timerLabel.textContent = label;
     
     const diff = targetTime.getTime() - now.getTime();
+    
     if (diff <= 0) {
-        timerValue.textContent = 'ИДЁТ БОЙ!';
+        if (currentRaid.phase === 'registration') {
+            timerValue.textContent = '🔥 НАЧИНАЕТСЯ!';
+        } else {
+            timerValue.textContent = '⚔️ БОЙ ИДЁТ!';
+        }
         return;
     }
     
@@ -4191,7 +4201,13 @@ function updateRaidTimer() {
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     const seconds = Math.floor((diff % (1000 * 60)) / 1000);
     
-    timerValue.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    if (hours > 0) {
+        timerValue.textContent = `${hours}ч ${minutes}м ${seconds}с`;
+    } else if (minutes > 0) {
+        timerValue.textContent = `${minutes}м ${seconds}с`;
+    } else {
+        timerValue.textContent = `${seconds}с`;
+    }
 }
 
 function updateAttackButton() {
@@ -4231,42 +4247,55 @@ function renderPetSelector() {
     const container = document.getElementById('raidPetSelector');
     if (!container) return;
     
-    const creatures = state.inventory.filter(item => {
+    // Фильтруем только тех питомцев, которые есть в инвентаре (count >= 1)
+    const availablePets = state.inventory.filter(item => {
         const c = getCreature(item.creatureId);
         return c && item.count >= 1;
     });
     
-    if (creatures.length === 0) {
-        container.innerHTML = '<div class="pet-selector" style="text-align:center;color:#ef4444">⚠️ У вас нет существ для участия в рейде!</div>';
+    if (availablePets.length === 0) {
+        container.innerHTML = `
+            <div style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 12px; padding: 16px; text-align: center;">
+                <i class="fa-solid fa-circle-exclamation" style="font-size: 24px; color: #ef4444; margin-bottom: 8px; display: block;"></i>
+                <div style="font-size: 13px; color: #ef4444; margin-bottom: 4px;">Нет существ для участия!</div>
+                <div style="font-size: 11px; color: #94a3b8;">Откройте капсулу, чтобы получить питомца</div>
+            </div>
+        `;
         return;
     }
     
     const selectedPetId = localStorage.getItem('raid_selected_pet');
     
-    container.innerHTML = `
-        <div class="pet-selector">
-            <div style="font-size:11px;color:#94a3b8;margin-bottom:8px">Выберите питомца для рейда:</div>
-            ${creatures.map(item => {
-                const c = getCreature(item.creatureId);
-                const isSelected = selectedPetId === c.id;
-                const skill = window.ARENA_SKILLS_MAP?.[c.id];
-                return `
-                    <div class="pet-option ${isSelected ? 'selected' : ''}" onclick="selectRaidPet('${c.id}')">
-                        <div class="pet-option-icon">${getIconHtml(c)}</div>
-                        <div class="pet-option-info">
-                            <div class="pet-option-name">${escapeHtml(c.name)}</div>
-                            <div class="pet-option-stats">
-                                <span>⚔️ ${c.incomeBase * 2} урона</span>
-                                <span>⭐ ${c.rarity}</span>
-                            </div>
-                            ${skill ? `<div class="pet-option-skill">✨ ${skill.name} (${Math.round(skill.chance * 100)}%)</div>` : ''}
-                        </div>
-                        ${isSelected ? '<div style="color:#a855f7">✓</div>' : ''}
+    // Если выбранный питомец больше не в инвентаре — очищаем выбор
+    if (selectedPetId && !availablePets.some(p => p.creatureId === selectedPetId)) {
+        localStorage.removeItem('raid_selected_pet');
+    }
+    
+    const currentSelected = localStorage.getItem('raid_selected_pet');
+    
+    container.innerHTML = availablePets.map(item => {
+        const c = getCreature(item.creatureId);
+        const isSelected = currentSelected === c.id;
+        const skill = window.ARENA_SKILLS_MAP?.[c.id];
+        
+        // Базовый урон для рейда = incomeBase * 2
+        const raidAttack = (c.incomeBase * 2) || 20;
+        
+        return `
+            <div class="pet-option-card ${isSelected ? 'selected' : ''}" onclick="selectRaidPet('${c.id}')">
+                <div class="pet-option-icon">${getIconHtml(c)}</div>
+                <div class="pet-option-info">
+                    <div class="pet-option-name">${escapeHtml(c.name)}</div>
+                    <div class="pet-option-stats">
+                        <span class="pet-stat">⚔️ ${raidAttack} урона</span>
+                        <span class="pet-stat rarity-${c.rarity}">${c.rarity}</span>
                     </div>
-                `;
-            }).join('')}
-        </div>
-    `;
+                    ${skill ? `<div class="pet-option-skill">✨ ${skill.name} (${Math.round(skill.chance * 100)}%)</div>` : ''}
+                </div>
+                ${isSelected ? '<div class="pet-option-check"><i class="fa-solid fa-circle-check"></i></div>' : ''}
+            </div>
+        `;
+    }).join('');
 }
 
 function selectRaidPet(petId) {

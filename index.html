@@ -485,12 +485,12 @@
 
 <!-- Вкладка Рейд -->
 <div class="tab-content" id="tab-raid">
-    <div class="section-title"><i class="fa-solid fa-dragon"></i> Рейд Босс</div>
+    <div class="section-title"><i class="fa-solid fa-dragon"></i> Ежедневный Рейд</div>
     
     <div id="raidBossCard" class="raid-boss-card">
         <div class="raid-boss-header">
-            <div class="raid-boss-icon" id="raidBossIcon">🐉</div>
-            <div class="raid-boss-name" id="raidBossName">Ежедневный Рейд</div>
+            <div class="raid-boss-icon">🐉</div>
+            <div class="raid-boss-name">Ежедневный Рейд</div>
         </div>
         
         <div class="raid-boss-stats">
@@ -527,16 +527,26 @@
             </div>
         </div>
         
-        <div id="raidNotJoined" class="raid-not-joined">
-            <div id="raidPetSelector" style="margin-bottom: 12px;"></div>
+        <!-- БЛОК ВЫБОРА ПИТОМЦА - ВИДИМ, КОГДА ИГРОК НЕ ЗАПИСАН -->
+        <div id="raidNotJoined">
+            <div style="font-size: 12px; color: var(--text2); margin-bottom: 8px;">
+                <i class="fa-solid fa-paw"></i> Выберите питомца для участия:
+            </div>
+            <div id="raidPetSelector" class="pet-selector-grid">
+                <!-- Сюда динамически подгрузятся питомцы из инвентаря -->
+            </div>
             <button class="raid-join-btn" onclick="joinRaid()">
                 <i class="fa-solid fa-ticket"></i> Записаться (100 MMO)
             </button>
         </div>
         
+        <!-- БЛОК ДЛЯ ЗАПИСАВШИХСЯ -->
         <div id="raidJoined" style="display: none;">
             <div class="raid-attack-controls">
-                <div class="attack-power-label">Ваш питомец: <span id="raidMyPetName"></span></div>
+                <div class="attack-power-label">
+                    <i class="fa-solid fa-paw"></i> Ваш питомец: 
+                    <span id="raidMyPetName"></span>
+                </div>
                 <button class="raid-attack-btn" onclick="attackRaidBoss()" id="raidAttackBtn">
                     <i class="fa-solid fa-sword"></i> Атаковать!
                 </button>
@@ -557,7 +567,7 @@
     <div class="section-title"><i class="fa-solid fa-history"></i> История рейдов</div>
     <div id="raidHistoryList" class="raid-history-list"></div>
 </div>
-
+    
 <!-- Вкладка Wallet -->
 <div class="tab-content" id="tab-wallet">
     <div class="wallet-hero">
