@@ -3825,20 +3825,23 @@ app.get('/api/wallet/history', authMiddleware, async (req, res) => {
 
 function getRaidTime() {
     const now = new Date();
-    const msk = new Date(now.getTime() + 3 * 60 * 60 * 1000);
-    let raidDate = new Date(msk);
-    raidDate.setHours(19, 0, 0, 0);
-    if (msk > raidDate) {
-        raidDate.setDate(raidDate.getDate() + 1);
+    const next = new Date(now);
+    next.setSeconds(0, 0);
+    const minutes = next.getMinutes();
+    const nextSlot = Math.ceil((minutes + 1) / 5) * 5;
+    if (nextSlot >= 60) {
+        next.setHours(next.getHours() + 1);
+        next.setMinutes(0);
+    } else {
+        next.setMinutes(nextSlot);
     }
-    return new Date(raidDate.getTime() - 3 * 60 * 60 * 1000);
+    return next;
 }
 
 function getTodayRaidId() {
     const raidTime = getRaidTime();
-    return `raid_${raidTime.toISOString().slice(0, 10)}`;
+    return `raid_${raidTime.toISOString().slice(0, 16).replace('T', '_').replace(':', '-')}`;
 }
-
 async function ensureRaidForToday() {
     const raidId = getTodayRaidId();
     let raid = await Raid.findOne({ raidId });
