@@ -1121,7 +1121,7 @@ async function watchAd() {
             setTimeout(() => showToast('🦘 Получен Kangaroo Uncommon за 200 просмотров рекламы!', '🎉'), 1500);
         }
         
-        updateAdsStatus();
+        updateAdsStatus(); 
         
         if (btn && res.adsAvailable > 0 && state.adsCooldown === 0) { btn.style.opacity = '1'; btn.disabled = false; }
         
@@ -3777,6 +3777,7 @@ await loadCreaturesFromServer();
     });
     window.addEventListener('beforeunload', () => { if (arenaClient) arenaClient.disconnectSocket(); });
     window.addEventListener('online', () => { if ((arenaClient?.isSearching() || arenaClient?.isBattleActive()) && !arenaClient?.isConnected()) arenaClient?.connectSocket(state.token, API_URL); });
+    if (state.user) initRaid();
 }
 
 function renderAll() {
@@ -4472,6 +4473,8 @@ window.switchTab = function(tab) {
 function initRaid() {
     loadRaidData();
     initRaidWebSocket();
+    setInterval(updateRaidTimer, 1000); // ← добавить
+    
     
     const attackPowerSlider = document.getElementById('attackPower');
     if (attackPowerSlider) {
@@ -4482,13 +4485,7 @@ function initRaid() {
 }
 
 // Вызываем после загрузки пользователя
-const originalInitTelegramApp = window.initTelegramApp;
-window.initTelegramApp = async function() {
-    await originalInitTelegramApp();
-    if (state.user) {
-        initRaid();
-    }
-};
+
 
 // ========== ЭТИ СТРОКИ УЖЕ БЫЛИ, НИЧЕГО НЕ МЕНЯЙТЕ ==========
 window.selectStakingPlan = selectStakingPlan;
