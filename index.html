@@ -645,12 +645,27 @@
 <!-- ===== RAID RESULTS MODAL ===== -->
 <div id="raidResultsModal" class="raid-results-modal" style="display:none;">
     <div class="raid-results-box">
-        <div class="raid-results-title">🏆 Рейд завершён!</div>
-        <div class="raid-results-subtitle" id="raidResultsSubtitle"></div>
-        <div class="raid-results-list" id="raidResultsList"></div>
-        <div class="raid-results-my-reward" id="raidResultsMyReward"></div>
-        <button class="raid-results-close" onclick="closeRaidResults()">
-            <i class="fa-solid fa-check"></i> Забрать награды
+        <!-- Заголовок -->
+        <div class="rrm-header">
+            <div class="rrm-trophy">🏆</div>
+            <div class="rrm-title">Рейд завершён!</div>
+            <div class="rrm-subtitle" id="raidResultsSubtitle"></div>
+        </div>
+
+        <!-- Моя награда (выделено) -->
+        <div class="rrm-my-reward" id="raidResultsMyReward" style="display:none;">
+            <div class="rrm-my-label">Ваша награда</div>
+            <div class="rrm-my-amount" id="raidResultsMyAmount"></div>
+            <div class="rrm-my-stats" id="raidResultsMyStats"></div>
+        </div>
+
+        <!-- Таблица участников -->
+        <div class="rrm-table-title">Таблица урона</div>
+        <div class="rrm-list" id="raidResultsList"></div>
+
+        <!-- Кнопка -->
+        <button class="rrm-close-btn" onclick="closeRaidResults()">
+            <i class="fa-solid fa-coins"></i> Забрать награды
         </button>
     </div>
 </div>

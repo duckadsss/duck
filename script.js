@@ -4552,33 +4552,58 @@ async function loadRaidHistory() {
 
 function showRaidResults(data) {
     const modal = document.getElementById('raidResultsModal');
-    const list = document.getElementById('raidResultsList');
-    const subtitle = document.getElementById('raidResultsSubtitle');
-    const myReward = document.getElementById('raidResultsMyReward');
     if (!modal) return;
 
-    subtitle.textContent = `Участников: ${data.totalParticipants || 0} | Пул: ${(data.totalPrizePool || 0).toLocaleString()} MMO`;
-
     const ranks = data.topDamage || [];
-    list.innerHTML = ranks.map((p, i) => `
-        <div class="raid-result-item">
-            <div class="raid-result-rank">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</div>
-            <div class="raid-result-name">${escapeHtml(p.username)}</div>
-            <div class="raid-result-damage">${p.damage} урон</div>
-            <div class="raid-result-reward">+${p.reward} MMO</div>
-        </div>
-    `).join('');
+    const myId = String(state.user?.telegramId || state.user?.id || '');
+    const myEntry = ranks.find(p => String(p.telegramId) === myId);
+    const maxDmg = ranks[0]?.damage || 1;
 
-    const myEntry = ranks.find(p => p.telegramId === String(state.user?.telegramId));
-    if (myEntry) {
-        myReward.style.display = 'block';
-        myReward.innerHTML = `🏆 Ваша награда: <span style="color:#22c55e">+${myEntry.reward} MMO</span>`;
-    } else {
-        myReward.style.display = 'none';
+    // Subtitle
+    const subtitle = document.getElementById('raidResultsSubtitle');
+    if (subtitle) {
+        subtitle.textContent = `${data.totalParticipants || 0} участников · Пул: ${(data.totalPrizePool || 0).toLocaleString()} MMO`;
+    }
+
+    // My reward block
+    const myRewardEl = document.getElementById('raidResultsMyReward');
+    const myAmountEl = document.getElementById('raidResultsMyAmount');
+    const myStatsEl = document.getElementById('raidResultsMyStats');
+    if (myEntry && myRewardEl) {
+        myRewardEl.style.display = 'block';
+        if (myAmountEl) myAmountEl.textContent = `+${myEntry.reward.toLocaleString()} MMO`;
+        if (myStatsEl) {
+            const myRank = ranks.indexOf(myEntry) + 1;
+            myStatsEl.textContent = `#${myRank} место · ${myEntry.damage.toLocaleString()} урона нанесено`;
+        }
+    } else if (myRewardEl) {
+        myRewardEl.style.display = 'none';
+    }
+
+    // Table
+    const list = document.getElementById('raidResultsList');
+    if (list) {
+        list.innerHTML = ranks.map((p, i) => {
+            const isMe = String(p.telegramId) === myId;
+            const rankIcon = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`;
+            const pct = Math.round((p.damage / maxDmg) * 100);
+            return `<div class="rrm-item rank-${i+1}${isMe ? ' is-me' : ''}">
+                <div class="rrm-dmg-bar" style="width:${pct}%"></div>
+                <div class="rrm-rank">${rankIcon}</div>
+                <div class="rrm-name">${escapeHtml(p.username)}${isMe ? '<span class="rrm-me-badge">ВЫ</span>' : ''}</div>
+                <div class="rrm-stats">
+                    <span class="rrm-damage">⚡ ${p.damage.toLocaleString()}</span>
+                    <span class="rrm-reward">+${p.reward.toLocaleString()} MMO</span>
+                </div>
+            </div>`;
+        }).join('');
     }
 
     modal.style.display = 'flex';
     closeRaidBattle();
+
+    // Обновляем баланс после получения наград
+    setTimeout(() => refreshUserProfile(), 1000);
 }
 
 function closeRaidResults() {
