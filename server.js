@@ -3829,7 +3829,7 @@ function getRaidTime() {
     const next = new Date(now);
     next.setSeconds(0, 0);
     const minutes = next.getMinutes();
-    const nextSlot = Math.ceil((minutes + 1) / 5) * 5;
+    const nextSlot = Math.ceil((minutes + 1) / 1) * 1;
     if (nextSlot >= 60) {
         next.setHours(next.getHours() + 1);
         next.setMinutes(0);
