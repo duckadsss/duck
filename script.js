@@ -4362,7 +4362,7 @@ function updateRaidTurnBar() {
     const wrap = document.getElementById('rbsTurnBarWrap');
     const bar = document.getElementById('rbsTurnBar');
     const sec = document.getElementById('raidTurnSeconds');
-    const timerEl = document.getElementById('rbsTurnTimer');
+    const timerEl = document.getElementById('rbsTurnTimer') || document.querySelector('.rbs-turn-timer-val');
 
     if (!currentRaid?.turnEndsAt) {
         if (wrap) wrap.style.display = 'none';
@@ -4379,7 +4379,7 @@ function updateRaidTurnBar() {
         bar.style.background = timeLeft <= 5 ? '#ef4444' : '#f59e0b';
     }
     if (sec) sec.textContent = timeLeft;
-    if (timerEl) timerEl.textContent = `${timeLeft}с`;
+    if (timerEl) timerEl.textContent = `⏱ ${timeLeft}с`;
 }
 
 function startRaidTurnTimer() {

@@ -555,47 +555,55 @@
         <div class="rbs-title">⚔️ Ежедневный Рейд</div>
         <div class="rbs-turn-info">
             Ход <span id="rbsTurn">1</span>/15
-            <span id="rbsTurnTimer" class="rbs-turn-timer"></span>
+            <span id="rbsTurnTimer" class="rbs-turn-timer-val"></span>
         </div>
     </div>
 
-    <!-- Карточки: Босс vs Питомец -->
+    <!-- Карточки: сверху босс, снизу питомец -->
     <div class="rbs-battle-area">
 
         <!-- Карточка босса -->
         <div class="rbs-card rbs-boss-card" id="rbsBossCard">
-            <div class="rbs-card-label">БОСС</div>
-            <div class="rbs-card-icon" id="rbsBossIcon">🐉</div>
-            <div class="rbs-card-name">Дракон Апокалипсиса</div>
-            <div class="rbs-hp-bar-wrap">
-                <div class="rbs-hp-bar" id="rbsBossHp" style="width:100%"></div>
-            </div>
-            <div class="rbs-hp-label"><span id="rbsBossHpVal">∞</span> HP</div>
-            <div class="rbs-card-stats">
-                <span>👥 <span id="rbsParticipants">0</span></span>
-                <span>💰 <span id="rbsPrizePool">0</span></span>
+            <div class="rbs-card-badge rbs-badge-boss">БОСС</div>
+            <div class="rbs-card-body">
+                <div class="rbs-big-icon" id="rbsBossIcon">🐉</div>
+                <div class="rbs-card-info">
+                    <div class="rbs-card-name">Дракон Апокалипсиса</div>
+                    <div class="rbs-hp-bar-wrap">
+                        <div class="rbs-hp-bar" id="rbsBossHp" style="width:100%"></div>
+                    </div>
+                    <div class="rbs-card-stats">
+                        <span>👥 <span id="rbsParticipants">0</span> участников</span>
+                        <span>💰 <span id="rbsPrizePool">0</span> MMO</span>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <div class="rbs-vs">VS</div>
+        <div class="rbs-vs-row"><span class="rbs-vs">⚔️ VS ⚔️</span></div>
 
         <!-- Карточка питомца -->
         <div class="rbs-card rbs-pet-card" id="rbsPetCard">
-            <div class="rbs-card-label">ВАШ</div>
-            <div class="rbs-card-icon" id="rbsPetIcon">🧬</div>
-            <div class="rbs-card-name" id="rbsPetName">—</div>
-            <div class="rbs-card-stats">
-                <span>⚡ <span id="rbsMyDamage">0</span> урон</span>
-                <span>👊 <span id="rbsMyAttacks">0</span> атак</span>
+            <div class="rbs-card-badge rbs-badge-pet">ВАШ ПИТОМЕЦ</div>
+            <div class="rbs-card-body">
+                <div class="rbs-big-icon" id="rbsPetIcon">🧬</div>
+                <div class="rbs-card-info">
+                    <div class="rbs-card-name" id="rbsPetName">—</div>
+                    <div class="rbs-card-stats">
+                        <span>⚡ <span id="rbsMyDamage">0</span> урон</span>
+                        <span>👊 <span id="rbsMyAttacks">0</span> атак</span>
+                    </div>
+                    <!-- Таймер хода -->
+                    <div class="rbs-turn-bar-wrap" id="rbsTurnBarWrap" style="display:none;">
+                        <div class="rbs-turn-bar" id="rbsTurnBar" style="width:100%"></div>
+                        <div class="rbs-turn-seconds"><span id="raidTurnSeconds">20</span>с до конца хода</div>
+                    </div>
+                </div>
             </div>
-            <!-- КНОПКА АТАКИ в карточке -->
+            <!-- КНОПКА АТАКИ -->
             <button class="rbs-attack-btn" id="raidAttackBtn" onclick="attackRaidBoss()">
                 <i class="fa-solid fa-sword"></i> Атаковать!
             </button>
-            <div class="rbs-turn-bar-wrap" id="rbsTurnBarWrap" style="display:none;">
-                <div class="rbs-turn-bar" id="rbsTurnBar" style="width:100%"></div>
-                <div class="rbs-turn-seconds"><span id="raidTurnSeconds">20</span>с</div>
-            </div>
         </div>
     </div>
 

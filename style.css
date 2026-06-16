@@ -3095,12 +3095,13 @@ img {
     overflow: hidden;
 }
 
+/* Header */
 .rbs-header {
     display: flex;
     align-items: center;
     gap: 10px;
     padding: 12px 16px;
-    background: rgba(139,92,246,0.12);
+    background: rgba(139,92,246,0.1);
     border-bottom: 1px solid rgba(139,92,246,0.2);
     flex-shrink: 0;
 }
@@ -3126,141 +3127,134 @@ img {
     font-size: 12px;
     color: var(--text2);
     text-align: right;
+    line-height: 1.4;
 }
-.rbs-turn-timer {
+.rbs-turn-timer-val {
     display: block;
-    font-size: 11px;
+    font-size: 13px;
+    font-weight: 700;
     color: #f59e0b;
 }
 
-/* Battle area */
+/* Battle area — vertical stack */
 .rbs-battle-area {
     display: flex;
-    align-items: stretch;
-    gap: 8px;
-    padding: 14px 12px;
+    flex-direction: column;
+    gap: 0;
+    padding: 12px 12px 4px;
     flex-shrink: 0;
 }
-.rbs-vs {
-    font-family: 'Orbitron', monospace;
-    font-size: 18px;
-    font-weight: 900;
-    color: var(--accent);
+
+.rbs-vs-row {
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
-    text-shadow: 0 0 12px rgba(139,92,246,0.6);
+    padding: 6px 0;
 }
+.rbs-vs {
+    font-family: 'Orbitron', monospace;
+    font-size: 14px;
+    font-weight: 900;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    text-shadow: 0 0 12px rgba(139,92,246,0.5);
+}
+
+/* Cards */
 .rbs-card {
-    flex: 1;
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: 16px;
-    padding: 12px 10px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
+    padding: 12px 14px;
     position: relative;
     overflow: hidden;
 }
 .rbs-boss-card {
-    border-color: rgba(239,68,68,0.3);
-    background: rgba(239,68,68,0.05);
+    border-color: rgba(239,68,68,0.35);
+    background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(30,10,10,0.3));
 }
 .rbs-pet-card {
-    border-color: rgba(139,92,246,0.3);
-    background: rgba(139,92,246,0.05);
+    border-color: rgba(139,92,246,0.35);
+    background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(10,10,30,0.3));
 }
-.rbs-card-label {
+
+.rbs-card-badge {
     font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    color: var(--text3);
-    position: absolute;
-    top: 8px;
-    left: 10px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    padding: 2px 8px;
+    border-radius: 20px;
+    display: inline-block;
+    margin-bottom: 10px;
 }
-.rbs-card-icon {
-    font-size: 48px;
+.rbs-badge-boss {
+    background: rgba(239,68,68,0.2);
+    color: #f87171;
+    border: 1px solid rgba(239,68,68,0.3);
+}
+.rbs-badge-pet {
+    background: rgba(139,92,246,0.2);
+    color: #c4b5fd;
+    border: 1px solid rgba(139,92,246,0.3);
+}
+
+/* Card body: icon left, info right */
+.rbs-card-body {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+.rbs-big-icon {
+    font-size: 64px;
     line-height: 1;
-    margin-top: 6px;
+    flex-shrink: 0;
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.5));
 }
-.rbs-card-icon img {
-    width: 56px;
-    height: 56px;
+.rbs-big-icon img {
+    width: 72px;
+    height: 72px;
     object-fit: contain;
 }
+.rbs-card-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
 .rbs-card-name {
-    font-size: 11px;
-    font-weight: 700;
+    font-size: 15px;
+    font-weight: 800;
     color: var(--text);
-    text-align: center;
     line-height: 1.2;
 }
 .rbs-hp-bar-wrap {
     width: 100%;
-    height: 6px;
+    height: 8px;
     background: rgba(255,255,255,0.08);
-    border-radius: 4px;
+    border-radius: 6px;
     overflow: hidden;
-    margin-top: 2px;
 }
 .rbs-hp-bar {
     height: 100%;
     background: linear-gradient(90deg, #ef4444, #f97316);
-    border-radius: 4px;
-    transition: width 0.4s ease;
-}
-.rbs-hp-label {
-    font-size: 10px;
-    color: var(--text3);
+    border-radius: 6px;
+    transition: width 0.5s ease;
 }
 .rbs-card-stats {
     display: flex;
-    gap: 8px;
-    font-size: 11px;
-    color: var(--text2);
     flex-wrap: wrap;
-    justify-content: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text2);
 }
 
-/* Attack button */
-.rbs-attack-btn {
-    width: 100%;
-    padding: 10px 8px;
-    background: linear-gradient(135deg, #8b5cf6, #6d28d9);
-    border: none;
-    border-radius: 12px;
-    color: #fff;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    margin-top: 4px;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-}
-.rbs-attack-btn:disabled {
-    background: rgba(255,255,255,0.08);
-    color: var(--text3);
-    cursor: not-allowed;
-}
-.rbs-attack-btn:not(:disabled):active {
-    transform: scale(0.96);
-}
-
-/* Turn progress bar */
+/* Turn timer bar inside pet card */
 .rbs-turn-bar-wrap {
     width: 100%;
-    position: relative;
-    margin-top: 4px;
 }
 .rbs-turn-bar {
-    height: 4px;
+    height: 5px;
     background: #f59e0b;
     border-radius: 4px;
     transition: width 1s linear;
@@ -3268,8 +3262,37 @@ img {
 .rbs-turn-seconds {
     font-size: 10px;
     color: #f59e0b;
-    text-align: center;
-    margin-top: 2px;
+    margin-top: 3px;
+}
+
+/* Attack button — full width under card body */
+.rbs-attack-btn {
+    width: 100%;
+    padding: 13px 8px;
+    background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.15s;
+    box-shadow: 0 4px 16px rgba(109,40,217,0.4);
+}
+.rbs-attack-btn:disabled {
+    background: rgba(255,255,255,0.07);
+    color: var(--text3);
+    cursor: not-allowed;
+    box-shadow: none;
+}
+.rbs-attack-btn:not(:disabled):active {
+    transform: scale(0.97);
+    box-shadow: 0 2px 8px rgba(109,40,217,0.3);
 }
 
 /* Battle log */
@@ -3278,7 +3301,7 @@ img {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    padding: 0 12px 12px;
+    padding: 8px 12px 12px;
 }
 .rbs-log-title {
     font-size: 11px;
@@ -3291,7 +3314,7 @@ img {
     flex: 1;
     overflow-y: auto;
     display: flex;
-    flex-direction: column-reverse;
+    flex-direction: column;
     gap: 4px;
 }
 .rbs-log-entry {
@@ -3301,14 +3324,15 @@ img {
     font-size: 12px;
     color: var(--text2);
     animation: rbsEntryIn 0.2s ease;
+    flex-shrink: 0;
 }
 .rbs-log-entry.is-crit {
-    background: rgba(234,179,8,0.12);
+    background: rgba(234,179,8,0.1);
     border-left: 2px solid #eab308;
     color: #fde68a;
 }
 .rbs-log-entry.is-skill {
-    background: rgba(139,92,246,0.12);
+    background: rgba(139,92,246,0.1);
     border-left: 2px solid #8b5cf6;
     color: #c4b5fd;
 }
@@ -3322,23 +3346,24 @@ img {
     color: var(--text3);
     font-style: italic;
     font-size: 11px;
+    background: transparent;
 }
 @keyframes rbsEntryIn {
-    from { opacity: 0; transform: translateY(-4px); }
+    from { opacity: 0; transform: translateY(-6px); }
     to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Take-damage shake */
+/* Boss shake on hit */
 .rbs-boss-shake {
-    animation: bossShake 0.3s ease;
+    animation: bossShake 0.25s ease;
 }
 @keyframes bossShake {
-    0%,100% { transform: translateX(0); }
-    25% { transform: translateX(-6px); }
-    75% { transform: translateX(6px); }
+    0%,100% { transform: translateX(0) scale(1); }
+    30% { transform: translateX(-8px) scale(1.02); }
+    70% { transform: translateX(8px) scale(1.02); }
 }
 
-/* Raid waiting info */
+/* Raid waiting info in lobby */
 .raid-waiting-info {
     font-size: 13px;
     color: var(--text2);
