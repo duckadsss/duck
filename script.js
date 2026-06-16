@@ -4448,13 +4448,15 @@ function startRaidTurnTimer() {
     raidTurnTimerInterval = setInterval(() => {
         if (!currentRaid?.turnEndsAt) return;
         const timeLeft = Math.max(0, Math.floor((currentRaid.turnEndsAt - Date.now()) / 1000));
-        updateRaidTurnBar();
-        updateRaidAttackBtn();
+        if (raidBattleOpen) {
+            updateRaidTurnBar();
+            updateRaidAttackBtn();
+        }
         if (timeLeft <= 0) {
             clearInterval(raidTurnTimerInterval);
             raidTurnTimerInterval = null;
         }
-    }, 1000);
+    }, 500);
 }
 
 function renderRaidLeaderboard(leaderboard) {
@@ -4645,46 +4647,67 @@ function updateHomeBossStatus() {
     }
 }
 
+function getRaidSocket() {
+    return arenaClient?.state?.socket || null;
+}
+
+let raidSocketInitialized = false;
+
 function initRaidWebSocket() {
-    if (window.io && window.socket) {
-        window.socket.on('raid_phase_update', (data) => {
-            if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
-                loadRaidData();
-                if (data.message) showToast(data.message, '⚔️');
-                if (data.phase === 'fighting' && currentRaid?.isRegistered) {
-                    addRaidLogEntry('⚔️ БОЙ НАЧАЛСЯ! Атакуйте босса!', 'system');
-                }
-            }
+    const tryInit = () => {
+        const socket = getRaidSocket();
+        if (!socket || !socket.connected) {
+            setTimeout(tryInit, 1500);
+            return;
+        }
+        if (raidSocketInitialized) return;
+        raidSocketInitialized = true;
+
+        socket.off('raid_phase_update');
+        socket.off('raid_turn_start');
+        socket.off('raid_attack');
+        socket.off('raid_end');
+
+        socket.on('raid_phase_update', (data) => {
+            loadRaidData();
+            if (data.message) showToast(data.message, '⚔️');
         });
 
-        window.socket.on('raid_turn_start', (data) => {
-            if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
-                currentRaid.currentTurn = data.turn;
-                currentRaid.turnEndsAt = Number(data.turnEndsAt);
-                if (data.leaderboard) renderRaidLeaderboard(data.leaderboard);
-                if (raidBattleOpen) updateRaidBattleScreen();
-                showToast(`⚔️ Ход ${data.turn}/15 начался!`, '⚔️');
-                startRaidTurnTimer();
+        socket.on('raid_turn_start', (data) => {
+            if (!currentRaid) return;
+            if (String(data.raidId) !== String(currentRaid._id)) return;
+            currentRaid.currentTurn = data.turn;
+            currentRaid.turnEndsAt = Number(data.turnEndsAt);
+            if (data.leaderboard) renderRaidLeaderboard(data.leaderboard);
+            if (raidBattleOpen) {
+                updateRaidBattleScreen();
+                updateRaidAttackBtn();
             }
+            showToast(`⚔️ Ход ${data.turn}/15 начался!`, '⚔️');
+            startRaidTurnTimer();
         });
 
-        window.socket.on('raid_attack', (data) => {
-            if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
-                if (data.leaderboard) renderRaidLeaderboard(data.leaderboard);
-                if (data.isCrit) showToast(`💥 ${data.attackerName}: ${data.damage} КРИТ!`, '💥');
-                loadRaidData();
-            }
+        socket.on('raid_attack', (data) => {
+            if (!currentRaid) return;
+            if (String(data.raidId) !== String(currentRaid._id)) return;
+            if (data.leaderboard) renderRaidLeaderboard(data.leaderboard);
+            if (data.isCrit) showToast(`💥 ${data.attackerName}: ${data.damage} КРИТ!`, '💥');
+            loadRaidData();
         });
 
-        window.socket.on('raid_end', (data) => {
+        socket.on('raid_end', (data) => {
             showToast('🏆 Рейд завершён! Награды распределены!', '🏆');
+            raidSocketInitialized = false;
             if (data.results) {
                 showRaidResults(data.results);
             } else {
                 loadRaidData();
             }
         });
-    }
+
+        console.log('✅ Raid WebSocket handlers registered');
+    };
+    tryInit();
 }
 
 
@@ -4821,12 +4844,17 @@ window.switchTab = function(tab) {
 };
 
 function initRaid() {
+    raidSocketInitialized = false;
     loadRaidData();
     initRaidWebSocket();
     setInterval(updateRaidTimer, 1000);
     setInterval(updateHomeBossStatus, 10000);
+    // Обновляем кнопку и таймер хода каждые 500мс
     setInterval(() => {
-        if (raidBattleOpen) updateRaidTurnBar();
+        if (raidBattleOpen) {
+            updateRaidTurnBar();
+            updateRaidAttackBtn();
+        }
     }, 500);
 }
 
