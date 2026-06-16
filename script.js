@@ -4318,10 +4318,10 @@ async function joinRaid() {
         const res = await apiRequest('POST', '/api/raid/join', { petId: selectedPetId });
         if (!res) { showToast('Нет ответа от сервера', 'error'); return; }
         if (res.success) {
-            showToast(res.message, 'success');
-            loadRaidData();
-            updateUserBalance();
-        } else {
+    showToast(res.message, 'success');
+    loadRaidData();
+    updateHeader();  // ← было updateUserBalance()
+} else {
             showToast(res.message || JSON.stringify(res), 'error');
         }
     } catch (e) {
