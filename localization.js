@@ -1,523 +1,599 @@
-// Полная локализация для TradeTON
-const i18n = (() => {
-const T = {
+// ============================================================
+// ЛОКАЛИЗАЦИЯ DNA MMO
+// ============================================================
+
+// Текущий язык
+let currentLocale = localStorage.getItem('locale') || 'ru';
+
+// Переводы
+const translations = {
     ru: {
-      // Главные
-      balance: 'Баланс',
-      trader_default: 'Трейдер',
-      loading: 'Загрузка...',
-      your_income_label: 'ваш доход',
-      
-      // Навигация
-      nav_trade: 'Торги',
-      nav_tasks: 'Задания',
-      nav_ref: 'Рефералы',
-      nav_guide: 'Инфо',
-      nav_wallet: 'Кошелёк',
-      
-      // Активные боты
-      active_bots: 'Активные боты',
-      buy_bot: 'Купить бота',
-      last_5_trades: 'последние 5 сделок',
-      ends_on: 'завершится',
-      position_open: 'позиция открыта',
-      position_close_plus: 'закрыта в плюс',
-      position_reentry: 'перезаход ниже',
-      in_progress: 'в работе',
-      completed: 'завершён',
-      deposit_label: 'Депозит',
-      income_label: 'доход',
-      claim_btn: 'Забрать',
-      
-      // Кнопки запуска
-      launch_btn_basic: 'Запустить — 29 TON',
-      launch_btn_pro: 'Запустить — 79 TON',
-      launch_btn_elite: 'Запустить — 199 TON',
-      launch: 'Запустить',
-      days_short: 'дней',
-      per_days: 'за',
-      
-      // Длительности
-      days_7: '7 дней',
-      days_14: '14 дней',
-      days_30: '30 дней',
-      
-            // Для ru:
-promo_title: 'Промокод',
-promo_activate: 'Активировать',
-promo_placeholder: 'Введите промокод',
-      
-      // Задания
-      tasks_title: 'Задания',
-      tasks_sub: 'Выполняй задания — получай TON',
-      tasks_referrals_title: 'Приглашения',
-      task_invite_10: 'Пригласить 10 друзей',
-      task_invite_20: 'Пригласить 20 друзей',
-      task_invite_50: 'Пригласить 50 друзей',
-      task_invite_100: 'Пригласить 100 друзей',
-      tasks_bots_title: 'Боты',
-      task_activate_bot: 'Запустить любого бота',
-      tasks_earn_title: 'Заработок',
-      task_earn_10: 'Заработать 10 TON',
-      task_earn_50: 'Заработать 50 TON',
-      task_reward: 'Награда:',
-      task_progress: 'Прогресс:',
-      task_done: 'Выполнено',
-      task_claim: 'Забрать',
-      task_locked: 'Недоступно',
-      
-      // Рефералы
-      ref_team: 'Ваша команда',
-      ref_earned_lbl: 'Заработано:',
-      ref_referrals: 'рефералов',
-      ref_how_title: 'Как работает программа',
-      ref_step1: 'Поделись своей реферальной ссылкой с другом',
-      ref_step2: 'Друг запускает торгового бота и зарабатывает',
-      ref_step3_full: 'Ты получаешь 5% от его дохода автоматически на баланс — каждый раз когда он забирает доход с бота',
-      ref_share: 'Поделиться',
-      ref_copy: 'Копировать',
-      ref_list_title: 'Рефералы',
-      ref_empty: 'Пока никого нет',
-      
-      // Язык
-      lang_label: 'Язык',
-      lang_change: 'Изменить',
-      lang_select_title: 'Выберите язык',
-      lang_welcome_title: 'Добро пожаловать!',
-      lang_welcome_sub: 'Выберите язык приложения',
-      
-      // Кошелёк
-      wallet_balance: 'Баланс кошелька',
-      wallet_available: 'Доступно',
-      wallet_in_bots: 'В ботах',
-      wallet_monthly: 'Доход за месяц',
-      wallet_history: 'История',
-      wallet_no_tx: 'Транзакций пока нет',
-      wallet_deposit: 'Пополнить',
-      wallet_withdraw: 'Вывести',
-      
-      // Пополнение/Вывод
-      deposit_title: 'Пополнить баланс',
-      deposit_addr_lbl: 'Ваш TON-адрес',
-      deposit_hint: 'Отправь TON на этот адрес — средства зачислятся после подтверждения администратором.',
-      deposit_copy_addr: 'Копировать',
-      deposit_copy_memo: 'Копировать',
-      deposit_amount_lbl: 'Сумма пополнения',
-      deposit_btn: 'Пополнить',
-      deposit_memo_lbl: 'Ваш MEMO (Telegram ID)',
-      deposit_memo_hint: '⚠️ ОБЯЗАТЕЛЬНО укажите этот MEMO в комментарии к переводу! Без MEMO средства не будут зачислены.',
-      withdraw_title: 'Вывести средства',
-      withdraw_avail_lbl: 'Доступно:',
-      withdraw_amount: 'Сумма вывода',
-      withdraw_addr: 'TON-адрес получателя',
-      withdraw_fee: 'Комиссия сети',
-      withdraw_receive: 'Получите',
-      withdraw_btn: 'Вывести',
-      
-      // Транзакции
-      tx_deposit: 'Пополнение',
-      tx_bot_claim: 'Доход бота',
-      tx_referral: 'Реферальный бонус',
-      tx_withdraw: 'Вывод',
-      tx_bot_start: 'Запуск бота',
-      tx_pending: 'Ожидание',
-      tx_done: 'Выполнено',
-      tx_rejected: 'Отклонено',
-      
-      // Месяцы
-      month_jan: 'янв',
-      month_feb: 'фев',
-      month_mar: 'мар',
-      month_apr: 'апр',
-      month_may: 'май',
-      month_jun: 'июн',
-      month_jul: 'июл',
-      month_aug: 'авг',
-      month_sep: 'сен',
-      month_oct: 'окт',
-      month_nov: 'ноя',
-      month_dec: 'дек',
-      
-      // Модальное окно бота
-      modal_bot: 'Бот',
-      modal_pair: 'Инструмент',
-      modal_period: 'Период',
-      modal_yield: 'Доход за период',
-      modal_price: 'Стоимость',
-      modal_after: 'Баланс после',
-      modal_confirm: 'Подтвердить',
-      modal_launch_title: 'Запустить',
-      
-      // Инфо страница
-      info_tagline: 'Умные боты. Реальный доход.',
-      info_version: 'Версия 1.0 · TON Blockchain',
-      info_how_title: 'Как это работает',
-      info_step1_title: 'Выбери бота',
-      info_step1_text: 'Scout Bot, Alpha Bot или Quantum Bot — выбери бота, торговую пару и срок. Запусти за TON и следи за сделками в реальном времени.',
-      info_step2_title: 'Бот торгует',
-      info_step2_text: 'Алгоритм открывает и закрывает позиции по BUY и SELL. Иногда фиксирует небольшой минус — чтобы зайти ниже и заработать больше.',
-      info_step3_title: 'Забери доход в конце',
-      info_step3_text: 'По окончании периода появится кнопка «Забрать». Нажми — и весь депозит + заработанное вернётся на твой баланс.',
-      info_step4_title: 'Приглашай друзей',
-      info_step4_text: 'Делись реферальной ссылкой — получай % от дохода каждого приглашённого. Пассивный заработок без вложений.',
-      info_step5_title: 'Вывод в TON',
-      info_step5_text: 'Все средства хранятся на TON-кошельке. Вывод доступен в любой момент через раздел Кошелёк.',
-      
-      // FAQ
-      faq_title: 'Частые вопросы',
-      faq1_q: 'Могу ли я потерять вложенное?',
-      faq1_a: 'Нет. Депозит за бота возвращается полностью в конце периода вместе с доходом. Бот несёт убыток только по отдельным сделкам внутри цикла — итоговый результат всегда плюсовой.',
-      faq2_q: 'Сколько ботов можно запустить?',
-      faq2_a: 'Столько, сколько позволяет баланс. Каждый бот работает независимо — запускай несколько, чтобы суммировать доход по разным инструментам.',
-      faq3_q: 'Когда зачисляется доход?',
-      faq3_a: 'По окончании срока работы бота. В карточке появится кнопка «Забрать» — нажми, и сумма сразу придёт на баланс.',
-      faq4_q: 'Почему бот иногда продаёт в минус?',
-      faq4_a: 'Это часть стратегии: зафиксировать небольшой убыток, чтобы войти по более выгодной цене ниже. Это позволяет заработать больше в рамках всего периода.',
-      faq5_q: 'Как работает реферальная программа?',
-      faq5_a: 'Поделись своей ссылкой. Когда приглашённый запустит бота и получит доход — ты автоматически получишь % от этой суммы на свой баланс.',
-      
-      // Уведомления
-      toast_link_copied: 'Ссылка скопирована',
-      toast_addr_copied: 'Адрес скопирован',
-      toast_memo_copied: 'MEMO скопирован',
-      toast_insufficient: 'Недостаточно TON',
-      toast_enter_amount: 'Введите сумму',
-      toast_enter_address: 'Введите адрес',
-      toast_bot_started: 'запущен',
-      toast_claimed: 'зачислено',
-      toast_request_sent: 'Заявка отправлена. Ожидайте подтверждения администратором',
-      toast_withdraw_sent: 'Заявка на вывод отправлена',
-      toast_error_launch: 'Ошибка запуска',
-      toast_error: 'Ошибка',
-      toast_load_error: 'Ошибка загрузки:',
-      toast_task_claimed: 'Награда зачислена!',
+        // Navigation
+        'nav.game': 'Игра',
+        'nav.market': 'Маркет',
+        'nav.rank': 'Рейтинг',
+        'nav.friends': 'Друзья',
+        'nav.special': 'Квесты',
+        'nav.wallet': 'Кошелек',
+        
+        // Game tab
+        'game.capsules': 'DNA Капсулы',
+        'game.dnaCapsule': 'DNA КАПСУЛА',
+        'game.premiumCapsule': 'ПРЕМИУМ DNA',
+        'game.open': 'ОТКРЫТЬ',
+        'game.watchAd': 'Смотреть Рекламу',
+        'game.mmo': 'MMO',
+        'game.ready': 'Готово',
+        
+        // Inventory
+        'inventory.myCreatures': 'Мои Существа',
+        'inventory.empty': 'Откройте капсулу, чтобы получить первое существо!',
+        
+        // Encyclopedia
+        'encyclopedia.title': 'Коллекция Существ',
+        'encyclopedia.subtitle': 'Откройте всех существ',
+        
+        // Marketplace
+        'marketplace.title': 'Торговая Площадка',
+        'marketplace.buy': 'Купить',
+        'marketplace.sell': 'Продать',
+        'marketplace.myListings': 'Мои',
+        'marketplace.yourCreatures': 'Ваши Существа',
+        'marketplace.yourListings': 'Ваши Лоты',
+        'marketplace.loading': 'Загрузка...',
+        'marketplace.noListings': 'Нет активных лотов',
+        'marketplace.noCreatures': 'У вас нет существ для продажи',
+        'marketplace.noMyListings': 'У вас нет активных лотов',
+        'marketplace.error': 'Ошибка загрузки',
+        'marketplace.price': 'Цена',
+        'marketplace.setPrice': 'УСТАНОВИТЬ ЦЕНУ',
+        'marketplace.listForSale': 'ВЫСТАВИТЬ НА ПРОДАЖУ',
+        'marketplace.cancel': 'ОТМЕНИТЬ',
+        'marketplace.buyNow': 'КУПИТЬ',
+        'marketplace.platformFee': 'Комиссия платформы (10%)',
+        'marketplace.youReceive': 'Вы получите',
+        'marketplace.yourPrice': 'Ваша цена',
+        
+        // Leaderboard
+        'leaderboard.title': 'Глобальный Рейтинг',
+        'leaderboard.lvl': 'УР',
+        'leaderboard.xp': 'ОП',
+        'leaderboard.you': '(Вы)',
+        
+        // Friends (обновлено)
+        'friends.inviteTitle': 'ПРИГЛАСИТЕ ДРУЗЕЙ',
+        'friends.inviteBtn': 'ПРИГЛАСИТЬ ДРУГА',
+        'friends.milestones': 'Награды за друзей 5+ уровня',
+        'friends.myFriends': 'Мои Друзья',
+        'friends.noFriends': 'Нет друзей\nПригласите друзей и помогите им достичь 5 уровня!',
+        'friends.friendsCount': '{count} друзей 5+ уровня из {total}',
+        'friends.joined': 'Присоединился',
+        'friends.needLevel': 'нужно {level} ур.',
+        'friends.qualified': '✅ 5+ уровень',
+        'friends.notQualified': '📈 нужно {left} ур.',
+        'friends.levelRequirement': '🔥 ВАЖНО: Для получения наград друзья должны достичь 5 уровня!',
+        
+        // Special Quests (обновлено)
+        'specialQuests.title': 'Особые Квесты',
+        'specialQuests.noQuests': 'Нет активных спец-квестов',
+        'specialQuests.comingSoon': 'Скоро появятся новые квесты!',
+        'specialQuests.go': 'ПЕРЕЙТИ',
+        'specialQuests.claim': 'ЗАБРАТЬ',
+        'specialQuests.completed': 'ВЫПОЛНЕНО',
+        'specialQuests.locked': 'НУЖНО {required} ДРУЗЕЙ 5+ УРОВНЯ ({current})',
+        
+        // Wallet
+        'wallet.totalBalance': 'Общий Баланс',
+        'wallet.mmoPerHour': 'MMO / Час',
+        'wallet.creatures': 'Существа',
+        'wallet.totalMerges': 'Всего Слияний',
+        'wallet.storage': 'Склад',
+        'wallet.adsWatched': 'Просмотров рекламы',
+        'wallet.referralEarned': 'С рефералов',
+        'wallet.deposit': 'ПОПОЛНИТЬ',
+        'wallet.withdraw': 'ВЫВЕСТИ',
+        'wallet.activeRequests': 'Активных заявок: {count}/{max}',
+        'wallet.pending': 'ОЖИДАНИЕ',
+        'wallet.depositAmount': 'Сумма (MMO)',
+        'wallet.withdrawAmount': 'Сумма (MMO)',
+        'wallet.tonWallet': 'TON Кошелек',
+        'wallet.minAmount': 'Минимальная сумма {min} MMO',
+        'wallet.insufficientFunds': 'Недостаточно средств. Ваш баланс: {balance} MMO',
+        'wallet.validWallet': 'Введите корректный TON адрес кошелька (минимум 20 символов)',
+        'wallet.requestCreated': 'Заявка на {amount} MMO создана! Ожидайте подтверждения администратора.',
+        'wallet.requestDepositCreated': 'Заявка создана! Отправьте точную сумму на указанный кошелек TON с указанием мемо.',
+        'wallet.paymentConfirmed': 'Спасибо! Администратор проверит платеж и начислит средства.',
+        'wallet.copied': 'Скопировано!',
+        
+        // Capsule Modal
+        'capsule.premiumTitle': 'Премиум DNA Капсула',
+        'capsule.basicTitle': 'DNA Капсула',
+        'capsule.cost': 'Стоимость: {cost} MMO',
+        'capsule.dropRates': 'Шансы выпадения',
+        'capsule.notEnough': 'НЕДОСТАТОЧНО MMO',
+        'capsule.openNow': 'ОТКРЫТЬ СЕЙЧАС',
+        
+        // Merge
+        'merge.preview': 'Предпросмотр Слияния',
+        'merge.input': 'Исходные',
+        'merge.output': 'Результат',
+        'merge.possibleOutcomes': 'Возможные результаты',
+        'merge.success': 'Успех',
+        'merge.fail': 'Провал',
+        'merge.rankUp': '▲ ПОВЫШЕНИЕ',
+        'merge.same': '= БЕЗ ИЗМЕНЕНИЙ',
+        'merge.mergeNow': 'СЛИТЬ СЕЙЧАС',
+        'merge.cancel': 'ОТМЕНА',
+        'merge.evolutionSuccess': '🎉 Эволюция успешна!',
+        'merge.failComplete': '❌ Провал! Существо не изменилось',
+        'merge.evolution': 'ЭВОЛЮЦИЯ!',
+        'merge.continue': 'ПРОДОЛЖИТЬ',
+        'merge.close': 'ЗАКРЫТЬ',
+        'merge.successResult': '+РЕДКОСТЬ',
+        'merge.sameResult': '=РЕДКОСТЬ',
+        
+        // Popups
+        'popup.close': 'ЗАКРЫТЬ',
+        'popup.awesome': 'ОТЛИЧНО!',
+        'popup.owned': 'Владелец',
+        
+        // Transactions
+        'transactions.none': 'Нет транзакций',
+        'transactions.justNow': 'только что',
+        'transactions.minAgo': '{minutes} мин назад',
+        
+        // Toast Messages
+        'toast.tooFast': 'Слишком быстро! Подождите {seconds} секунд.',
+        'toast.tooFast2': 'Слишком быстро! Подождите.',
+        'toast.notEnoughMMO': 'Недостаточно MMO!',
+        'toast.inventoryFull': 'Инвентарь полон! Улучшите хранилище',
+        'toast.errorOpening': 'Ошибка открытия капсулы',
+        'toast.mergeFailed': 'Ошибка слияния',
+        'toast.needMore': 'Нужно {count} друзей 5+ уровня (у вас {current})',
+        'toast.alreadyClaimed': 'Вы уже получили эту награду',
+        'toast.watchingAd': 'Просмотр рекламы...',
+        'toast.adReward': '+{amount} MMO за рекламу!',
+        'toast.upgraded': '+1 слот! Теперь {slots} всего',
+        'toast.creatureListed': '{name} выставлен на продажу за {price} MMO!',
+        'toast.listingCancelled': 'Лот отменён, существо возвращено',
+        'toast.bought': 'Куплен {name} за {price} MMO!',
+        'toast.needPrice': 'Необходимо {price} MMO',
+        'toast.errorListing': 'Ошибка при выставлении',
+        'toast.errorBuying': 'Ошибка при покупке',
+        'toast.copied': 'Ссылка скопирована!',
+        
+        // Errors
+        'error.connection': 'Ошибка соединения',
+        'error.server': 'Ошибка сервера',
+        'error.sessionExpired': 'Сессия истекла',
+        'error.unknown': 'Неизвестная ошибка',
+        
+        // Common
+        'common.lvl': 'УР',
+        'common.xp': 'ОП',
+        'common.mmo': 'MMO',
+        'common.hour': 'час',
+        
+        // Friend Rewards (обновлено)
+        'friendReward.claimed': 'ПОЛУЧЕНО',
+        'friendReward.claim': 'ЗАБРАТЬ',
+        'friendReward.locked': '{friends} ДРУЗЕЙ 5+ УРОВНЯ',
+        'friendReward.requirement': 'Требование: друзья должны достичь 5 уровня',
+        
+        // Encyclopedia
+        'encyclopedia.discovered': 'обнаружено',
+        'encyclopedia.undiscovered': '🔒 НЕ ОБНАРУЖЕНО',
+        'encyclopedia.discoveredYes': '✓ ОБНАРУЖЕНО',
+        
+        // Ads Timer
+        'ads.ready': 'Готово',
+        'ads.wait': '{seconds}с'
     },
     en: {
-      // Main
-      balance: 'Balance',
-      trader_default: 'Trader',
-      loading: 'Loading...',
-      your_income_label: 'your income',
-      
-      // Navigation
-      nav_trade: 'Trade',
-      nav_tasks: 'Tasks',
-      nav_ref: 'Referrals',
-      nav_guide: 'Info',
-      nav_wallet: 'Wallet',
-      
-      // Active bots
-      active_bots: 'Active Bots',
-      buy_bot: 'Launch a Bot',
-      last_5_trades: 'last 5 trades',
-      ends_on: 'ends on',
-      position_open: 'position open',
-      position_close_plus: 'closed in profit',
-      position_reentry: 're-entry lower',
-      in_progress: 'running',
-      completed: 'completed',
-      deposit_label: 'Deposit',
-      income_label: 'income',
-      claim_btn: 'Claim',
-      
-      // Launch buttons
-      launch_btn_basic: 'Launch — 29 TON',
-      launch_btn_pro: 'Launch — 79 TON',
-      launch_btn_elite: 'Launch — 199 TON',
-      launch: 'Launch',
-      days_short: 'days',
-      per_days: 'for',
-      
-      // Durations
-      days_7: '7 days',
-      days_14: '14 days',
-      days_30: '30 days',
-      
-      // Tasks
-      tasks_title: 'Tasks',
-      tasks_sub: 'Complete tasks — earn TON',
-      tasks_referrals_title: 'Referrals',
-      task_invite_10: 'Invite 10 friends',
-      task_invite_20: 'Invite 20 friends',
-      task_invite_50: 'Invite 50 friends',
-      task_invite_100: 'Invite 100 friends',
-      tasks_bots_title: 'Bots',
-      task_activate_bot: 'Launch any bot',
-      tasks_earn_title: 'Earnings',
-      task_earn_10: 'Earn 10 TON',
-      task_earn_50: 'Earn 50 TON',
-      task_reward: 'Reward:',
-      task_progress: 'Progress:',
-      task_done: 'Completed',
-      task_claim: 'Claim',
-      task_locked: 'Locked',
-      
-      // Referrals
-      ref_team: 'Your Team',
-      ref_earned_lbl: 'Earned:',
-      ref_referrals: 'referrals',
-      ref_how_title: 'How it works',
-      ref_step1: 'Share your referral link with a friend',
-      ref_step2: 'Your friend launches a trading bot and earns',
-      ref_step3_full: "You receive 5% of their income automatically — every time they claim bot earnings",
-      ref_share: 'Share',
-      ref_copy: 'Copy',
-      ref_list_title: 'Referrals',
-      ref_empty: 'No one yet',
-      
-      // Language
-      lang_label: 'Language',
-      lang_change: 'Change',
-      lang_select_title: 'Select Language',
-      lang_welcome_title: 'Welcome!',
-      lang_welcome_sub: 'Choose the app language',
-      
-
-// Для en:
-promo_title: 'Promo Code',
-promo_activate: 'Activate',
-promo_placeholder: 'Enter promo code',
-      
-      // Wallet
-      wallet_balance: 'Wallet Balance',
-      wallet_available: 'Available',
-      wallet_in_bots: 'In bots',
-      wallet_monthly: 'Monthly income',
-      wallet_history: 'History',
-      wallet_no_tx: 'No transactions yet',
-      wallet_deposit: 'Deposit',
-      wallet_withdraw: 'Withdraw',
-      
-      // Deposit/Withdraw
-      deposit_title: 'Deposit Funds',
-      deposit_addr_lbl: 'Your TON address',
-      deposit_hint: 'Send TON to this address — funds will be credited after admin approval.',
-      deposit_copy_addr: 'Copy',
-      deposit_copy_memo: 'Copy',
-      deposit_amount_lbl: 'Deposit amount',
-      deposit_btn: 'Deposit',
-      deposit_memo_lbl: 'Your MEMO (Telegram ID)',
-      deposit_memo_hint: '⚠️ MANDATORY: Include this MEMO in your transfer comment! Funds without MEMO will not be credited.',
-      withdraw_title: 'Withdraw Funds',
-      withdraw_avail_lbl: 'Available:',
-      withdraw_amount: 'Amount to withdraw',
-      withdraw_addr: 'Recipient TON address',
-      withdraw_fee: 'Network fee',
-      withdraw_receive: 'You receive',
-      withdraw_btn: 'Withdraw',
-      
-      // Transactions
-      tx_deposit: 'Deposit',
-      tx_bot_claim: 'Bot income',
-      tx_referral: 'Referral bonus',
-      tx_withdraw: 'Withdrawal',
-      tx_bot_start: 'Bot launch',
-      tx_pending: 'Pending',
-      tx_done: 'Completed',
-      tx_rejected: 'Rejected',
-      
-      // Months
-      month_jan: 'Jan',
-      month_feb: 'Feb',
-      month_mar: 'Mar',
-      month_apr: 'Apr',
-      month_may: 'May',
-      month_jun: 'Jun',
-      month_jul: 'Jul',
-      month_aug: 'Aug',
-      month_sep: 'Sep',
-      month_oct: 'Oct',
-      month_nov: 'Nov',
-      month_dec: 'Dec',
-      
-      // Bot modal
-      modal_bot: 'Bot',
-      modal_pair: 'Instrument',
-      modal_period: 'Period',
-      modal_yield: 'Income for period',
-      modal_price: 'Cost',
-      modal_after: 'Balance after',
-      modal_confirm: 'Confirm',
-      modal_launch_title: 'Launch',
-      
-      // Info page
-      info_tagline: 'Smart bots. Real income.',
-      info_version: 'Version 1.0 · TON Blockchain',
-      info_how_title: 'How it works',
-      info_step1_title: 'Choose a bot',
-      info_step1_text: 'Scout Bot, Alpha Bot or Quantum Bot — pick a bot, trading pair and duration. Launch for TON and watch trades in real time.',
-      info_step2_title: 'The bot trades',
-      info_step2_text: "The algorithm opens and closes BUY and SELL positions. Sometimes it takes a small loss to re-enter at a better price and earn more overall.",
-      info_step3_title: 'Claim your income at the end',
-      info_step3_text: "When the period ends a Claim button appears. Tap it — your full deposit plus earnings will be credited to your balance.",
-      info_step4_title: 'Invite friends',
-      info_step4_text: "Share your referral link — earn % of every friend's income. Passive earnings with no investment.",
-      info_step5_title: 'Withdraw in TON',
-      info_step5_text: 'All funds are stored in your TON wallet. Withdraw anytime via the Wallet section.',
-      
-      // FAQ
-      faq_title: 'FAQ',
-      faq1_q: 'Can I lose my deposit?',
-      faq1_a: "No. Your deposit is returned in full at the end of the period along with earnings. The bot may lose on individual trades, but the overall result is always positive.",
-      faq2_q: 'How many bots can I run?',
-      faq2_a: "As many as your balance allows. Each bot runs independently — launch several to stack income across different instruments.",
-      faq3_q: 'When is income credited?',
-      faq3_a: "After the bot period ends. A Claim button appears in the card — tap it and the amount is instantly added to your balance.",
-      faq4_q: 'Why does the bot sometimes sell at a loss?',
-      faq4_a: "It is part of the strategy: take a small loss to re-enter at a better price. This allows earning more within the overall period.",
-      faq5_q: 'How does the referral program work?',
-      faq5_a: "Share your link. When someone you invited claims bot earnings — you automatically receive 5% of that amount to your balance.",
-      
-      // Toasts
-      toast_link_copied: 'Link copied',
-      toast_addr_copied: 'Address copied',
-      toast_memo_copied: 'MEMO copied',
-      toast_insufficient: 'Insufficient TON',
-      toast_enter_amount: 'Enter amount',
-      toast_enter_address: 'Enter address',
-      toast_bot_started: 'launched',
-      toast_claimed: 'credited',
-      toast_request_sent: 'Request sent. Awaiting admin confirmation',
-      toast_withdraw_sent: 'Withdrawal request sent',
-      toast_error_launch: 'Launch error',
-      toast_error: 'Error',
-      toast_load_error: 'Load error:',
-      toast_task_claimed: 'Reward credited!',
-    },
-  };
-  
-  let _lang = localStorage.getItem('tradetonLang') || null;
-  
-  function formatDate(date, lang) {
-    const d = new Date(date);
-    const day = d.getDate();
-    const monthIndex = d.getMonth();
-    const monthNames = [
-      'month_jan', 'month_feb', 'month_mar', 'month_apr',
-      'month_may', 'month_jun', 'month_jul', 'month_aug',
-      'month_sep', 'month_oct', 'month_nov', 'month_dec'
-    ];
-    const monthKey = monthNames[monthIndex];
-    const month = T[lang]?.[monthKey] || T.ru[monthKey] || ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'][monthIndex];
-    return `${day} ${month}`;
-  }
-  
-  function formatTime(date) {
-    const d = new Date(date);
-    return d.toLocaleTimeString(_lang === 'en' ? 'en' : 'ru', { hour:'2-digit', minute:'2-digit' });
-  }
-  
-  function t(key) {
-    const d = T[_lang] || T.ru;
-    const value = d[key];
-    if (value === undefined) {
-      console.warn(`[i18n] Missing key: ${key}`);
-      return T.ru[key] || key;
+        // Navigation
+        'nav.game': 'Game',
+        'nav.market': 'Market',
+        'nav.rank': 'Rank',
+        'nav.friends': 'Friends',
+        'nav.special': 'Quests',
+        'nav.wallet': 'Wallet',
+        
+        // Game tab
+        'game.capsules': 'DNA Capsules',
+        'game.dnaCapsule': 'DNA CAPSULE',
+        'game.premiumCapsule': 'PREMIUM DNA',
+        'game.open': 'OPEN',
+        'game.watchAd': 'Watch Ad',
+        'game.mmo': 'MMO',
+        'game.ready': 'Ready',
+        
+        // Inventory
+        'inventory.myCreatures': 'My Creatures',
+        'inventory.empty': 'Open a capsule to get your first creature!',
+        
+        // Encyclopedia
+        'encyclopedia.title': 'Collection Encyclopedia',
+        'encyclopedia.subtitle': 'Discover all creatures',
+        
+        // Marketplace
+        'marketplace.title': 'Marketplace',
+        'marketplace.buy': 'Buy',
+        'marketplace.sell': 'Sell',
+        'marketplace.myListings': 'My',
+        'marketplace.yourCreatures': 'Your Creatures',
+        'marketplace.yourListings': 'Your Listings',
+        'marketplace.loading': 'Loading...',
+        'marketplace.noListings': 'No active listings',
+        'marketplace.noCreatures': 'You have no creatures to sell',
+        'marketplace.noMyListings': 'You have no active listings',
+        'marketplace.error': 'Error loading',
+        'marketplace.price': 'Price',
+        'marketplace.setPrice': 'SET PRICE',
+        'marketplace.listForSale': 'LIST FOR SALE',
+        'marketplace.cancel': 'CANCEL',
+        'marketplace.buyNow': 'BUY',
+        'marketplace.platformFee': 'Platform Fee (10%)',
+        'marketplace.youReceive': 'You Receive',
+        'marketplace.yourPrice': 'Your Price',
+        
+        // Leaderboard
+        'leaderboard.title': 'Global Leaderboard',
+        'leaderboard.lvl': 'LVL',
+        'leaderboard.xp': 'XP',
+        'leaderboard.you': '(You)',
+        
+        // Friends (updated)
+        'friends.inviteTitle': 'INVITE FRIENDS',
+        'friends.inviteBtn': 'INVITE FRIEND',
+        'friends.milestones': 'Friend Milestones (Level 5+)',
+        'friends.myFriends': 'My Friends',
+        'friends.noFriends': 'No friends yet\nInvite friends and help them reach level 5!',
+        'friends.friendsCount': '{count} friends level 5+ out of {total}',
+        'friends.joined': 'Joined',
+        'friends.needLevel': 'need {level} lvl',
+        'friends.qualified': '✅ level 5+',
+        'friends.notQualified': '📈 need {left} lvl',
+        'friends.levelRequirement': '🔥 IMPORTANT: Friends must reach level 5 to count for rewards!',
+        
+        // Special Quests (updated)
+        'specialQuests.title': 'Special Quests',
+        'specialQuests.noQuests': 'No active special quests',
+        'specialQuests.comingSoon': 'New quests coming soon!',
+        'specialQuests.go': 'GO',
+        'specialQuests.claim': 'CLAIM',
+        'specialQuests.completed': 'COMPLETED',
+        'specialQuests.locked': 'NEED {required} FRIENDS LEVEL 5+ ({current})',
+        
+        // Wallet
+        'wallet.totalBalance': 'Total Balance',
+        'wallet.mmoPerHour': 'MMO / Hour',
+        'wallet.creatures': 'Creatures',
+        'wallet.totalMerges': 'Total Merges',
+        'wallet.storage': 'Storage',
+        'wallet.adsWatched': 'Ads Watched',
+        'wallet.referralEarned': 'From Referrals',
+        'wallet.deposit': 'DEPOSIT',
+        'wallet.withdraw': 'WITHDRAW',
+        'wallet.activeRequests': 'Active requests: {count}/{max}',
+        'wallet.pending': 'PENDING',
+        'wallet.depositAmount': 'Amount (MMO)',
+        'wallet.withdrawAmount': 'Amount (MMO)',
+        'wallet.tonWallet': 'TON Wallet',
+        'wallet.minAmount': 'Minimum amount {min} MMO',
+        'wallet.insufficientFunds': 'Insufficient funds. Your balance: {balance} MMO',
+        'wallet.validWallet': 'Enter a valid TON wallet address (min 20 characters)',
+        'wallet.requestCreated': 'Withdraw request for {amount} MMO created! Wait for admin approval.',
+        'wallet.requestDepositCreated': 'Request created! Send exact amount to the TON wallet with memo.',
+        'wallet.paymentConfirmed': 'Thank you! Admin will check payment and add funds.',
+        'wallet.copied': 'Copied!',
+        
+        // Capsule Modal
+        'capsule.premiumTitle': 'Premium DNA Capsule',
+        'capsule.basicTitle': 'DNA Capsule',
+        'capsule.cost': 'Cost: {cost} MMO',
+        'capsule.dropRates': 'Drop Rates',
+        'capsule.notEnough': 'NOT ENOUGH MMO',
+        'capsule.openNow': 'OPEN NOW',
+        
+        // Merge
+        'merge.preview': 'Merge Preview',
+        'merge.input': 'Input',
+        'merge.output': 'Output',
+        'merge.possibleOutcomes': 'Possible Outcomes',
+        'merge.success': 'Success',
+        'merge.fail': 'Fail',
+        'merge.rankUp': '▲ RANK UP',
+        'merge.same': '= SAME',
+        'merge.mergeNow': 'MERGE NOW',
+        'merge.cancel': 'CANCEL',
+        'merge.evolutionSuccess': '🎉 Evolution successful!',
+        'merge.failComplete': '❌ Fail! Creature unchanged',
+        'merge.evolution': 'EVOLUTION!',
+        'merge.continue': 'CONTINUE',
+        'merge.close': 'CLOSE',
+        'merge.successResult': '+RARITY',
+        'merge.sameResult': '=RARITY',
+        
+        // Popups
+        'popup.close': 'CLOSE',
+        'popup.awesome': 'AWESOME!',
+        'popup.owned': 'Owned',
+        
+        // Transactions
+        'transactions.none': 'No transactions yet',
+        'transactions.justNow': 'just now',
+        'transactions.minAgo': '{minutes}m ago',
+        
+        // Toast Messages
+        'toast.tooFast': 'Too fast! Wait {seconds} seconds.',
+        'toast.tooFast2': 'Too fast! Please wait.',
+        'toast.notEnoughMMO': 'Not enough MMO!',
+        'toast.inventoryFull': 'Inventory full! Upgrade storage',
+        'toast.errorOpening': 'Error opening capsule',
+        'toast.mergeFailed': 'Merge failed',
+        'toast.needMore': 'Need {count} friends level 5+ (you have {current})',
+        'toast.alreadyClaimed': 'You already claimed this reward',
+        'toast.watchingAd': 'Watching ad...',
+        'toast.adReward': '+{amount} MMO from ad!',
+        'toast.upgraded': '+1 slot! Now {slots} total',
+        'toast.creatureListed': '{name} listed for {price} MMO!',
+        'toast.listingCancelled': 'Listing cancelled, card returned',
+        'toast.bought': 'Bought {name} for {price} MMO!',
+        'toast.needPrice': 'Need {price} MMO',
+        'toast.errorListing': 'Error listing',
+        'toast.errorBuying': 'Error buying',
+        'toast.copied': 'Link copied!',
+        
+        // Errors
+        'error.connection': 'Connection error',
+        'error.server': 'Server error',
+        'error.sessionExpired': 'Session expired',
+        'error.unknown': 'Unknown error',
+        
+        // Common
+        'common.lvl': 'LVL',
+        'common.xp': 'XP',
+        'common.mmo': 'MMO',
+        'common.hour': 'hr',
+        
+        // Friend Rewards (updated)
+        'friendReward.claimed': 'CLAIMED',
+        'friendReward.claim': 'CLAIM',
+        'friendReward.locked': '{friends} FRIENDS LEVEL 5+',
+        'friendReward.requirement': 'Requirement: friends must reach level 5',
+        
+        // Encyclopedia
+        'encyclopedia.discovered': 'discovered',
+        'encyclopedia.undiscovered': '🔒 UNDISCOVERED',
+        'encyclopedia.discoveredYes': '✓ DISCOVERED',
+        
+        // Ads Timer
+        'ads.ready': 'Ready',
+        'ads.wait': '{seconds}s'
     }
-    return value;
-  }
-  
-  function tHtml(key) {
-    return t(key);
-  }
-  
-  function setLang(lang) {
-    if (!T[lang]) return;
-    _lang = lang;
-    localStorage.setItem('tradetonLang', lang);
-    document.documentElement.lang = lang;
-    applyTranslations();
-    window.dispatchEvent(new CustomEvent('langChanged', { detail: lang }));
-  }
-  
-  function getLang() { return _lang || 'ru'; }
-  function isSet() { return !!_lang; }
-  
-  function applyTranslations() {
+};
+
+// Функция перевода
+function t(key, params = {}) {
+    let text = translations[currentLocale]?.[key] || translations['en'][key] || key;
+    Object.keys(params).forEach(p => {
+        text = text.replace(new RegExp(`\\{${p}\\}`, 'g'), params[p]);
+    });
+    return text;
+}
+
+// Функция применения перевода к статическим элементам
+function applyLocaleStatic() {
     document.querySelectorAll('[data-i18n]').forEach(el => {
-      const key = el.getAttribute('data-i18n');
-      el.textContent = t(key);
+        const key = el.getAttribute('data-i18n');
+        if (key) {
+            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                el.placeholder = t(key);
+            } else {
+                el.textContent = t(key);
+            }
+        }
+    });
+}
+
+// Функция переключения языка
+function setLanguage(lang) {
+    currentLocale = lang;
+    localStorage.setItem('locale', lang);
+    
+    // Обновляем активный класс на кнопках
+    document.querySelectorAll('.lang-btn').forEach(btn => {
+        if (btn.getAttribute('data-lang') === lang) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
     });
     
-    document.querySelectorAll('[data-i18n-html]').forEach(el => {
-      const key = el.getAttribute('data-i18n-html');
-      el.innerHTML = t(key);
+    // Применяем перевод к статическим элементам
+    applyLocaleStatic();
+    
+    // Обновляем текст требования в разделе друзей
+    const friendsHeroSub = document.querySelector('.friends-hero-sub');
+    if (friendsHeroSub) {
+        friendsHeroSub.innerHTML = `🔥 <strong>${t('friends.levelRequirement').replace('🔥 ', '')}</strong>`;
+    }
+    
+    // Обновляем текст на карточках наград
+    const rewardCards = document.querySelectorAll('.friends-reward-card');
+    const rewardsData = [
+        { card: rewardCards[0], friends: 10 },
+        { card: rewardCards[1], friends: 50 },
+        { card: rewardCards[2], friends: 150 }
+    ];
+    rewardsData.forEach(r => {
+        if (r.card) {
+            const friendsSpan = r.card.querySelector('.reward-friends');
+            if (friendsSpan) {
+                friendsSpan.textContent = `🎁 ${t('friendReward.locked', { friends: r.friends })}`;
+            }
+        }
     });
     
-    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-      const key = el.getAttribute('data-i18n-placeholder');
-      el.placeholder = t(key);
+    // Вызываем обновление динамических компонентов
+    if (typeof window.updateHeader === 'function') window.updateHeader();
+    if (typeof window.renderCards === 'function') window.renderCards();
+    if (typeof window.renderLeaderboard === 'function') window.renderLeaderboard();
+    if (typeof window.renderSpecialQuests === 'function') window.renderSpecialQuests();
+    if (typeof window.renderFriendsList === 'function') window.renderFriendsList();
+    if (typeof window.updateFriendRewardButtons === 'function') window.updateFriendRewardButtons();
+    if (typeof window.renderMarketplaceBuy === 'function' && document.getElementById('marketplace-buy')?.classList.contains('active')) window.renderMarketplaceBuy();
+    if (typeof window.renderMarketplaceSell === 'function' && document.getElementById('marketplace-sell')?.classList.contains('active')) window.renderMarketplaceSell();
+    if (typeof window.renderMarketplaceMyListings === 'function' && document.getElementById('marketplace-mylistings')?.classList.contains('active')) window.renderMarketplaceMyListings();
+    
+    // Обновляем текст в header
+    const xpLabel = document.getElementById('xpLabel');
+    if (xpLabel && window.state?.user) {
+        const u = window.state.user;
+        xpLabel.textContent = `${t('common.xp')} ${u.xp}/${u.level * 100}`;
+    }
+    
+    const playerLevelLabel = document.getElementById('playerLevelLabel');
+    if (playerLevelLabel && window.state?.user) {
+        const u = window.state.user;
+        playerLevelLabel.textContent = `${t('common.lvl')} ${u.level} · ${u.level >= 20 ? 'God Scientist' : u.level >= 15 ? 'DNA Master' : u.level >= 10 ? 'Geneticist' : u.level >= 5 ? 'Lab Expert' : u.level >= 3 ? 'Biologist' : 'Researcher'}`;
+    }
+    
+    const friendCountDisplay = document.getElementById('friendCountDisplay');
+    if (friendCountDisplay && window.state?.user) {
+        const totalFriends = window.state.user.referralTotalCount || 0;
+        friendCountDisplay.textContent = t('friends.friendsCount', { count: window.state.user.referralCount || 0, total: totalFriends });
+    }
+    
+    const walletIncome = document.getElementById('walletIncome');
+    if (walletIncome && window.state?.incomePerHour !== undefined) {
+        walletIncome.textContent = window.formatNum ? window.formatNum(window.state.incomePerHour) : window.state.incomePerHour;
+    }
+    
+    const walletLabel = document.querySelector('.wallet-label');
+    if (walletLabel) walletLabel.textContent = t('wallet.totalBalance');
+    
+    const walletSub = document.getElementById('walletSub');
+    if (walletSub && window.getVisualBalance) {
+        const visualBalance = window.getVisualBalance();
+        walletSub.textContent = `≈ ${(visualBalance * 0.001).toFixed(3)} USD`;
+    }
+    
+    // Обновляем текст на кнопках friend rewards
+    const rewardBtns = ['reward-10-btn', 'reward-50-btn', 'reward-150-btn'];
+    const rewards = [
+        { friends: 10, rarity: 'rare' },
+        { friends: 50, rarity: 'epic' },
+        { friends: 150, rarity: 'legendary' }
+    ];
+    
+    rewards.forEach((reward, idx) => {
+        const btn = document.getElementById(rewardBtns[idx]);
+        if (btn && window.state?.user) {
+            const currentFriends = window.state.user.referralCount || 0;
+            const completedQuests = new Set(window.state.user.completedSpecialQuests || []);
+            const alreadyClaimed = completedQuests.has(`friend_reward_${reward.friends}`);
+            
+            if (alreadyClaimed) {
+                btn.textContent = `✅ ${t('friendReward.claimed')}`;
+            } else if (currentFriends >= reward.friends) {
+                btn.textContent = `🎁 ${t('friendReward.claim')}`;
+            } else {
+                btn.textContent = `🔒 ${t('friendReward.locked', { friends: reward.friends })}`;
+            }
+        }
     });
-  }
-  
-  return { 
-    t, 
-    tHtml, 
-    setLang, 
-    getLang, 
-    isSet, 
-    apply: applyTranslations,
-    formatDate,
-    formatTime
-  };
-})();
-
-function chooseLang(lang) {
-  i18n.setLang(lang);
-  
-  const welcome = document.getElementById('langWelcome');
-  if (welcome) welcome.classList.add('hidden');
-  
-  closeLangModal();
-  
-  const optRu = document.getElementById('lang-opt-ru');
-  const optEn = document.getElementById('lang-opt-en');
-  if (optRu) optRu.classList.toggle('active', lang === 'ru');
-  if (optEn) optEn.classList.toggle('active', lang === 'en');
-  
-  const langLabel = document.getElementById('langCurrentLabel');
-  if (langLabel) langLabel.textContent = lang === 'ru' ? 'Русский' : 'English';
-  
-  i18n.apply();
-  
-  if (typeof render === 'function') render();
-  if (typeof renderTasks === 'function') renderTasks();
-  if (typeof updateBal === 'function') updateBal();
-  if (typeof renderRating === 'function') renderRating();
-  if (typeof updateYieldBadge === 'function') {
-    ['basic', 'pro', 'elite'].forEach(updateYieldBadge);
-  }
-  if (typeof updateDurationButtonsText === 'function') {
-    updateDurationButtonsText();
-  }
-  if (typeof updateLaunchButtonsText === 'function') {
-    updateLaunchButtonsText();
-  }
-  if (window._lastTxs && typeof renderTxList === 'function') {
-    renderTxList(window._lastTxs);
-  }
-  if (typeof loadReferrals === 'function') {
-    loadReferrals();
-  }
+    
+    // Обновляем плейсхолдеры
+    const sellPriceInput = document.getElementById('sellPriceInput');
+    if (sellPriceInput) sellPriceInput.placeholder = t('marketplace.price');
+    
+    const depositAmount = document.getElementById('depositAmount');
+    if (depositAmount) depositAmount.placeholder = t('wallet.depositAmount');
+    
+    const withdrawAmount = document.getElementById('withdrawAmount');
+    if (withdrawAmount) withdrawAmount.placeholder = t('wallet.withdrawAmount');
+    
+    const withdrawWallet = document.getElementById('withdrawWallet');
+    if (withdrawWallet) withdrawWallet.placeholder = t('wallet.tonWallet');
+    
+    // Обновляем статические элементы без data-i18n
+    const basicCapsuleName = document.querySelector('#basicCapsuleCard .capsule-name');
+    if (basicCapsuleName) basicCapsuleName.textContent = t('game.dnaCapsule');
+    const premiumCapsuleName = document.querySelector('#premiumCapsuleCard .capsule-name');
+    if (premiumCapsuleName) premiumCapsuleName.textContent = t('game.premiumCapsule');
+    
+    document.querySelectorAll('.capsule-btn').forEach(btn => {
+        btn.textContent = t('game.open');
+    });
+    
+    const adsBtnText = document.querySelector('#adsBtn span[style*="flex:1"]');
+    if (adsBtnText) adsBtnText.textContent = t('game.watchAd');
+    
+    const encTitle = document.querySelector('.enc-title');
+    if (encTitle) encTitle.textContent = t('encyclopedia.title');
+    const encSub = document.querySelector('.enc-sub');
+    if (encSub) encSub.textContent = t('encyclopedia.subtitle');
+    
+    const myCreatures = document.querySelector('.section-title span[data-i18n="inventory.myCreatures"]');
+    if (myCreatures) myCreatures.textContent = t('inventory.myCreatures');
+    
+    document.querySelectorAll('.bottom-nav .nav-item span').forEach(span => {
+        const key = span.getAttribute('data-i18n');
+        if (key) span.textContent = t(key);
+    });
+    
+    const leaderboardTitle = document.querySelector('#tab-leaderboard .section-title span');
+    if (leaderboardTitle && leaderboardTitle.getAttribute('data-i18n') === 'leaderboard.title') {
+        leaderboardTitle.textContent = t('leaderboard.title');
+    }
+    
+    const friendsTitle = document.querySelector('.friends-hero-title');
+    if (friendsTitle) friendsTitle.textContent = t('friends.inviteTitle');
+    const inviteBtn = document.querySelector('.invite-btn span');
+    if (inviteBtn) inviteBtn.textContent = t('friends.inviteBtn');
+    const myFriendsTitle = document.querySelector('#tab-friends .section-title span[data-i18n="friends.myFriends"]');
+    if (myFriendsTitle) myFriendsTitle.textContent = t('friends.myFriends');
+    
+    const specialTitle = document.querySelector('#tab-special .section-title span');
+    if (specialTitle && specialTitle.getAttribute('data-i18n') === 'specialQuests.title') {
+        specialTitle.textContent = t('specialQuests.title');
+    }
+    
+    const depositBtn = document.querySelector('.wallet-action-btn.deposit span');
+    if (depositBtn) depositBtn.textContent = t('wallet.deposit');
+    const withdrawBtn = document.querySelector('.wallet-action-btn.withdraw span');
+    if (withdrawBtn) withdrawBtn.textContent = t('wallet.withdraw');
+    
+    const walletStatLabels = document.querySelectorAll('.wallet-stat-label');
+    const walletStatKeys = ['wallet.creatures', 'wallet.totalMerges', 'wallet.adsWatched', 'wallet.referralEarned'];
+    walletStatLabels.forEach((label, i) => {
+        if (walletStatKeys[i]) label.textContent = t(walletStatKeys[i]);
+    });
+    
+    // Уведомление о смене языка
+    if (typeof window.showToast === 'function') {
+        window.showToast(`🌐 Language: ${lang.toUpperCase()}`, '✅');
+    }
 }
 
-function openLangModal() { 
-  const modal = document.getElementById('langModal');
-  if (modal) modal.classList.add('open'); 
-}
-
-function closeLangModal() { 
-  const modal = document.getElementById('langModal');
-  if (modal) modal.classList.remove('open'); 
-}
-
-window.addEventListener('langChanged', () => {
-  i18n.apply();
-  if (typeof render === 'function') render();
-  if (typeof renderTasks === 'function') renderTasks();
-  if (typeof updateBal === 'function') updateBal();
-  if (typeof updateDurationButtonsText === 'function') updateDurationButtonsText();
-  if (typeof updateLaunchButtonsText === 'function') updateLaunchButtonsText();
-  if (window._lastTxs && typeof renderTxList === 'function') renderTxList(window._lastTxs);
-  if (typeof loadReferrals === 'function') loadReferrals();
+// Инициализация при загрузке страницы
+document.addEventListener('DOMContentLoaded', () => {
+    applyLocaleStatic();
+    
+    setTimeout(() => {
+        const activeBtn = document.querySelector(`.lang-btn[data-lang="${currentLocale}"]`);
+        if (activeBtn) {
+            activeBtn.classList.add('active');
+        } else {
+            const ruBtn = document.querySelector('.lang-btn[data-lang="ru"]');
+            if (ruBtn) ruBtn.classList.add('active');
+        }
+    }, 100);
 });
+
+// Экспортируем функции в глобальную область
+window.t = t;
+window.setLanguage = setLanguage;
+window.currentLocale = currentLocale;
+window.applyLocaleStatic = applyLocaleStatic;

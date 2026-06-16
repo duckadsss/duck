@@ -14,7 +14,7 @@ const BOT_USERNAME = process.env.BOT_USERNAME || 'Dnammobot';
 const WEBAPP_URL = process.env.WEBAPP_URL || 'https://ndammo.github.io/Mmodna';
 const CHAT_LINK = 'https://t.me/+PYDJcgmaaU05ZGU6';
 const CHANNEL_LINK = 'https://t.me/mmoDNA';
-const API_URL = process.env.API_URL || 'https://serv-production-765e.up.railway.app';   
+const API_URL = process.env.API_URL || 'https://serv-production-dbf3.up.railway.app';
 
 // ============================================
 // ПРОВЕРКА АДМИНСКИХ КЛЮЧЕЙ

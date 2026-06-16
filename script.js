@@ -1,904 +1,3601 @@
-// ── Tasks data ────────────────────────────────────────────────
-const TASKS = {
-  referrals: [
-    { id:'ref_10',  key:'task_invite_10',  target:10,  reward:0.1,  type:'ref' },
-    { id:'ref_20',  key:'task_invite_20',  target:20,  reward:0.5,  type:'ref' },
-    { id:'ref_50',  key:'task_invite_50',  target:50,  reward:1.0,  type:'ref' },
-    { id:'ref_100', key:'task_invite_100', target:100, reward:5.0,  type:'ref' },
-  ],
-  bots: [
-    { id:'bot_any', key:'task_activate_bot', target:1,  reward:1.0,  type:'bot' },
-  ],
-  earn: [
-    { id:'earn_10', key:'task_earn_10', target:10,  reward:1.0,  type:'earn' },
-    { id:'earn_50', key:'task_earn_50', target:50,  reward:5.0,  type:'earn' },
-  ],
+// ============================================================
+// script.js - DNA MMO Клиент (Арена + Экономика как в первой версии)
+// ============================================================
+
+// ============================================================
+// CONFIG
+// ============================================================
+const API_URL = 'https://serv-production-dbf3.up.railway.app';
+
+// ============================================================
+// ЗАПРЕТ КОНТЕКСТНОГО МЕНЮ И ВЫДЕЛЕНИЯ
+// ============================================================
+document.addEventListener('contextmenu', (e) => { e.preventDefault(); return false; });
+document.addEventListener('selectstart', (e) => { e.preventDefault(); return false; });
+document.addEventListener('dragstart', (e) => { e.preventDefault(); return false; });
+
+// ============================================================
+// ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
+// ============================================================
+let state = {
+    token: null,
+    user: null,
+    inventory: [],
+    incomePerHour: 0,
+    adsCooldown: 0,
+    adsAvailable: 10,
+    maxAdsPerDay: 10,
+    arenaBattlesLeft: 10,
+    maxArenaBattles: 10,
+    isLoading: false,
+    serverBalance: 0,
+    lastServerSync: 0,
+    visualTicker: null
 };
 
-// Claimed tasks in localStorage
-function getClaimedTasks(){ try{ return JSON.parse(localStorage.getItem('claimedTasks')||'[]'); }catch(e){return[];} }
-function claimTask(task) {
-  const claimed = getClaimedTasks();
-  if (claimed.includes(task.id)) return;
-  claimed.push(task.id);
-  localStorage.setItem('claimedTasks', JSON.stringify(claimed));
-  balance += task.reward;
-  updateBal();
-  renderTasks();
-  showToast(i18n.t('toast_task_claimed') + ' +' + task.reward + ' TON');
-}
+let intervals = { adsTimer: null, specialQuests: null, leaderboard: null, marketplace: null };
+let activeQuestTimers = new Map();
+let currentLeaderboardController = null;
+let isMarketplaceTabActive = false;
 
-function getTaskProgress(task) {
-  if (task.type === 'ref') return { current: (window._refCount || 0), total: task.target };
-  if (task.type === 'bot') return { current: activeBots.length > 0 || window._everLaunched ? 1 : 0, total: 1 };
-  if (task.type === 'earn') return { current: monthly || 0, total: task.target };
-  return { current: 0, total: task.target };
-}
+let leaderboardCache = { data: null, expiresAt: 0 };
+let marketplaceCache = { data: null, hash: null, expiresAt: 0 };
+let questStatuses = new Map();
 
-function renderTasks() {
-  const claimed = getClaimedTasks();
-  function renderGroup(tasks, containerId) {
-    const el = document.getElementById(containerId);
-    if (!el) return;
-    el.innerHTML = tasks.map(task => {
-      const prog = getTaskProgress(task);
-      const isDone = prog.current >= prog.total;
-      const isClaimed = claimed.includes(task.id);
-      const iconColor = isClaimed ? '#39D98A' : isDone ? '#5B5FEE' : '#50537A';
-      const iconBg = isClaimed ? 'rgba(57,217,138,.1)' : isDone ? 'var(--accent-dim)' : 'var(--card2)';
-      let btnHtml = '';
-      if (isClaimed) {
-        btnHtml = `<button class="task-btn done-lbl" disabled>${i18n.t('task_done')}</button>`;
-      } else if (isDone) {
-        btnHtml = `<button class="task-btn claim" onclick="claimTask(${JSON.stringify(task).replace(/"/g,"'")})">${i18n.t('task_claim')}</button>`;
-      } else {
-        btnHtml = `<button class="task-btn locked-lbl" disabled>${Math.min(prog.current,prog.total)}/${prog.total}</button>`;
-      }
-      return `<div class="task-card ${isClaimed?'done':''} ${!isDone&&!isClaimed?'':''}">
-        <div class="task-icon" style="background:${iconBg}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="${iconColor}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-            ${isClaimed?'<polyline points="20 6 9 17 4 12"/>':'<circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/>'}
-          </svg>
-        </div>
-        <div class="task-body">
-          <div class="task-name">${i18n.t(task.key)}</div>
-          <div class="task-reward">${i18n.t('task_reward')} ${task.reward} TON</div>
-          ${!isClaimed?`<div class="task-prog">${i18n.t('task_progress')} ${Math.min(prog.current,prog.total)}/${prog.total}</div>`:''}
-        </div>
-        ${btnHtml}
-      </div>`;
-    }).join('');
-  }
-  renderGroup(TASKS.referrals, 'tasksRefList');
-  renderGroup(TASKS.bots,     'tasksBotsSection');
-  renderGroup(TASKS.earn,     'tasksEarnSection');
-}
+const QUESTS_STORAGE_KEY = 'dna_mmo_quests_status';
 
+let CREATURES = [];
+let CAPSULE_COSTS = { basic: 1000, premium: 6000 };
+let RARITY_WEIGHTS = {
+    basic: { common: 100, uncommon: 0, rare: 0, epic: 0, legendary: 0 },
+    premium: { common: 70, uncommon: 20, rare: 10, epic: 0, legendary: 0 }
+};
+let AD_REWARD = 50;
+let AD_COOLDOWN = 60;
+let UPGRADE_BASE_COST = 300;
+let UPGRADE_MULTIPLIER = 1.4;
+let MAX_INVENTORY_SLOTS = 50;
+let SPECIAL_QUESTS = [];
+let findingMatch = false;
 
-// ═══════════════════════════════════════════════════════════════
-// API CLIENT
-// ═══════════════════════════════════════════════════════════════
-
-const API = 'https://tr-production-d035.up.railway.app';
-
-function getAuthHeader() {
-  const initData = window.Telegram?.WebApp?.initData || '';
-  if (initData.length > 0) return 'tma ' + initData;
-  return 'dev 123456';
-}
-
-async function apiGet(path) {
-  const r = await fetch(API + path, {
-    headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' }
-  });
-  if (!r.ok) throw new Error((await r.json()).error || r.statusText);
-  return r.json();
-}
-
-async function apiPost(path, body = {}) {
-  const r = await fetch(API + path, {
-    method: 'POST',
-    headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error((await r.json().catch(()=>({error:r.statusText}))).error || r.statusText);
-  return r.json();
-}
-
-// ═══════════════════════════════════════════════════════════════
-// STATE  (populated from server)
-// ═══════════════════════════════════════════════════════════════
-
-let balance  = 0;
-let activeBots = [];
-let sel      = null;
-let monthly  = 0;
-let _pollInterval = null;
-
-// Исправленная функция TON - защита от NaN
-const TON = n => {
-  const num = Number(n);
-  if (isNaN(num)) return '0.00 TON';
-  return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' TON';
+const RARITY_COLORS = {
+    common: '#94a3b8', uncommon: '#22c55e', rare: '#3b82f6',
+    epic: '#a855f7', legendary: '#f59e0b', mythic: '#ef4444'
+};
+const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
+const RARITY_MULTIPLIERS = {
+    common: 1.0, uncommon: 1.05, rare: 1.10, epic: 1.15, legendary: 1.25, mythic: 1.40
 };
 
-// ═══════════════════════════════════════════════════════════════
-// BOOT — load everything from server on open
-// ═══════════════════════════════════════════════════════════════
+let lastOpenTimes = new Map();
+let lastMergeTimes = new Map();
+let collectIncomeTimer = null;
+let visualTickerInterval = null;
 
-async function bootApp() {
-  try {
-    console.log('[boot] auth header:', getAuthHeader().slice(0, 30) + '...');
-    const data = await apiGet('/api/me');
-    console.log('[boot] got user:', data.user?.firstName, 'balance:', data.user?.balance);
+let arenaClient = null;
+let currentPaymentMemo = null;
+let currentPaymentAmount = null;
+const MIN_TRANSACTION_AMOUNT = 10000;
+const MAX_ACTIVE_REQUESTS = 2;
 
-    // User - с защитой от NaN
-    const u = data.user;
-    balance = isNaN(u.balance) ? 0 : u.balance;
-    monthly = isNaN(u.totalEarned) ? 0 : u.totalEarned;
-    window._userName  = u.firstName || i18n.t('trader_default'); 
-    window._refCount = u.referralCount || 0;
-    window._userInit  = (u.firstName || 'T')[0].toUpperCase();
-
-    window._telegramId = u.telegramId;
-window._refLink    = u.referralLink || `https://t.me/Tradeetonbot?start=${u.referralCode}`;
-
-    const avatarEl = document.getElementById('avatarEl');
-    if (avatarEl) avatarEl.textContent = window._userInit;
-    const rAva = document.getElementById('rankAva');
-    if (rAva) rAva.textContent = window._userInit;
-    const rName = document.getElementById('rankName');
-    if (rName) rName.textContent = window._userName;
-
-    // Ref page
-    const refCountEl = document.getElementById('refCount');
-    if (refCountEl) {
-      const count = u.referralCount || 0;
-      const referralsText = i18n.t('ref_referrals');
-      refCountEl.innerHTML = `${count} <span style="font-size:15px;color:var(--text2)">${referralsText}</span>`;
+// ============================================================
+// HELPER FUNCTIONS
+// ============================================================
+function getCreature(id) { return CREATURES.find(c => c.id === id); }
+function escapeHtml(str) { if (!str) return ''; return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+function formatNum(n) {
+    const absN = Math.abs(n);
+    const sign = n < 0 ? '-' : '';
+    if (absN >= 1000000) return sign + (absN/1000000).toFixed(1) + 'M';
+    if (absN >= 1000) return sign + (absN/1000).toFixed(1) + 'K';
+    return sign + Math.floor(absN).toString();
+}
+function formatBalance(n) {
+    const absN = Math.abs(n);
+    const sign = n < 0 ? '-' : '';
+    return sign + absN.toFixed(3);
+}
+function getUsedSlots() { return state.inventory.reduce((s, i) => s + i.count, 0); }
+function getUpgradeCost() { return Math.floor(UPGRADE_BASE_COST * Math.pow(UPGRADE_MULTIPLIER, state.user?.inventoryUpgrades || 0)); }
+function canMerge(creatureId) {
+    const item = state.inventory.find(i => i.creatureId === creatureId);
+    const c = getCreature(creatureId);
+    return item && item.count >= 3 && c && c.rarity !== 'legendary' && c.rarity !== 'mythic';
+}
+function getLevelTitle(lvl) {
+    const level = lvl || 1;
+    if (level >= 20) return 'God Scientist';
+    if (level >= 15) return 'DNA Master';
+    if (level >= 10) return 'Geneticist';
+    if (level >= 5) return 'Lab Expert';
+    if (level >= 3) return 'Biologist';
+    return 'Researcher';
+}
+function getIconHtml(creature, addShadow = false, shadowColor = null) {
+    if (!creature) return '🧬';
+    const icon = creature.icon;
+    if (icon && (icon.startsWith('http') || icon.startsWith('/') || icon.startsWith('Images/'))) {
+        const shadowStyle = addShadow && shadowColor ? `filter:drop-shadow(0 0 16px ${shadowColor});` : '';
+        return `<img src="${icon}" alt="${escapeHtml(creature.name)}" loading="lazy" style="object-fit:contain;${shadowStyle}" class="card-icon-img" onerror="this.style.display='none'">`;
     }
-    const refLinkEl = document.getElementById('refLink');
-    if (refLinkEl) refLinkEl.textContent = window._refLink;
-
-    // Load referrals from server
-    loadReferrals();
-
-    // Bots
-    activeBots = data.bots || [];
-    render();
-
-    // Transactions
-    if (data.transactions?.length) window._lastTxs=data.transactions; renderTxList(data.transactions);
-
-    // Balance
-    updateBal();
-
-    // Start polling active bots every 30s
-    startPolling();
-
-    // Load leaderboard
-    loadLeaderboard();
-
-  } catch (e) {
-    console.error('[boot]', e.message);
-    showToast(i18n.t('toast_load_error')+' '+e.message);
-  }
+    return icon || '🧬';
 }
 
-// ═══════════════════════════════════════════════════════════════
-// POLLING — refresh bot state every 30s (server ticks hourly)
-// ═══════════════════════════════════════════════════════════════
+function getVisualBalance() {
+    if (!state.user) return 0;
+    if (!state.lastServerSync) return state.serverBalance || 0;
+    const elapsedSeconds = (Date.now() - state.lastServerSync) / 1000;
+    const earned = (state.incomePerHour / 3600) * elapsedSeconds;
+    return (state.serverBalance || 0) + earned;
+}
 
-function startPolling() {
-  if (_pollInterval) clearInterval(_pollInterval);
-  _pollInterval = setInterval(async () => {
-    if (!activeBots.length) return;
+function updateServerSnapshot(newBalance, newIncomePerHour, newLastPassiveIncome) {
+    console.log('📊 updateServerSnapshot:', { newBalance, newIncomePerHour, newLastPassiveIncome });
+    
+    state.serverBalance = newBalance !== undefined ? newBalance : state.serverBalance;
+    state.incomePerHour = newIncomePerHour !== undefined ? newIncomePerHour : state.incomePerHour;
+    state.lastServerSync = newLastPassiveIncome ? new Date(newLastPassiveIncome).getTime() : Date.now();
+    if (state.user) state.user.balance = state.serverBalance;
+}
+
+// ============================================================
+// API ЗАПРОСЫ
+// ============================================================
+let pendingRequests = new Map();
+
+async function apiRequest(method, path, body = null, signal = null) {
+    const key = `${method}:${path}:${JSON.stringify(body)}`;
+    if (pendingRequests.has(key)) return pendingRequests.get(key);
+    
+    const opts = { method, headers: { 'Content-Type': 'application/json' }, signal };
+    if (state.token) opts.headers['Authorization'] = `Bearer ${state.token}`;
+    if (body) opts.body = JSON.stringify(body);
+    
+    const promise = (async () => {
+        try {
+            const res = await fetch(API_URL + path, opts);
+            const data = await res.json();
+            if (!res.ok) {
+                if (res.status === 401 || res.status === 403) {
+                    localStorage.removeItem('token');
+                    state.token = null;
+                    showToast('Сессия истекла', '❌');
+                }
+            }
+            return data;
+        } catch (e) {
+            if (e.name === 'AbortError') return null;
+            showToast('Ошибка соединения', '❌');
+            return { success: false, message: 'Нет соединения' };
+        } finally {
+            setTimeout(() => pendingRequests.delete(key), 100);
+        }
+    })();
+    
+    pendingRequests.set(key, promise);
+    return promise;
+}
+
+// ============================================================
+// ВИЗУАЛЬНЫЙ ТИКЕР
+// ============================================================
+function startVisualTicker() {
+    if (visualTickerInterval) clearInterval(visualTickerInterval);
+    visualTickerInterval = setInterval(() => {
+        if (document.hidden || !state.user) return;
+        const visualBalance = getVisualBalance();
+        const balanceEl = document.getElementById('balanceDisplay');
+        if (balanceEl) balanceEl.textContent = formatBalance(visualBalance);
+        const walletBalanceEl = document.getElementById('walletBalance');
+        if (walletBalanceEl) walletBalanceEl.textContent = formatBalance(visualBalance);
+    }, 1000);
+    state.visualTicker = { cancel: () => clearInterval(visualTickerInterval) };
+}
+
+async function startCollectIncomeLoop() {
+    if (collectIncomeTimer) clearInterval(collectIncomeTimer);
+    collectIncomeTimer = setInterval(async () => {
+        if (document.hidden || !state.token) return;
+        try {
+            const res = await apiRequest('POST', '/api/game/collect-income');
+            if (res && res.success) {
+                const serverBal = res.balance;
+                const visualBal = getVisualBalance();
+                const effectiveBal = Math.max(serverBal, Math.floor(visualBal));
+                updateServerSnapshot(effectiveBal, res.incomePerHour, null);
+                if (state.user) state.user.balance = effectiveBal;
+            }
+        } catch (e) {}
+    }, 5 * 60 * 1000);
+}
+
+// ============================================================
+// ЗАГРУЗКА КОНФИГА И СУЩЕСТВ
+// ============================================================
+async function loadGameConfig() {
+    const res = await apiRequest('GET', '/api/game/config');
+    if (res && res.success) {
+        const cfg = res.config;
+        CAPSULE_COSTS = cfg.capsuleCosts || { basic: 1000, premium: 6000 };
+        RARITY_WEIGHTS = cfg.capsuleRarities || RARITY_WEIGHTS;
+        AD_REWARD = cfg.adReward || 50;
+        AD_COOLDOWN = cfg.adCooldown || 60;
+        UPGRADE_BASE_COST = cfg.upgradeBaseCost || 300;
+        UPGRADE_MULTIPLIER = cfg.upgradeMultiplier || 1.4;
+        MAX_INVENTORY_SLOTS = cfg.limits?.maxInventorySlots || 50;
+        SPECIAL_QUESTS = cfg.specialQuests || [];
+        return true;
+    }
+    return false;
+}
+
+async function loadCreaturesFromServer() {
+    const res = await apiRequest('GET', '/api/game/creatures');
+    if (res && res.success && res.creatures) {
+        CREATURES = res.creatures;
+        return true;
+    }
+    return false;
+}
+
+// ============================================================
+// СТАТИСТИКА ПОЛЬЗОВАТЕЛЯ
+// ============================================================
+async function loadUserStats() {
     try {
-      const updated = await Promise.all(
-        activeBots.map(b => apiGet('/api/bots/' + b.id).then(r => r.bot).catch(() => b))
-      );
-      activeBots = updated;
-      render();
-      updateBal();
-    } catch (e) {
-      console.warn('[poll]', e.message);
+        const res = await apiRequest('GET', '/api/user/stats');
+        if (res && res.success) {
+            const stats = res.stats;
+            const walletCards = document.getElementById('walletCards');
+            const walletMerges = document.getElementById('walletMerges');
+            const walletAdsWatched = document.getElementById('walletAdsWatched');
+            const walletReferralEarned = document.getElementById('walletReferralEarned');
+            
+            if (walletCards) walletCards.textContent = state.inventory.reduce((s, i) => s + i.count, 0);
+            if (walletMerges) walletMerges.textContent = state.user?.mergeCount || 0;
+            if (walletAdsWatched) walletAdsWatched.textContent = stats.adsWatched || 0;
+            if (walletReferralEarned) walletReferralEarned.textContent = formatNum(stats.referralEarned || 0);
+        }
+    } catch (e) { console.error('loadUserStats error:', e); }
+}
+
+// ============================================================
+// TELEGRAM WEBAPP INIT
+// ============================================================
+function clearAllIntervals() {
+    if (intervals.adsTimer) clearInterval(intervals.adsTimer);
+    if (intervals.specialQuests) clearInterval(intervals.specialQuests);
+    if (intervals.leaderboard) clearInterval(intervals.leaderboard);
+    if (intervals.marketplace) clearInterval(intervals.marketplace);
+    if (state.visualTicker) state.visualTicker.cancel();
+    if (collectIncomeTimer) clearInterval(collectIncomeTimer);
+    collectIncomeTimer = null;
+    for (const timer of activeQuestTimers.values()) clearTimeout(timer);
+    activeQuestTimers.clear();
+    clearAllQuestTimers();
+    if (window.questTimerInterval) clearInterval(window.questTimerInterval);
+}
+
+function startOptimizedIntervals() {
+    intervals.leaderboard = setInterval(() => { if (!document.hidden) renderLeaderboard(); }, 5 * 60 * 1000);
+    intervals.specialQuests = setInterval(() => { if (!document.hidden) { loadGameConfig(); renderSpecialQuests(); } }, 5 * 60 * 1000);
+    intervals.marketplace = setInterval(() => { if (!document.hidden && isMarketplaceTabActive) renderMarketplaceBuy(); }, 10 * 1000);
+    intervals.adsTimer = setInterval(updateAdsTimer, 1000);
+}
+
+function handleVisibilityChange() {
+    if (document.hidden) {
+        if (intervals.marketplace) clearInterval(intervals.marketplace);
+        intervals.marketplace = null;
+    } else {
+        apiRequest('POST', '/api/game/collect-income').then(res => {
+    if (res && res.success) {
+        updateServerSnapshot(res.balance, res.incomePerHour, res.lastPassiveIncome);
+        if (state.user) { 
+            state.user.balance = res.balance; 
+            updateHeader(); 
+        }
+        if (res.earned > 1) showToast(`+${formatNum(res.earned)} MMO получено`, '💰');
     }
-  }, 30000);
-}
+}).catch(err => console.warn('collect-income error:', err));
 
-// ═══════════════════════════════════════════════════════════════
-// LEADERBOARD from server
-// ═══════════════════════════════════════════════════════════════
-
-async function loadLeaderboard() {
-  try {
-    const data = await apiGet('/api/leaderboard');
-
-    const myRankEl = document.querySelector('.mr-pos');
-    if (myRankEl) myRankEl.textContent = '#' + data.myRank;
-    const myEarnEl = document.getElementById('rankEarn');
-    if (myEarnEl) myEarnEl.textContent = '+' + data.myEarned.toFixed(4) + ' TON';
-
-    if (data.leaders.length >= 1) {
-      const p1Ava = document.querySelector('.p1 .podium-ava');
-      const p1Name = document.querySelector('.p1 .podium-name');
-      const p1Earn = document.querySelector('.p1 .podium-earn');
-      if (p1Ava) p1Ava.textContent = data.leaders[0].initial;
-      if (p1Name) p1Name.textContent = data.leaders[0].firstName;
-      if (p1Earn) p1Earn.textContent = '+' + data.leaders[0].totalEarned.toFixed(4) + ' TON';
+        if (arenaClient && state.token && !arenaClient.isConnected()) {
+            arenaClient.connectSocket(state.token, API_URL);
+        }
+        
+        if (isMarketplaceTabActive) {
+            renderMarketplaceBuy();
+            intervals.marketplace = setInterval(() => { 
+                if (!document.hidden && isMarketplaceTabActive) renderMarketplaceBuy(); 
+            }, 10 * 1000);
+        }
     }
-    if (data.leaders.length >= 2) {
-      const p2Ava = document.querySelector('.p2 .podium-ava');
-      const p2Name = document.querySelector('.p2 .podium-name');
-      const p2Earn = document.querySelector('.p2 .podium-earn');
-      if (p2Ava) p2Ava.textContent = data.leaders[1].initial;
-      if (p2Name) p2Name.textContent = data.leaders[1].firstName;
-      if (p2Earn) p2Earn.textContent = '+' + data.leaders[1].totalEarned.toFixed(4) + ' TON';
+}
+
+async function refreshUserProfile() {
+    const res = await apiRequest('GET', '/api/user/profile');
+    if (res && res.success) {
+        const currentVisualBalance = getVisualBalance();
+        
+        state.user = res.user;
+        state.inventory = res.inventory || [];
+        state.incomePerHour = res.incomePerHour || 0;
+        
+        const serverBal = state.user.balance;
+        const effectiveBal = Math.max(serverBal, Math.floor(currentVisualBalance));
+        
+        state.serverBalance = effectiveBal;
+        state.lastServerSync = Date.now();
+        if (state.user) state.user.balance = effectiveBal;
+        
+        updateHeader();
+        renderCards();
+        updateFriendRewardButtons();
+        await loadUserStats();
+        
+        if (res.offlineEarned > 10) {
+            setTimeout(() => showToast(`+${formatNum(res.offlineEarned)} MMO offline!`, '💤'), 1000);
+        }
     }
-    if (data.leaders.length >= 3) {
-      const p3Ava = document.querySelector('.p3 .podium-ava');
-      const p3Name = document.querySelector('.p3 .podium-name');
-      const p3Earn = document.querySelector('.p3 .podium-earn');
-      if (p3Ava) p3Ava.textContent = data.leaders[2].initial;
-      if (p3Name) p3Name.textContent = data.leaders[2].firstName;
-      if (p3Earn) p3Earn.textContent = '+' + data.leaders[2].totalEarned.toFixed(4) + ' TON';
-    }
-
-    const el = document.getElementById('ratingList');
-    if (el && data.leaders.length > 3) {
-      el.innerHTML = data.leaders.slice(3).map(u => `
-        <div class="rank-item">
-          <div class="rank-num">${u.rank}</div>
-          <div class="rank-ava" style="background:linear-gradient(135deg,#5B5FEE,#A78BFA)">${u.initial}</div>
-          <div class="rank-info">
-            <div class="rank-name">${u.firstName}</div>
-            <div class="rank-detail">TradeBot</div>
-          </div>
-          <div class="rank-earn">+${u.totalEarned.toFixed(4)} TON</div>
-        </div>`).join('');
-    }
-  } catch (e) {
-    console.warn('[leaderboard]', e.message);
-    renderRating();
-  }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// RENDER TX LIST
-// ═══════════════════════════════════════════════════════════════
-
-function renderTxList(txs) {
-  const list = document.getElementById('txList');
-  if (!list) return;
-
-  const TYPE_ICON = {
-    deposit:   { bg:'rgba(57,217,138,.1)',  stroke:'#39D98A', path:'<path d="M12 2v20M2 12l10 10 10-10"/>' },
-    bot_claim: { bg:'rgba(91,95,238,.1)',   stroke:'#7B7FF8', path:'<polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>' },
-    referral:  { bg:'rgba(91,95,238,.1)',   stroke:'#7B7FF8', path:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>' },
-    withdraw:  { bg:'rgba(246,70,93,.1)',   stroke:'#F6465D', path:'<path d="M12 22V2M2 12l10-10 10 10"/>' },
-    bot_start: { bg:'rgba(246,70,93,.1)',   stroke:'#F6465D', path:'<path d="M12 22V2M2 12l10-10 10 10"/>' },
-  };
-
-  const TYPE_NAME = {
-    deposit:   i18n.t('tx_deposit'),
-    bot_claim: i18n.t('tx_bot_claim'),
-    referral: i18n.t('tx_referral'),
-    withdraw:  i18n.t('tx_withdraw'),
-    bot_start: i18n.t('tx_bot_start'),
-  };
-
-  if (!txs || !txs.length) {
-    list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">' + i18n.t('wallet_no_tx') + '</div>';
-    return;
-  }
-
-  const STATUS_BADGE = {
-    pending:  { label: i18n.t('tx_pending')  || 'В обработке', color:'#F6A600', bg:'rgba(246,166,0,.12)' },
-    done:     { label: i18n.t('tx_done')     || 'Выполнено',   color:'#39D98A', bg:'rgba(57,217,138,.12)' },
-    rejected: { label: i18n.t('tx_rejected') || 'Отклонено',   color:'#F6465D', bg:'rgba(246,70,93,.12)' },
-  };
-
-  const items = txs.slice(0, 20).map(tx => {
-    const ic   = TYPE_ICON[tx.type] || TYPE_ICON.deposit;
-    const name = TYPE_NAME[tx.type] || tx.type;
-    const isIn = tx.amount > 0;
-    const dateStr = i18n.formatDate(tx.createdAt, i18n.getLang());
-    const timeStr = i18n.formatTime(tx.createdAt);
-    const st = tx.status && tx.status !== 'done' ? STATUS_BADGE[tx.status] : null;
-    const statusHtml = st
-      ? `<span class="tx-status-badge" style="background:${st.bg};color:${st.color}">${st.label}</span>`
-      : '';
-    return `<div class="tx-item">
-      <div class="tx-ico" style="background:${ic.bg}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="${ic.stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ic.path}</svg>
-      </div>
-      <div class="tx-info">
-        <div class="tx-name">${name} ${statusHtml}</div>
-        <div class="tx-time">${dateStr}, ${timeStr}</div>
-      </div>
-      <div class="tx-amt ${isIn?'tx-in':'tx-out'}" style="${tx.status==='pending'?'opacity:.55':''}">${isIn?'+':''}${TON(Math.abs(tx.amount))}</div>
-    </div>`;
-  }).join('');
-
-  list.innerHTML = items;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// YIELD BADGE (local preview before server confirms)
-// ═══════════════════════════════════════════════════════════════
-
-const YIELD_RANGE = { basic:[3.5,5.5], pro:[4.5,7.5], elite:[6.0,10.0] };
-function rollPct(tier){ const [lo,hi]=YIELD_RANGE[tier]; return lo+Math.random()*(hi-lo); }
-
-function updateYieldBadge(tier){
-  const dw = document.querySelector('#bot-'+tier+' .bot-dur');
-  const sd = dw?.querySelector('.dur-btn.sel');
-  const days = parseInt(sd?.dataset.days || '7');
-  const [lo, hi] = YIELD_RANGE[tier];
-  const f = days / 7;
-  const yEl = document.getElementById('yld-'+tier);
-  const lEl = document.getElementById('ylbl-'+tier);
-  if(yEl) yEl.textContent = `+${(lo*f).toFixed(1)}–${(hi*f).toFixed(1)}%`;
-  if(lEl) lEl.textContent = i18n.t('per_days') + ' ' + days + ' ' + i18n.t('days_short');
-}
-
-// ═══════════════════════════════════════════════════════════════
-// UPDATE DURATION BUTTONS TEXT (7/14/30 дней)
-// ═══════════════════════════════════════════════════════════════
-
-function updateDurationButtonsText() {
-  const tiers = ['basic', 'pro', 'elite'];
-  tiers.forEach(tier => {
-    const durWrap = document.querySelector(`#bot-${tier} .bot-dur`);
-    if (!durWrap) return;
-    const btns = durWrap.querySelectorAll('.dur-btn');
-    btns.forEach(btn => {
-      const days = btn.dataset.days;
-      if (days === '7') {
-        btn.childNodes[0].textContent = i18n.t('days_7');
-      } else if (days === '14') {
-        btn.childNodes[0].textContent = i18n.t('days_14');
-      } else if (days === '30') {
-        btn.childNodes[0].textContent = i18n.t('days_30');
-      }
-    });
-  });
-}
-
-// ═══════════════════════════════════════════════════════════════
-// UPDATE LAUNCH BUTTONS TEXT
-// ═══════════════════════════════════════════════════════════════
-
-function updateLaunchButtonsText() {
-  const tiers = ['basic', 'pro', 'elite'];
-  tiers.forEach(tier => {
-    const durWrap = document.querySelector(`#bot-${tier} .bot-dur`);
-    const selected = durWrap?.querySelector('.dur-btn.sel');
-    const btnSpan = document.querySelector(`#bot-${tier} .buy-btn span`);
-    if (btnSpan && selected) {
-      const price = selected.dataset.price;
-      btnSpan.innerHTML = i18n.t('launch') + ` — ${price} TON`;
-    }
-  });
-}
-
-// ═══════════════════════════════════════════════════════════════
-// NAV
-// ═══════════════════════════════════════════════════════════════
-
-function switchPage(id){
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('page-'+id).classList.add('active');
-  document.getElementById('nav-'+id).classList.add('active');
-  if(id==='tasks') renderTasks();
-}
-
-// ═══════════════════════════════════════════════════════════════
-// TOAST
-// ═══════════════════════════════════════════════════════════════
-
-function showToast(msg){
-  const t=document.getElementById('toast');
-  t.textContent=msg; t.classList.add('show');
-  clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2800);
-}
-function copyRef(){
-  navigator.clipboard?.writeText(window._refLink || '').catch(()=>{});
-  showToast(i18n.t('toast_link_copied'));
-}
-
-// ═══════════════════════════════════════════════════════════════
-// PAIR / DURATION CHIPS
-// ═══════════════════════════════════════════════════════════════
-
-document.querySelectorAll('.bot-pairs').forEach(w=>{
-  w.addEventListener('click',e=>{
-    const c=e.target.closest('.pair-chip'); if(!c)return;
-    w.querySelectorAll('.pair-chip').forEach(x=>x.classList.remove('sel'));
-    c.classList.add('sel');
-  });
-});
-
-document.querySelectorAll('.bot-dur').forEach(w=>{
-  w.addEventListener('click',e=>{
-    const b=e.target.closest('.dur-btn'); if(!b)return;
-    w.querySelectorAll('.dur-btn').forEach(x=>x.classList.remove('sel'));
-    b.classList.add('sel');
-    const id=w.dataset.bot;
-    const btnSpan = document.querySelector('#bot-'+id+' .buy-btn span');
-    if(btnSpan) btnSpan.innerHTML = i18n.t('launch') + ' — ' + b.dataset.price + ' TON';
-    updateYieldBadge(id);
-  });
-});
-
-['basic','pro','elite'].forEach(updateYieldBadge);
-
-// ═══════════════════════════════════════════════════════════════
-// BOT MODAL
-// ═══════════════════════════════════════════════════════════════
-
-function openModal(name,tier){
-  const pw=document.querySelector('#bot-'+tier+' .bot-pairs');
-  const pair=pw?.querySelector('.pair-chip.sel')?.textContent||'EUR/USD';
-  const dw=document.querySelector('#bot-'+tier+' .bot-dur');
-  const sd=dw?.querySelector('.dur-btn.sel');
-  const days=parseInt(sd?.dataset.days||'7');
-  const price=parseFloat(sd?.dataset.price||'29');
-  const [lo,hi]=YIELD_RANGE[tier];
-  const f=days/7;
-  sel={name,tier,pair,days,price,f,lo,hi};
-
-  document.getElementById('mTitle').textContent=i18n.t('modal_launch_title')+' '+name;
-  document.getElementById('mName').textContent=name;
-  document.getElementById('mPair').textContent=pair;
-  document.getElementById('mDays').textContent=days+' '+i18n.t('days_short');
-  document.getElementById('mYield').textContent=`+${(lo*f).toFixed(1)}–${(hi*f).toFixed(1)}% (+${(price*lo*f/100).toFixed(2)}...${(price*hi*f/100).toFixed(2)} TON)`;
-  document.getElementById('mPrice').textContent=price+' TON';
-  document.getElementById('mAfter').textContent=TON(balance-price);
-  document.getElementById('botModal').classList.add('open');
-}
-function closeModal(){ document.getElementById('botModal').classList.remove('open'); }
-document.getElementById('botModal').addEventListener('click',e=>{
-  if(e.target===document.getElementById('botModal')) closeModal();
-});
-
-// ═══════════════════════════════════════════════════════════════
-// BUY BOT → server
-// ═══════════════════════════════════════════════════════════════
-
-async function buyBot(){
-  if(!sel) return;
-  const {name, tier, pair, days, price} = sel;
-  if(balance < price){ showToast(i18n.t('toast_insufficient')); return; }
-
-  try {
-    const data = await apiPost('/api/bots/start', { tier, pair, days });
-    balance = data.balance;
-    activeBots.push(data.bot);
-    updateBal();
-    render();
-    closeModal();
-    showToast(name + ' ' + i18n.t('toast_bot_started')); 
-    window._everLaunched=true;
-    startPolling();
-  } catch(e) {
-    showToast(e.message||i18n.t('toast_error_launch'));
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// CLAIM → server
-// ═══════════════════════════════════════════════════════════════
-
-async function claimBot(id){
-  try {
-    const data = await apiPost('/api/bots/' + id + '/claim');
-    balance = data.balance;
-    monthly += data.payout;
-    activeBots = activeBots.filter(b => b.id !== id);
-    updateBal();
-    render();
-    showToast(TON(data.payout)+' '+i18n.t('toast_claimed'));
-    apiGet('/api/transactions').then(d => renderTxList(d.transactions)).catch(()=>{});
-  } catch(e) {
-    showToast(e.message||i18n.t('toast_error'));
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// RENDER ACTIVE BOTS
-// ═══════════════════════════════════════════════════════════════
-
-function render(){
-  const sec  = document.getElementById('activeSection');
-  const list = document.getElementById('activeBotsList');
-  if(!activeBots.length){ sec.style.display='none'; return; }
-  sec.style.display='block';
-
-  list.innerHTML = activeBots.map(bot => {
-    const earned    = (bot.earned >= 0 ? '+' : '') + Number(bot.earned).toFixed(4) + ' TON';
-    const earnColor = bot.earned >= 0 ? 'var(--green)' : 'var(--red)';
-    const endDate   = new Date(bot.endsAt).toLocaleDateString('ru',{day:'numeric',month:'long'});
-
-    // 🔄 ПЕРЕВОРАЧИВАЕМ СДЕЛКИ: последние (новые) сверху, старые снизу
-    const tradesReversed = [...(bot.trades || [])].reverse();
+// ============================================================
+// LOADING SCREEN
+// ============================================================
+function showLoadingScreen(show) {
+    let el = document.getElementById('loadingScreen');
     
-    const rows = tradesReversed.map(t => {
-      if(t.type === 'open') return `<div class="trade-row">
-        <span class="tr-badge tr-buy">BUY</span>
-        <span class="tr-instr">${t.pair}</span>
-        <span class="tr-detail">${i18n.t('position_open')}</span>
-        <span class="tr-pnl open">${i18n.t('in_progress')}</span>
-        <span class="tr-t">${new Date(t.openedAt).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'})}</span>
-      </div>`;
-      if(t.pnl === 0 || t.pnl == null) return '';
-      const loss = t.pnl < 0;
-      return `<div class="trade-row">
-        <span class="tr-badge ${loss?'tr-sell-loss':'tr-sell'}">${loss?'SELL↓':'SELL'}</span>
-        <span class="tr-instr">${t.pair}</span>
-        <span class="tr-detail">${loss ? i18n.t('position_reentry') : i18n.t('position_close_plus')}</span>
-        <span class="tr-pnl ${loss?'minus':'plus'}">${loss?'':'+'}${Math.abs(t.pnl).toFixed(6)} TON</span>
-        <span class="tr-t">${t.closedAt ? new Date(t.closedAt).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}) : ''}</span>
-      </div>`;
-    }).join('');
-
-    if(bot.done && !bot.claimed) {
-      const fin = Math.max(bot.earned, 0);
-      return `<div class="active-bot" style="border-color:rgba(57,217,138,.4)">
-        <div class="ab-top">
-          <div style="width:7px;height:7px;border-radius:50%;background:#A78BFA;flex-shrink:0"></div>
-          <div class="ab-name">${bot.name}</div>
-          <div class="ab-tag">${bot.pair}</div>
-          <div style="margin-left:auto;text-align:right">
-            <div class="ab-profit" style="color:var(--green)">+${fin.toFixed(4)} TON</div>
-            <div class="ab-days">${i18n.t('completed')}</div>
-          </div>
-        </div>
-        <div style="height:3px;background:linear-gradient(90deg,#5B5FEE,#39D98A);border-radius:2px;margin-bottom:10px"></div>
-        <div style="text-align:center;padding:4px 0 2px">
-          <div style="font-size:11px;color:var(--text2);margin-bottom:8px">${i18n.t('deposit_label')} ${bot.price} TON + ${i18n.t('income_label')} ${fin.toFixed(4)} TON</div>
-          <button onclick="claimBot('${bot.id}')" style="background:linear-gradient(135deg,#28C76F,#39D98A);color:#052010;border:none;border-radius:12px;padding:12px 0;width:100%;font-size:13px;font-weight:700;cursor:pointer">
-            ${i18n.t('claim_btn')} ${TON(bot.price+fin)}
-          </button>
-        </div>
-      </div>`;
+    if (!el && show) {
+        el = document.createElement('div');
+        el.id = 'loadingScreen';
+        el.style.cssText = `position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100vh; height: 100dvh; background: url('load.webp') center/cover no-repeat; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 12vh;`;
+        el.innerHTML = `
+            <style>.loading-bar-container { width: 200px; height: 4px; background: rgba(168,85,247,0.2); border-radius: 4px; overflow: hidden; }
+            .loading-bar-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #a855f7, #06b6d4); border-radius: 4px; transition: width 0.3s ease; }
+            .loading-text { font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 600; color: #a855f7; text-transform: uppercase; letter-spacing: 3px; margin-top: 16px; }
+            .loading-percent { font-family: 'Orbitron', monospace; font-size: 11px; color: #94a3b8; margin-top: 6px; }</style>
+            <div class="loading-bar-container"><div class="loading-bar-fill" id="loadingBarFill"></div></div>
+            <div class="loading-text">LOADING</div><div class="loading-percent" id="loadingPercent">0%</div>
+        `;
+        document.body.appendChild(el);
+        
+        let percent = 0;
+        const fillEl = document.getElementById('loadingBarFill');
+        const percentEl = document.getElementById('loadingPercent');
+        const interval = setInterval(() => {
+            if (percent < 90) {
+                percent += Math.random() * 10;
+                percent = Math.min(percent, 90);
+                if (fillEl) fillEl.style.width = percent + '%';
+                if (percentEl) percentEl.textContent = Math.floor(percent) + '%';
+            }
+        }, 200);
+        el.dataset.percentInterval = interval;
+    } 
+    else if (el && !show) {
+        if (el.dataset.percentInterval) clearInterval(parseInt(el.dataset.percentInterval));
+        const fillEl = document.getElementById('loadingBarFill');
+        const percentEl = document.getElementById('loadingPercent');
+        if (fillEl) fillEl.style.width = '100%';
+        if (percentEl) percentEl.textContent = '100%';
+        setTimeout(() => { el.style.transition = 'opacity 0.5s ease'; el.style.opacity = '0'; setTimeout(() => el.remove(), 500); }, 200);
     }
-
-    return `<div class="active-bot">
-      <div class="ab-top">
-        <div class="ab-dot"></div>
-        <div class="ab-name">${bot.name}</div>
-        <div class="ab-tag">${bot.pair}</div>
-        <div style="margin-left:auto;text-align:right">
-          <div class="ab-profit" style="color:${earnColor}">${earned}</div>
-          <div class="ab-days"></div>
-        </div>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
-        <div style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="11" height="11"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          ${i18n.t('ends_on')} ${endDate}
-        </div>
-        <div style="font-size:10px;color:var(--text3)">${i18n.t('last_5_trades')}</div>
-      </div>
-      <div>${rows}</div>
-    </div>`;
-  }).join('');
-
-  updateWalletInfo();
 }
 
-// ═══════════════════════════════════════════════════════════════
-// WALLET MODAL
-// ═══════════════════════════════════════════════════════════════
-
-let walletMode = 'deposit';
-
-function openWalletModal(mode){
-  walletMode = mode;
-  const isDeposit = mode === 'deposit';
-  document.getElementById('wModalTitle').textContent = isDeposit ? i18n.t('deposit_title') : i18n.t('withdraw_title');
-  document.getElementById('wDepositView').style.display  = isDeposit ? '' : 'none';
-  document.getElementById('wWithdrawView').style.display = isDeposit ? 'none' : '';
-  if(isDeposit){
-    const tgIdEl = document.getElementById('userTelegramId');
-    if(tgIdEl) tgIdEl.textContent = window._telegramId || '—';
-  } else {
-    document.getElementById('wDrawAvail').textContent = TON(balance);
-    document.getElementById('wDrawGet').textContent = '—';
-  }
-  document.getElementById('walletModal').classList.add('open');
-}
-function closeWalletModal(){ document.getElementById('walletModal').classList.remove('open'); }
-document.getElementById('walletModal').addEventListener('click',e=>{
-  if(e.target===document.getElementById('walletModal')) closeWalletModal();
-});
-
-function copyWalletAddr(){
-  const addr = document.getElementById('wDepositAddr')?.textContent || '';
-  navigator.clipboard?.writeText(addr).catch(()=>{});
-  showToast(i18n.t('toast_addr_copied'));
-}
-
-function copyMemoId(){
-  const id = String(window._telegramId || '');
-  if(!id || id === 'undefined'){ showToast('ID не загружен'); return; }
-  const btn = document.getElementById('copyMemoBtn');
-  navigator.clipboard?.writeText(id).then(()=>{
-    if(btn){ const s=btn.querySelector('span'); const prev=s?.textContent; if(s) s.textContent='✓'; setTimeout(()=>{ if(s&&prev) s.textContent=prev; },1500); }
-  }).catch(()=>{});
-  showToast(i18n.t('toast_memo_copied') || 'MEMO скопирован');
-}
-
-// ИСПРАВЛЕННАЯ функция doDeposit - без автоматического начисления
-// ИСПРАВЛЕННАЯ функция doDeposit - с минимальной суммой 10 TON
-async function doDeposit(){
-  const amt = parseFloat(document.getElementById('depositAmt').value);
-  if(!amt || amt < 10){ showToast('Минимальная сумма пополнения 10 TON'); return; }
-  try {
-    const data = await apiPost('/api/wallet/deposit', { amount: amt });
-    // НЕ обновляем баланс здесь! Баланс обновится только после одобрения админом
-    closeWalletModal();
-    document.getElementById('depositAmt').value = '';
-    showToast(i18n.t('toast_request_sent'));
-    // Обновляем транзакции чтобы показать pending статус
-    apiGet('/api/transactions').then(d => renderTxList(d.transactions)).catch(()=>{});
-  } catch(e) {
-    showToast(e.message || i18n.t('toast_error'));
-  }
-}
-
-async function doWithdraw(){
-  const amt  = parseFloat(document.getElementById('withdrawAmt').value);
-  const addr = document.getElementById('withdrawAddr').value.trim();
-  if(!amt || amt < 10){ showToast('Минимальная сумма вывода 10 TON'); return; }
-  if(!addr){ showToast(i18n.t('toast_enter_address')); return; }
-  try {
-    const data = await apiPost('/api/wallet/withdraw', { amount: amt, toAddress: addr });
-    balance = data.balance;
-    updateBal();
-    closeWalletModal();
-    document.getElementById('withdrawAmt').value = '';
-    document.getElementById('withdrawAddr').value = '';
-    showToast(i18n.t('toast_withdraw_sent'));
-    apiGet('/api/transactions').then(d => renderTxList(d.transactions)).catch(()=>{});
-  } catch(e) {
-    showToast(e.message || i18n.t('toast_error'));
-  }
-}
-
-document.getElementById('withdrawAmt').addEventListener('input',()=>{
-  const amt = parseFloat(document.getElementById('withdrawAmt').value)||0;
-  document.getElementById('wDrawGet').textContent = amt > 0.05 ? TON(amt - 0.05) : '—';
-});
-
-// ═══════════════════════════════════════════════════════════════
-// BALANCE & WALLET INFO
-// ═══════════════════════════════════════════════════════════════
-
-function updateBal(){
-  const safeBalance = isNaN(balance) ? 0 : balance;
-  const fmt = n => TON(isNaN(n) ? 0 : n);
-  document.getElementById('balanceEl').textContent = fmt(safeBalance);
-  const wb = document.getElementById('walletBal'); 
-  if(wb) wb.textContent = fmt(safeBalance);
-  updateWalletInfo();
-}
-
-function updateWalletInfo(){
-  const inBots = activeBots.filter(b=>!b.done).reduce((s,b)=>s+b.price,0);
-  const wa = document.getElementById('wAvail');   if(wa) wa.textContent = TON(balance);
-  const wb = document.getElementById('wInBots');  if(wb) wb.textContent = TON(inBots);
-  const wm = document.getElementById('wMonthly'); if(wm) wm.textContent = '+' + TON(monthly);
-}
-
-function updateMyRank(){
-  const total = activeBots.reduce((s,b)=>s+b.earned,0);
-  const el = document.getElementById('rankEarn');
-  if(el) el.textContent = (total>=0?'+':'') + total.toFixed(4) + ' TON';
-}
-
-// ═══════════════════════════════════════════════════════════════
-// STATIC LEADERBOARD FALLBACK
-// ═══════════════════════════════════════════════════════════════
-
-const RATING_DATA = [
-  {name:'Алекс',    init:'А', earn:18.42, bot:'Quantum Bot', pair:'XAU/USD', color:'linear-gradient(135deg,#5B5FEE,#A78BFA)'},
-  {name:'Дмитрий',  init:'Д', earn:12.81, bot:'Alpha Bot',   pair:'TSLA',    color:'linear-gradient(135deg,#848E9C,#606878)'},
-  {name:'Марина',   init:'М', earn:9.50,  bot:'Quantum Bot', pair:'GBP/JPY', color:'linear-gradient(135deg,#C77B3A,#E8924E)'},
-  {name:'Сергей',   init:'С', earn:7.34,  bot:'Alpha Bot',   pair:'NVDA',    color:'linear-gradient(135deg,#0E7C5A,#39D98A)'},
-  {name:'Ольга',    init:'О', earn:5.91,  bot:'Alpha Bot',   pair:'AAPL',    color:'linear-gradient(135deg,#C2185B,#F06292)'},
-  {name:'Иван',     init:'И', earn:4.62,  bot:'Scout Bot',   pair:'EUR/USD', color:'linear-gradient(135deg,#1565C0,#42A5F5)'},
-  {name:'Наталья',  init:'Н', earn:3.87,  bot:'Quantum Bot', pair:'XAG/USD', color:'linear-gradient(135deg,#4A148C,#9C27B0)'},
-  {name:'Тимур',    init:'Т', earn:3.20,  bot:'Alpha Bot',   pair:'AMZN',    color:'linear-gradient(135deg,#E65100,#FF9800)'},
-  {name:'Виктор',   init:'В', earn:2.74,  bot:'Scout Bot',   pair:'GBP/USD', color:'linear-gradient(135deg,#006064,#00BCD4)'},
-];
-
-function renderRating(){
-  const el = document.getElementById('ratingList'); if(!el) return;
-  el.innerHTML = RATING_DATA.map((u,i)=>`
-    <div class="rank-item">
-      <div class="rank-num ${i<3?'top3':''}">${i+1}</div>
-      <div class="rank-ava" style="background:${u.color}">${u.init}</div>
-      <div class="rank-info">
-        <div class="rank-name">${u.name}</div>
-        <div class="rank-detail">${u.bot} · ${u.pair}</div>
-      </div>
-      <div class="rank-earn">+${u.earn.toFixed(4)} TON</div>
-    </div>`).join('');
-}
-
-// ═══════════════════════════════════════════════════════════════
-// FAQ
-// ═══════════════════════════════════════════════════════════════
-
-function toggleFaq(el){ el.classList.toggle('open'); }
-
-// ─── REFERRALS ────────────────────────────────────────────
-async function loadReferrals(){
-  try {
-    const data = await apiGet('/api/referrals');
-    const countEl  = document.getElementById('refCount');
-    const earnedEl = document.getElementById('refEarned');
-    const listEl   = document.getElementById('refList');
-    
-    if(countEl) {
-      const count = data.referrals.length;
-      const referralsText = i18n.t('ref_referrals');
-      countEl.innerHTML = `${count} <span style="font-size:15px;color:var(--text2)">${referralsText}</span>`;
+// ============================================================
+// PARTICLES
+// ============================================================
+(function initParticles() {
+    const canvas = document.getElementById('particles-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let W, H, particles = [];
+    function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+    resize();
+    window.addEventListener('resize', resize);
+    for (let i = 0; i < 40; i++) {
+        particles.push({
+            x: Math.random() * 1000, y: Math.random() * 1000,
+            r: Math.random() * 1.5 + 0.3,
+            vx: (Math.random() - 0.5) * 0.3, vy: -Math.random() * 0.4 - 0.1,
+            alpha: Math.random() * 0.4 + 0.1,
+            color: Math.random() > 0.5 ? '124,58,237' : '6,182,212'
+        });
     }
-    
-    if(earnedEl) earnedEl.textContent = Number(data.totalEarned).toFixed(4)+' TON';
-if(data.referralCode) {
-  window._refLink = `https://t.me/Tradeetonbot?start=${data.referralCode}`;
-  const rl = document.getElementById('refLink');
-  if(rl) rl.textContent = window._refLink;
-}
-    if(listEl){
-      if (data.referrals.length) {
-        listEl.innerHTML = data.referrals.map(r => {
-          const init = (r.name || 'T')[0].toUpperCase();
-          const date = new Date(r.joinedAt);
-          const dateStr = i18n.formatDate(date, i18n.getLang());
-          return `<div class="ref-item"><div class="ri-ava">${init}</div><div><div class="ri-name">${r.name}</div><div style="font-size:10px;color:var(--text2)">${dateStr}</div></div></div>`;
-        }).join('');
-      } else {
-        listEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text3);font-size:13px">' + i18n.t('ref_empty') + '</div>';
-      }
+    function draw() {
+        ctx.clearRect(0, 0, W, H);
+        particles.forEach(p => {
+            p.x += p.vx; p.y += p.vy;
+            if (p.y < -5) { p.y = H + 5; p.x = Math.random() * W; }
+            if (p.x < -5) p.x = W + 5;
+            if (p.x > W + 5) p.x = -5;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${p.color},${p.alpha})`;
+            ctx.fill();
+        });
+        requestAnimationFrame(draw);
     }
-  } catch(e){ console.warn('[referrals]',e.message); }
-}
-
-function shareRef(){
-  const link = window._refLink||'';
-  if(window.Telegram?.WebApp){
-    window.Telegram.WebApp.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(link)+'&text='+encodeURIComponent((i18n.getLang()==='ru'?'Торговые боты на TON — зарабатывай пока бот работает!':'TON trading bots — earn while the bot works!')));
-  } else {
-    navigator.clipboard?.writeText(link).catch(()=>{});
-    showToast(i18n.t('toast_link_copied'));
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// SPLASH
-// ═══════════════════════════════════════════════════════════════
-
-(function(){
-  const bar  = document.getElementById('splashBar');
-  const dots = [0,1,2,3].map(i=>document.getElementById('sd'+i));
-  let pct=0, si=0;
-  const steps=[{target:30,dot:1,delay:300},{target:60,dot:2,delay:600},{target:85,dot:3,delay:900},{target:100,dot:3,delay:1100}];
-  function advance(){
-    if(si>=steps.length) return;
-    const s=steps[si++];
-    setTimeout(()=>{
-      const iv=setInterval(()=>{
-        pct=Math.min(pct+2,s.target);
-        bar.style.width=pct+'%';
-        if(pct>=s.target){clearInterval(iv);advance();}
-      },16);
-      if(s.dot<4 && dots[s.dot]) dots[s.dot].classList.add('lit');
-    },s.delay);
-  }
-  advance();
-  setTimeout(()=>{
-    const splash=document.getElementById('splash');
-    if(splash){
-      splash.classList.add('hiding');
-      setTimeout(()=>{splash.style.display='none';},520);
-    }
-  },1600);
+    draw();
 })();
 
-// ═══════════════════════════════════════════════════════════════
-// INIT
-// ═══════════════════════════════════════════════════════════════
-
-window.addEventListener('load', () => {
-  const tg = window.Telegram?.WebApp;
-  if (tg) {
-    tg.ready();
-    tg.expand();
-    // Fullscreen (Bot API 8.0+)
-    if (typeof tg.requestFullscreen === 'function') tg.requestFullscreen();
-  }
-  
-  if (!i18n.isSet()) {
-    document.getElementById('langWelcome').classList.remove('hidden');
-  } else {
-    document.getElementById('langWelcome').classList.add('hidden');
-    i18n.apply();
-    updateDurationButtonsText();
-    updateLaunchButtonsText();
-    
-    const cur = i18n.getLang();
-    const optRu = document.getElementById('lang-opt-ru');
-    const optEn = document.getElementById('lang-opt-en');
-    if(optRu) optRu.classList.toggle('active', cur==='ru');
-    if(optEn) optEn.classList.toggle('active', cur==='en');
-    const lbl = document.getElementById('langCurrentLabel');
-    if(lbl) lbl.textContent = cur==='ru'?'Русский':'English';
-  }
-  
-  renderTasks();
-  bootApp();
-});
-
-// Обновление при смене языка
-window.addEventListener('langChanged', () => {
-  i18n.apply();
-  updateDurationButtonsText();
-  updateLaunchButtonsText();
-  render();
-  renderTasks();
-  updateBal();
-  if (window._lastTxs) renderTxList(window._lastTxs);
-  ['basic','pro','elite'].forEach(updateYieldBadge);
-  loadReferrals();
-});
-
-// ── PROMOCODE ────────────────────────────────────────────────
-async function activatePromo() {
-  const input = document.getElementById('promoInput');
-  const code = input?.value?.trim();
-  const msgDiv = document.getElementById('promoMessage');
-  
-  if (!code) {
-    if (msgDiv) msgDiv.innerHTML = '<span style="color:var(--red)">Введите промокод</span>';
-    return;
-  }
-  
-  if (msgDiv) msgDiv.innerHTML = '<span style="color:var(--text2)">Проверяем...</span>';
-  
-  try {
-    const data = await apiPost('/api/promo/activate', { code });
-    
-    balance = data.balance;
-    updateBal();
-    if (msgDiv) {
-      msgDiv.innerHTML = `<span style="color:var(--green)">✅ ${data.message || `+${data.reward} TON зачислено!`}</span>`;
-    }
-    input.value = '';
-    
-    apiGet('/api/transactions').then(d => renderTxList(d.transactions)).catch(()=>{});
-    
-    setTimeout(() => {
-      if (msgDiv && msgDiv.innerHTML.includes('✅')) {
-        msgDiv.innerHTML = '';
-      }
-    }, 5000);
-    
-  } catch (e) {
-    let errorMsg = e.message || 'Ошибка активации';
-    if (errorMsg.includes('404')) errorMsg = 'Промокод не найден';
-    if (errorMsg.includes('400') && e.message) errorMsg = e.message;
-    if (msgDiv) msgDiv.innerHTML = `<span style="color:var(--red)">❌ ${errorMsg}</span>`;
-    
-    setTimeout(() => {
-      if (msgDiv && msgDiv.innerHTML.includes('❌')) {
-        msgDiv.innerHTML = '';
-      }
-    }, 4000);
-  }
+// ============================================================
+// UPDATE UI
+// ============================================================
+function updatePlayerInfo() {
+    if (!state.user) return;
+    const name = state.user.username || state.user.firstName || 'GENOME_X';
+    const avatarEl = document.getElementById('playerAvatar');
+    const nameEl = document.querySelector('.player-name');
+    if (avatarEl) avatarEl.textContent = name[0].toUpperCase();
+    if (nameEl) nameEl.textContent = name.toUpperCase();
 }
+
+// ============================================================
+// ARENA LOCK
+// ============================================================
+function showArenaClosedModal() {
+    const overlay = document.getElementById('overlay');
+    const popup = document.getElementById('popup');
+    if (!overlay || !popup) return;
+    popup.innerHTML = `
+        <div style="text-align:center;padding:8px">
+            <div style="font-size:48px;margin-bottom:12px">⏰</div>
+            <div style="font-size:20px;font-weight:700;color:#fff;margin-bottom:8px">Арена закрыта</div>
+            <div style="font-size:14px;color:#94a3b8;margin-bottom:16px;line-height:1.5">
+                Арена работает по расписанию<br>
+                <span style="color:#a78bfa;font-weight:600">10:00 – 12:00</span> и <span style="color:#a78bfa;font-weight:600">20:00 – 22:00</span><br>(UTC+3)
+            </div>
+            <div style="background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.3);border-radius:12px;padding:12px;margin-bottom:20px">
+                <div style="font-size:12px;color:#94a3b8;margin-bottom:4px">До открытия</div>
+                <div style="font-size:24px;font-weight:700;color:#a78bfa">${arenaNextOpenText()}</div>
+            </div>
+            <button onclick="closeOverlay()" style="width:100%;padding:14px;background:linear-gradient(135deg,#7c3aed,#a78bfa);border:none;border-radius:12px;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Понятно</button>
+        </div>
+    `;
+    document.getElementById('overlay').classList.add('show');
+}
+
+// Расписание арены (UTC+3)
+const ARENA_SCHEDULE_CLIENT = [[10, 12], [20, 22]];
+
+function isArenaOpenClient() {
+    const nowUTC = new Date();
+    const hourUTC3 = (nowUTC.getUTCHours() + 3) % 24;
+    return ARENA_SCHEDULE_CLIENT.some(([s, e]) => hourUTC3 >= s && hourUTC3 < e);
+}
+
+function arenaNextOpenText() {
+    const nowUTC = new Date();
+    const hourUTC3 = (nowUTC.getUTCHours() + 3) % 24;
+    const minUTC3 = nowUTC.getUTCMinutes();
+    const mins = Math.min(...ARENA_SCHEDULE_CLIENT.map(([s]) => {
+        let d = (s - hourUTC3) * 60 - minUTC3;
+        if (d <= 0) d += 24 * 60;
+        return d;
+    }));
+    const h = Math.floor(mins / 60), m = mins % 60;
+    return h > 0 ? `${h}ч ${m}мин` : `${m}мин`;
+}
+
+function updateArenaLock() {
+    const lock = document.getElementById('arenaNavLock');
+    if (!lock) return;
+    const level = state.user?.level || 1;
+    if (level < 3) {
+        lock.style.display = 'inline';
+        lock.textContent = '🔒';
+        lock.title = `Доступно с 3 уровня (ваш: ${level})`;
+    } else if (!isArenaOpenClient()) {
+        lock.style.display = 'inline';
+        lock.textContent = '⏰';
+        lock.title = `Арена закрыта. Открыта в 10:00–12:00 и 20:00–22:00 (UTC+3)`;
+    } else {
+        lock.style.display = 'none';
+    }
+}
+
+function updateHeader() {
+    if (!state.user) return;
+    const u = state.user;
+
+    if (!state.incomePerHour) {
+        let income = 0;
+        state.inventory.forEach(item => { const c = getCreature(item.creatureId); if (c) income += c.incomeBase * item.count; });
+        state.incomePerHour = income;
+    }
+
+    const visualBalance = getVisualBalance();
+    document.getElementById('balanceDisplay').textContent = formatBalance(visualBalance);
+    
+    const incomeInline = document.getElementById('incomeInline');
+    if (incomeInline) incomeInline.textContent = `+${formatNum(state.incomePerHour)}/hr`;
+
+    const needed = u.level * 100;
+    document.getElementById('xpLabel').textContent = `XP ${u.xp}/${needed}`;
+    document.getElementById('xpFill').style.width = `${Math.min(100, (u.xp / needed) * 100)}%`;
+    document.getElementById('playerLevelLabel').textContent = `LVL ${u.level} · ${getLevelTitle(u.level)}`;
+
+    document.getElementById('walletCards').textContent = state.inventory.reduce((s, i) => s + i.count, 0);
+    document.getElementById('walletMerges').textContent = u.mergeCount || 0;
+
+    updateUpgradeButton();
+    renderTransactions();
+    updateArenaLock();
+
+    const friendCountDisplay = document.getElementById('friendCountDisplay');
+    if (friendCountDisplay && state.user) friendCountDisplay.textContent = `${state.user.referralCount || 0} друзей 5+ уровня`;
+}
+
+function updateUpgradeButton() {
+    if (!state.user) return;
+    const cost = getUpgradeCost();
+    const btn = document.getElementById('quickUpgradeBtn');
+    const costEl = document.getElementById('upgradeSlotCost');
+    if (btn && costEl) {
+        costEl.textContent = cost;
+        const canAfford = state.serverBalance >= cost;
+        btn.style.opacity = canAfford ? '1' : '0.5';
+        btn.disabled = !canAfford;
+    }
+}
+
+function renderCards() {
+    const grid = document.getElementById('cardsGrid');
+    if (!grid) return;
+
+    if (!state.inventory.length) {
+        grid.innerHTML = `<div class="empty-grid"><i class="fa-solid fa-dna"></i>Open a capsule to get your first creature!</div>`;
+        document.getElementById('inventorySlots').textContent = `0/${state.user?.inventorySlots || 10}`;
+        document.getElementById('encyclopediaProgress').textContent = `${state.user?.discovered?.length || 0}/${CREATURES.length}`;
+        return;
+    }
+
+    const sorted = [...state.inventory].sort((a, b) => {
+        const ai = RARITY_ORDER.indexOf(getCreature(a.creatureId)?.rarity || 'common');
+        const bi = RARITY_ORDER.indexOf(getCreature(b.creatureId)?.rarity || 'common');
+        return bi - ai;
+    });
+
+    grid.innerHTML = sorted.map(item => {
+        const c = getCreature(item.creatureId);
+        if (!c) return '';
+        const merge = canMerge(item.creatureId);
+        return `<div class="creature-card ${c.rarity}" onclick="onCardClick('${item.creatureId}')">
+            ${merge ? `<div class="merge-ready-badge">MERGE!</div>` : ''}
+            ${item.count > 1 ? `<div class="card-count">${item.count}</div>` : ''}
+            <div class="card-icon">${getIconHtml(c)}</div>
+            <div class="card-name">${escapeHtml(c.name)}</div>
+            <div class="card-rarity-badge badge-${c.rarity}">${c.rarity}</div>
+            <div class="card-income"><i class="fa-solid fa-bolt"></i>${c.incomeBase}/hr</div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('inventorySlots').textContent = `${getUsedSlots()}/${state.user?.inventorySlots || 10}`;
+    document.getElementById('encyclopediaProgress').textContent = `${state.user?.discovered?.length || 0}/${CREATURES.length}`;
+}
+
+function renderTransactions() {
+    const list = document.getElementById('txList');
+    if (!list) return;
+    const txs = state.user?.transactions || [];
+    if (!txs.length) {
+        list.innerHTML = `<div style="text-align:center;color:#4a5568;padding:20px;font-size:12px">No transactions yet</div>`;
+        return;
+    }
+    list.innerHTML = txs.slice(0, 10).map(tx => {
+        const isPos = tx.amount > 0;
+        const isNeg = tx.amount < 0;
+        const icon = isPos ? '⬆️' : isNeg ? '⬇️' : '🔀';
+        const color = isPos ? 'rgba(34,197,94,0.15)' : isNeg ? 'rgba(239,68,68,0.15)' : 'rgba(124,58,237,0.15)';
+        const timeAgo = Math.floor((Date.now() - new Date(tx.time).getTime()) / 60000);
+        const timeStr = timeAgo < 1 ? 'just now' : `${timeAgo}m ago`;
+        return `<div class="tx-item">
+            <div class="tx-icon" style="background:${color}"><span style="font-size:16px">${icon}</span></div>
+            <div class="tx-info">
+                <div class="tx-name">${escapeHtml(tx.name)}</div>
+                <div class="tx-time">${timeStr}</div>
+            </div>
+            <div class="tx-amount ${isPos ? 'positive' : isNeg ? 'negative' : ''}" style="${!isPos && !isNeg ? 'color:#a855f7' : ''}">
+                ${isPos ? '+' : ''}${tx.amount !== 0 ? formatNum(tx.amount) + ' MMO' : 'MERGE'}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ============================================================
+// CAPSULE
+// ============================================================
+function showCapsuleModal(type) {
+    const odds = RARITY_WEIGHTS[type];
+    const cost = CAPSULE_COSTS[type];
+    const title = type === 'premium' ? 'Premium DNA Capsule' : 'DNA Capsule';
+    const canAfford = state.serverBalance >= cost;
+    const rarities = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+
+    const oddsHtml = rarities.map(r => {
+        const pct = odds[r] || 0;
+        if (!pct) return '';
+        const color = RARITY_COLORS[r];
+        return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <div style="flex:1;font-size:12px;font-weight:600;color:${color};text-transform:uppercase">${r}</div>
+            <div style="width:100px;height:6px;background:#1e2d4a;border-radius:3px;overflow:hidden">
+                <div style="height:100%;width:${pct}%;background:${color};border-radius:3px"></div>
+            </div>
+            <div style="width:35px;text-align:right;font-family:'Orbitron',monospace;font-size:12px;font-weight:700;color:${color}">${pct}%</div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('popup').innerHTML = `
+        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
+        <span class="popup-icon" style="filter:drop-shadow(0 0 16px ${type === 'premium' ? 'rgba(245,158,11,0.8)' : 'rgba(124,58,237,0.8)'})">${type === 'premium' ? '💎' : '🧬'}</span>
+        <div class="popup-title">${title}</div>
+        <div class="popup-subtitle" style="margin-bottom:16px">Cost: <span style="color:${type === 'premium' ? '#f59e0b' : '#a855f7'};font-weight:700">${cost} MMO</span></div>
+        <div style="background:#0d1120;border:1px solid #1e2d4a;border-radius:12px;padding:14px;margin-bottom:16px">
+            <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Drop Rates</div>
+            ${oddsHtml}
+        </div>
+        <button class="popup-btn" ${!canAfford ? 'disabled' : ''} style="${!canAfford ? 'opacity:0.5;cursor:not-allowed;background:#1a2540' : type === 'premium' ? 'background:linear-gradient(135deg,#b45309,#f59e0b)' : ''}" onclick="closeOverlay();openCapsule('${type}')">
+            <i class="fa-solid fa-flask-vial"></i> ${canAfford ? 'OPEN NOW' : 'NOT ENOUGH MMO'}
+        </button>
+    `;
+    document.getElementById('overlay').classList.add('show');
+}
+
+async function openCapsule(type) {
+    if (state.isLoading) return;
+    
+    if (Date.now() - (lastOpenTimes.get(state.user?.telegramId) || 0) < 2000) {
+        showToast('Слишком быстро! Подождите 2 секунды.', '⏳');
+        return;
+    }
+    lastOpenTimes.set(state.user?.telegramId, Date.now());
+
+    const cost = CAPSULE_COSTS[type];
+    if (state.serverBalance < cost) { showToast('Not enough MMO!', '❌'); return; }
+    if (getUsedSlots() >= (state.user?.inventorySlots || 10)) { showToast('Inventory full! Upgrade storage', '📦'); return; }
+
+    state.isLoading = true;
+
+    const cardEl = document.getElementById(type === 'premium' ? 'premiumCapsuleCard' : 'basicCapsuleCard');
+    const iconEl = cardEl?.querySelector('.capsule-icon');
+    iconEl?.classList.add('capsule-opening');
+    setTimeout(() => iconEl?.classList.remove('capsule-opening'), 600);
+
+    const res = await apiRequest('POST', '/api/game/open-capsule', { type });
+    state.isLoading = false;
+
+    if (!res.success) { showToast(res.message || 'Error opening capsule', '❌'); return; }
+
+    state.user = res.user;
+    state.inventory = res.inventory;
+    state.incomePerHour = res.incomePerHour;
+    
+    updateServerSnapshot(state.user.balance, state.incomePerHour, null);
+    updateHeader();
+    renderCards();
+    await loadUserStats();
+    setTimeout(() => showCapsulePopup(res.creature), 300);
+}
+
+function showCapsulePopup(creature) {
+    const c = getCreature(creature.id) || creature;
+    const color = RARITY_COLORS[c.rarity];
+
+    document.getElementById('popup').innerHTML = `
+        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
+        <div class="popup-icon">${getIconHtml(c, true, color)}</div>
+        <div class="popup-title" style="color:${color}">${escapeHtml(c.name)}</div>
+        <div class="popup-subtitle">${escapeHtml(c.desc || '')}</div>
+        <div class="popup-rarity" style="background:${color}22;color:${color};border:1px solid ${color}44">${c.rarity.toUpperCase()}</div>
+        <div class="popup-stats">
+            <div class="popup-stat"><div class="popup-stat-val" style="color:${color}">${c.incomeBase}</div><div class="popup-stat-label">MMO/hr</div></div>
+        </div>
+        <button class="popup-btn" onclick="closeOverlay()">AWESOME!</button>
+    `;
+    document.getElementById('overlay').classList.add('show');
+    spawnStars(c.rarity);
+}
+
+// ============================================================
+// CARD CLICK & MERGE
+// ============================================================
+function onCardClick(creatureId) {
+    const c = getCreature(creatureId);
+    if (!c) return;
+    const item = state.inventory.find(i => i.creatureId === creatureId);
+    const color = RARITY_COLORS[c.rarity];
+    const skill = window.ARENA_SKILLS_MAP?.[c.id] || null;
+    const premiumBadge = c.premiumOnly
+        ? `<div style="display:inline-block;background:#7c3aed22;color:#a78bfa;border:1px solid #7c3aed55;border-radius:8px;padding:3px 10px;font-size:10px;font-weight:700;margin-bottom:8px">💎 PREMIUM CAPSULE ONLY</div>`
+        : '';
+    const skillBlock = skill
+        ? `<div style="background:#0d1120;border:1px solid #1e2d4a;border-radius:10px;padding:10px;margin-top:8px;text-align:left">
+               <div style="font-size:10px;color:#64748b;margin-bottom:4px">ARENA SKILL</div>
+               <div style="font-size:13px;font-weight:700;color:#e2e8f0">${skill.name} <span style="color:#64748b;font-size:11px;font-weight:400">${Math.round(skill.chance * 100)}% chance</span></div>
+               <div style="font-size:11px;color:#94a3b8;margin-top:3px">${skill.description}</div>
+           </div>`
+        : '';
+
+    document.getElementById('popup').innerHTML = `
+        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
+        <div class="popup-icon">${getIconHtml(c, true, color)}</div>
+        <div class="popup-title" style="color:${color}">${escapeHtml(c.name)}</div>
+        <div class="popup-subtitle">${escapeHtml(c.desc || '')}</div>
+        <div class="popup-rarity" style="background:${color}22;color:${color};border:1px solid ${color}44">${c.rarity.toUpperCase()}</div>
+        ${premiumBadge}
+        <div class="popup-stats">
+            <div class="popup-stat"><div class="popup-stat-val" style="color:${color}">${c.incomeBase}</div><div class="popup-stat-label">MMO/hr</div></div>
+            <div class="popup-stat"><div class="popup-stat-val">${item ? item.count : 0}</div><div class="popup-stat-label">Owned</div></div>
+        </div>
+        ${skillBlock}
+        ${canMerge(creatureId)
+            ? `<button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e)" onclick="closeOverlay();showMergePreview('${creatureId}')">
+                <i class="fa-solid fa-code-merge"></i> MERGE x3
+            </button>`
+            : `<button class="popup-btn" onclick="closeOverlay()">CLOSE</button>`
+        }
+    `;
+    document.getElementById('overlay').classList.add('show');
+}
+
+function showMergePreview(creatureId) {
+    const creature = getCreature(creatureId);
+    if (!creature) return;
+    if (creature.rarity === 'legendary') { showToast('Legendary is max!', '⭐'); return; }
+
+    const currentRarityIdx = RARITY_ORDER.indexOf(creature.rarity);
+    const nextRarity = currentRarityIdx < RARITY_ORDER.length - 2 ? RARITY_ORDER[currentRarityIdx + 1] : creature.rarity;
+    const nextCreature = CREATURES.find(c => c.name === creature.name && c.rarity === nextRarity) || creature;
+    const color = RARITY_COLORS[creature.rarity];
+
+    document.getElementById('popup').innerHTML = `
+        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
+        <div class="popup-title" style="margin-bottom:4px">Предпросмотр Слияния</div>
+        <div class="popup-subtitle">3x ${escapeHtml(creature.name)} → ?</div>
+        <div style="background:#0d1120;border:1px solid #1e2d4a;border-radius:14px;padding:16px;margin-bottom:16px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+                <div style="text-align:center;flex:1"><div style="font-size:24px;margin-bottom:6px">${getIconHtml(creature)}</div><div style="font-size:10px;color:#94a3b8">Исходные</div><div style="font-size:11px;font-weight:600;color:#e2e8f0;margin-top:2px">3x ${escapeHtml(creature.name)}</div></div>
+                <div style="color:#4a5568;font-size:18px">→</div>
+                <div style="text-align:center;flex:1"><div style="font-size:24px;margin-bottom:6px">?</div><div style="font-size:10px;color:#94a3b8">Результат</div><div style="font-size:11px;font-weight:600;color:#e2e8f0;margin-top:2px">Unknown</div></div>
+            </div>
+            <div style="border-top:1px solid #1e2d4a;padding-top:14px">
+                <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Возможные результаты</div>
+                <div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:10px;padding:10px;margin-bottom:8px">
+                    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">${getIconHtml(nextCreature)}</span><div style="flex:1"><div style="font-size:11px;font-weight:600;color:#22c55e">30% Успех</div><div style="font-size:10px;color:#94a3b8">${escapeHtml(nextCreature.name)} (${nextRarity.toUpperCase()})</div></div><div style="font-size:12px;font-weight:700;color:#22c55e">▲ ПОВЫШЕНИЕ</div></div>
+                </div>
+                <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:10px">
+                    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">${getIconHtml(creature)}</span><div style="flex:1"><div style="font-size:11px;font-weight:600;color:#ef4444">70% Провал</div><div style="font-size:10px;color:#94a3b8">${escapeHtml(creature.name)} (${creature.rarity.toUpperCase()})</div></div><div style="font-size:12px;font-weight:700;color:#ef4444">= БЕЗ ИЗМЕНЕНИЙ</div></div>
+                </div>
+            </div>
+        </div>
+        <button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e);margin-bottom:8px" onclick="closeOverlay();executeMerge('${creatureId}')">
+            <i class="fa-solid fa-code-merge"></i> СЛИТЬ СЕЙЧАС
+        </button>
+        <button class="popup-btn" style="background:#1a2540;color:#e2e8f0" onclick="closeOverlay()">ОТМЕНА</button>
+    `;
+    document.getElementById('overlay').classList.add('show');
+}
+
+async function executeMerge(creatureId) {
+    if (state.isLoading) return;
+    if (!canMerge(creatureId)) return;
+    
+    if (Date.now() - (lastMergeTimes.get(state.user?.telegramId) || 0) < 1000) {
+        showToast('Слишком быстро! Подождите.', '⏳');
+        return;
+    }
+    lastMergeTimes.set(state.user?.telegramId, Date.now());
+
+    state.isLoading = true;
+    const res = await apiRequest('POST', '/api/game/merge', { creatureId });
+    state.isLoading = false;
+
+    if (!res.success) { showToast(res.message || 'Merge failed', '❌'); return; }
+
+    state.user = res.user;
+    state.inventory = res.inventory;
+    state.incomePerHour = res.incomePerHour;
+    
+    updateServerSnapshot(state.user.balance, state.incomePerHour, null);
+    updateHeader();
+    renderCards();
+    await loadUserStats();
+    showMergeResultPopup(res.fromCreature, res.resultCreature, res.upgraded);
+}
+
+function showMergeResultPopup(from, to, success) {
+    const fromC = getCreature(from.id) || from;
+    const toC = getCreature(to.id) || to;
+    const color = RARITY_COLORS[toC.rarity];
+
+    document.getElementById('popup').innerHTML = `
+        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
+        <div class="merge-popup-cards">
+            <div class="merge-card-mini">${getIconHtml(fromC)}</div>
+            <div class="merge-card-mini">${getIconHtml(fromC)}</div>
+            <div class="merge-card-mini">${getIconHtml(fromC)}</div>
+            <div class="merge-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+            <div class="merge-card-mini" style="border-color:${color};box-shadow:0 0 12px ${color}44;">${getIconHtml(toC)}</div>
+        </div>
+        <div class="popup-title" style="color:${color}">${escapeHtml(toC.name)}</div>
+        <div class="popup-subtitle">${success ? '🎉 Эволюция успешна!' : '❌ Провал! Существо не изменилось'}</div>
+        <div class="popup-rarity" style="background:${color}22;color:${color};border:1px solid ${color}44">${toC.rarity.toUpperCase()} ${success ? '▲ UPGRADED' : ''}</div>
+        <div class="popup-stats">
+            <div class="popup-stat"><div class="popup-stat-val" style="color:${color}">${toC.incomeBase}</div><div class="popup-stat-label">MMO/hr</div></div>
+            <div class="popup-stat"><div class="popup-stat-val" style="color:${success ? '#22c55e' : '#94a3b8'}">${success ? '+РЕДКОСТЬ' : '=РЕДКОСТЬ'}</div><div class="popup-stat-label">Result</div></div>
+        </div>
+        <button class="popup-btn" onclick="closeOverlay()" style="${success ? 'background:linear-gradient(135deg,#16a34a,#22c55e)' : ''}">
+            ${success ? 'ЭВОЛЮЦИЯ!' : 'ЗАКРЫТЬ'}
+        </button>
+    `;
+    document.getElementById('overlay').classList.add('show');
+    if (success) spawnStars(toC.rarity);
+}
+
+// ============================================================
+// UPGRADE INVENTORY
+// ============================================================
+async function upgradeInventory() {
+    if (state.isLoading) return;
+    
+    const cost = getUpgradeCost();
+    if (state.serverBalance < cost) { showToast(`Need ${cost} MMO to upgrade!`, '❌'); return; }
+
+    state.isLoading = true;
+    const res = await apiRequest('POST', '/api/game/upgrade-inventory');
+    state.isLoading = false;
+
+    if (!res.success) { showToast(res.message || 'Error', '❌'); return; }
+
+    state.user = res.user;
+    updateServerSnapshot(state.user.balance, state.incomePerHour, null);
+    updateHeader();
+    renderCards();
+    showToast(`+1 slot! Now ${state.user.inventorySlots} total`, '📦');
+}
+
+// ============================================================
+// ADS
+// ============================================================
+let lastAdsUpdate = 0;
+let adsUpdating = false;
+
+async function updateAdsStatus() {
+    if (adsUpdating) return;
+    adsUpdating = true;
+    
+    try {
+        const res = await apiRequest('GET', '/api/game/ads-status');
+        if (res && res.success) {
+            const adsRemainingEl = document.getElementById('adsRemaining');
+            const adsTimerEl = document.getElementById('adsTimer');
+            
+            const available = res.adsAvailable !== undefined ? res.adsAvailable : (res.adsRemaining || 0);
+            const maxAds = res.maxAdsPerDay || res.maxAdsAvailable || 10;
+            
+            if (adsRemainingEl) adsRemainingEl.textContent = `${available}/${maxAds}`;
+            
+            state.adsAvailable = available;
+            state.maxAdsPerDay = maxAds;
+            state.adsCooldown = res.cooldownSeconds || 0;
+            
+            if (available === 0 && res.nextRegenMinutes > 0) {
+                if (adsTimerEl) { adsTimerEl.textContent = `+1 через ${res.nextRegenMinutes}м`; adsTimerEl.style.color = '#f59e0b'; }
+            } else if (state.adsCooldown > 0) {
+                if (adsTimerEl) { adsTimerEl.textContent = `${state.adsCooldown}s`; adsTimerEl.style.color = '#94a3b8'; }
+            } else {
+                if (adsTimerEl) { adsTimerEl.textContent = 'Ready'; adsTimerEl.style.color = '#22c55e'; }
+            }
+            
+            const adsBtn = document.getElementById('adsBtn');
+            if (adsBtn) {
+                const canWatch = available > 0 && state.adsCooldown === 0;
+                adsBtn.style.opacity = canWatch ? '1' : '0.5';
+                adsBtn.disabled = !canWatch;
+            }
+            
+            lastAdsUpdate = Date.now();
+        }
+    } catch (e) { console.error('updateAdsStatus error:', e); }
+    finally { adsUpdating = false; }
+}
+
+async function watchAd() {
+    if (state.isLoading) return;
+
+    if (state.adsCooldown > 0) { showToast(`Реклама доступна через ${state.adsCooldown}с`, '⏳'); return; }
+    if (state.adsAvailable <= 0) { showToast(`Нет доступной рекламы. Восстановление через час.`, '📺'); return; }
+
+    const btn = document.getElementById('adsBtn');
+    const timer = document.getElementById('adsTimer');
+    
+    if (btn) { btn.style.opacity = '0.5'; btn.disabled = true; }
+    if (timer) timer.textContent = '...';
+
+    showToast('Загрузка рекламы...', '📺');
+
+    try {
+        let waited = 0;
+        while (typeof window.showGiga !== 'function' && waited < 3000) {
+            await new Promise(r => setTimeout(r, 100));
+            waited += 100;
+        }
+
+        if (typeof window.showGiga !== 'function') throw new Error('Рекламный SDK не загружен');
+
+        await window.showGiga();
+        
+        const res = await apiRequest('POST', '/api/game/watch-ad');
+
+        if (!res.success) {
+            if (res.adsAvailable === 0 && res.nextRegenMinutes) showToast(`Нет рекламы. Следующая через ${res.nextRegenMinutes} мин.`, '⚠️');
+            else showToast(res.message || 'Ошибка', '❌');
+            if (btn) { btn.style.opacity = '1'; btn.disabled = false; }
+            if (timer) timer.textContent = 'Ready';
+            return;
+        }
+
+        state.user = res.user;
+        state.adsCooldown = res.cooldownSeconds || AD_COOLDOWN;
+        state.adsAvailable = res.adsAvailable;
+        
+        updateServerSnapshot(state.user.balance, state.incomePerHour, null);
+        updateHeader();
+        await loadUserStats();
+        
+        const nextRegenText = res.nextRegenMinutes > 0 ? ` (ещё ${res.nextRegenMinutes} мин до +1)` : '';
+        showToast(`+${AD_REWARD} MMO! Осталось рекламы: ${res.adsAvailable}/${res.maxAdsPerDay}${nextRegenText}`, '🎉');
+        spawnFloatingMMO(AD_REWARD);
+        
+        if (res.kangarooUnlocked) {
+            setTimeout(() => showToast('🦘 Получен Kangaroo Uncommon за 200 просмотров рекламы!', '🎉'), 1500);
+        }
+        
+        updateAdsStatus();
+        
+        if (btn && res.adsAvailable > 0 && state.adsCooldown === 0) { btn.style.opacity = '1'; btn.disabled = false; }
+        
+    } catch (e) {
+        console.error('Ad error:', e);
+        showToast('Реклама не загрузилась, попробуйте ещё раз', '❌');
+        if (btn) { btn.style.opacity = '1'; btn.disabled = false; }
+        if (timer) timer.textContent = 'Ready';
+    }
+
+    state.isLoading = false;
+}
+
+function updateAdsTimer() {
+    if (!state.user) return;
+    
+    if (state.adsCooldown > 0) {
+        state.adsCooldown--;
+        const timerEl = document.getElementById('adsTimer');
+        if (timerEl) timerEl.textContent = `${state.adsCooldown}s`;
+        
+        const btn = document.getElementById('adsBtn');
+        if (btn && state.adsCooldown > 0) { btn.style.opacity = '0.5'; btn.disabled = true; }
+    }
+    
+    if (state.adsCooldown === 0) {
+        if (!lastAdsUpdate || Date.now() - lastAdsUpdate > 60000) { updateAdsStatus(); lastAdsUpdate = Date.now(); }
+        
+        const timerEl = document.getElementById('adsTimer');
+        if (timerEl) { timerEl.textContent = 'Ready'; timerEl.style.color = '#22c55e'; }
+        
+        const btn = document.getElementById('adsBtn');
+        if (btn && state.adsAvailable > 0) { btn.style.opacity = '1'; btn.disabled = false; }
+    }
+}
+
+// ============================================================
+// ENCYCLOPEDIA
+// ============================================================
+function showEncyclopedia() {
+    const discovered = new Set(state.user?.discovered || []);
+    const total = CREATURES.length;
+    const found = discovered.size;
+
+    const grouped = {};
+    RARITY_ORDER.forEach(r => grouped[r] = []);
+    CREATURES.forEach(c => { if (grouped[c.rarity]) grouped[c.rarity].push(c); });
+
+    const sections = RARITY_ORDER.map(rarity => {
+        if (!grouped[rarity].length) return '';
+        const color = RARITY_COLORS[rarity];
+        const items = grouped[rarity].map(c => {
+            const isFound = discovered.has(c.id);
+            return `<div class="coll-item ${isFound ? 'found' : 'not-found'}" style="${isFound ? `border-color:${color}44` : ''};cursor:pointer" onclick="showCreatureInfo('${c.id}')">
+                <span style="font-size:22px;${isFound ? `filter:drop-shadow(0 0 6px ${color})` : ''}">${getIconHtml(c)}</span>
+                <div class="coll-item-name">${isFound ? escapeHtml(c.name) : '???'}</div>
+            </div>`;
+        }).join('');
+        return `<div style="margin-bottom:16px">
+            <div style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">${rarity}</div>
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">${items}</div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('popup').innerHTML = `
+        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
+        <div class="popup-title" style="margin-bottom:4px">Encyclopedia</div>
+        <div class="popup-subtitle">${found}/${total} creatures discovered</div>
+        <div style="height:6px;background:#1e2d4a;border-radius:3px;margin-bottom:16px;overflow:hidden">
+            <div style="height:100%;width:${(found/total*100).toFixed(0)}%;background:linear-gradient(90deg,#7c3aed,#06b6d4);border-radius:3px;transition:width 0.5s"></div>
+        </div>
+        <div style="max-height:50vh;overflow-y:auto;padding:4px">${sections}</div>
+    `;
+    document.getElementById('overlay').classList.add('show');
+}
+
+function showCreatureInfo(creatureId) {
+    const c = getCreature(creatureId);
+    if (!c) return;
+    const discovered = new Set(state.user?.discovered || []);
+    const isFound = discovered.has(creatureId);
+    const color = RARITY_COLORS[c.rarity];
+    const skill = window.ARENA_SKILLS_MAP?.[c.id] || null;
+    const premiumBadge = c.premiumOnly
+        ? `<div style="display:inline-block;background:#7c3aed22;color:#a78bfa;border:1px solid #7c3aed55;border-radius:8px;padding:3px 10px;font-size:10px;font-weight:700;margin-bottom:8px">💎 PREMIUM CAPSULE ONLY</div>`
+        : '';
+    const skillBlock = skill
+        ? `<div style="background:#0d1120;border:1px solid #1e2d4a;border-radius:10px;padding:10px;margin-top:8px;text-align:left">
+               <div style="font-size:10px;color:#64748b;margin-bottom:4px">ARENA SKILL</div>
+               <div style="font-size:13px;font-weight:700;color:#e2e8f0">${skill.name} <span style="color:#64748b;font-size:11px;font-weight:400">${Math.round(skill.chance * 100)}% chance</span></div>
+               <div style="font-size:11px;color:#94a3b8;margin-top:3px">${skill.description}</div>
+           </div>`
+        : '';
+
+    document.getElementById('popup').innerHTML = `
+        <div class="popup-close" onclick="showEncyclopedia()"><i class="fa-solid fa-arrow-left"></i></div>
+        <div class="popup-icon">${getIconHtml(c, true, color)}</div>
+        <div class="popup-title" style="color:${color}">${escapeHtml(c.name)}</div>
+        <div class="popup-subtitle">${escapeHtml(c.desc || '')}</div>
+        <div class="popup-rarity" style="background:${color}22;color:${color};border:1px solid ${color}44">${c.rarity.toUpperCase()} ${isFound ? '✓ DISCOVERED' : '🔒 UNDISCOVERED'}</div>
+        ${premiumBadge}
+        <div class="popup-stats">
+            <div class="popup-stat"><div class="popup-stat-val" style="color:${color}">${c.incomeBase}</div><div class="popup-stat-label">MMO/hr</div></div>
+            <div class="popup-stat"><div class="popup-stat-val">${c.rarity === 'legendary' ? '★★★★★' : c.rarity === 'epic' ? '★★★★' : c.rarity === 'rare' ? '★★★' : c.rarity === 'uncommon' ? '★★' : '★'}</div><div class="popup-stat-label">Power</div></div>
+        </div>
+        ${skillBlock}
+    `;
+    document.getElementById('overlay').classList.add('show');
+}
+
+// ============================================================
+// MARKETPLACE
+// ============================================================
+function switchMarketplaceTab(tab) {
+    document.querySelectorAll('.marketplace-subtab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.marketplace-tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`marketplace-${tab}`).classList.add('active');
+    document.querySelector(`.marketplace-tab-btn[data-tab="${tab}"]`)?.classList.add('active');
+    
+    isMarketplaceTabActive = true;
+
+    if (tab === 'buy') renderMarketplaceBuy();
+    if (tab === 'sell') renderMarketplaceSell();
+    if (tab === 'mylistings') renderMarketplaceMyListings();
+}
+
+function getDataHash(data) { return JSON.stringify(data); }
+
+async function renderMarketplaceBuy() {
+    const container = document.getElementById('marketplaceListings');
+    if (!container) return;
+    
+    if (Date.now() < marketplaceCache.expiresAt && marketplaceCache.data) {
+        renderMarketplaceListings(marketplaceCache.data);
+        return;
+    }
+    
+    container.innerHTML = `<div style="text-align:center;color:#94a3b8;padding:20px;font-size:12px">Loading...</div>`;
+
+    const res = await apiRequest('GET', '/api/marketplace/listings');
+    if (!res || !res.success) {
+        container.innerHTML = `<div style="text-align:center;color:#4a5568;padding:30px;font-size:12px">Error loading listings</div>`;
+        return;
+    }
+
+    const listings = Array.isArray(res.listings) ? res.listings : [];
+    const newHash = getDataHash(listings);
+    
+    if (marketplaceCache.hash === newHash && marketplaceCache.data) {
+        marketplaceCache.expiresAt = Date.now() + 10000;
+        renderMarketplaceListings(marketplaceCache.data);
+        return;
+    }
+    
+    marketplaceCache = { data: listings, hash: newHash, expiresAt: Date.now() + 10000 };
+    renderMarketplaceListings(listings);
+}
+
+function renderMarketplaceListings(listings) {
+    const container = document.getElementById('marketplaceListings');
+    if (!container) return;
+    
+    if (!listings.length) {
+        container.innerHTML = `<div style="text-align:center;color:#4a5568;padding:30px 20px;font-size:12px">No listings available</div>`;
+        return;
+    }
+
+    container.innerHTML = listings.map(l => {
+        const c = getCreature(l.creatureId);
+        if (!c) return '';
+        const color = RARITY_COLORS[c.rarity];
+        const isOwn = l.sellerTgId === state.user?.telegramId;
+
+        return `<div class="marketplace-listing">
+            <div class="marketplace-listing-icon" style="background:${color}11;border-color:${color}44">${getIconHtml(c)}</div>
+            <div class="marketplace-listing-info">
+                <div class="marketplace-listing-name">${escapeHtml(c.name)}</div>
+                <div class="marketplace-listing-seller">by ${escapeHtml(l.sellerName)}${isOwn ? ' (You)' : ''}</div>
+                <div class="marketplace-listing-rarity badge-${c.rarity}">${c.rarity}</div>
+            </div>
+            <div class="marketplace-listing-price">
+                <div class="marketplace-listing-amount">${l.price}</div>
+                ${isOwn ? `<button class="marketplace-cancel-btn" onclick="cancelMarketplaceListing('${l._id}')">CANCEL</button>` : `<button class="marketplace-buy-btn" onclick="buyFromMarketplace('${l._id}', ${l.price}, '${l.creatureId}')">BUY</button>`}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function renderMarketplaceSell() {
+    const cards = document.getElementById('marketplaceSellCards');
+    if (!cards) return;
+
+    if (!state.inventory.length) {
+        cards.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#4a5568;padding:30px 20px;font-size:12px">You have no creatures to sell</div>`;
+        return;
+    }
+
+    cards.innerHTML = state.inventory.map(item => {
+        const c = getCreature(item.creatureId);
+        if (!c || !item.count) return '';
+        return `<div class="marketplace-sell-card" style="cursor:pointer" onclick="openSellModal('${item.creatureId}', '${c.name}', ${item.count})">
+            <div class="marketplace-sell-card-icon">${getIconHtml(c)}</div>
+            <div class="marketplace-sell-card-name">${escapeHtml(c.name)}</div>
+            <div style="font-size:9px;color:#4a5568">x${item.count}</div>
+            <div style="font-size:10px;color:#06b6d4;font-weight:600;margin-top:4px">SET PRICE</div>
+        </div>`;
+    }).filter(Boolean).join('');
+}
+
+function openSellModal(creatureId, creatureName, count) {
+    document.getElementById('popup').innerHTML = `
+        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
+        <div class="popup-title">Sell ${escapeHtml(creatureName)}</div>
+        <div class="popup-subtitle" style="margin-bottom:16px">Set your listing price</div>
+        <div class="price-input-modal">
+            <div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Price (MMO)</div>
+            <input type="number" class="price-input-field" id="sellPriceInput" placeholder="Enter price" min="10" max="100000" value="100" oninput="updateFeeCalculator()"></div>
+            <div class="fee-calculator">
+                <div class="fee-row"><span class="fee-label">Your Price</span><span class="fee-value" id="priceDisplay">100</span></div>
+                <div class="fee-row" style="color:#ef4444"><span class="fee-label">Platform Fee (10%)</span><span class="fee-value fee" id="feeDisplay">-10</span></div>
+                <div class="fee-row total"><span>You Receive</span><span class="fee-value final" id="finalDisplay">90</span></div>
+            </div>
+        </div>
+        <button class="popup-btn" style="background:linear-gradient(135deg,#22c55e,#16a34a);margin-top:16px" onclick="confirmSellListing('${creatureId}')"><i class="fa-solid fa-check"></i> LIST FOR SALE</button>
+        <button class="popup-btn" style="background:#1a2540;color:#e2e8f0;margin-top:8px" onclick="closeOverlay()">CANCEL</button>
+    `;
+    document.getElementById('overlay').classList.add('show');
+    updateFeeCalculator();
+}
+
+function updateFeeCalculator() {
+    const input = document.getElementById('sellPriceInput');
+    if (!input) return;
+    const price = Math.max(10, Math.min(100000, parseInt(input.value) || 0));
+    const fee = Math.floor(price * 0.1);
+    document.getElementById('priceDisplay').textContent = price;
+    document.getElementById('feeDisplay').textContent = `-${fee}`;
+    document.getElementById('finalDisplay').textContent = price - fee;
+}
+
+async function confirmSellListing(creatureId) {
+    const input = document.getElementById('sellPriceInput');
+    const price = Math.max(10, Math.min(100000, parseInt(input?.value) || 0));
+
+    if (price < 10) { showToast('Price must be at least 10 MMO', '❌'); return; }
+
+    state.isLoading = true;
+    const res = await apiRequest('POST', '/api/marketplace/list', { creatureId, price });
+    state.isLoading = false;
+
+    if (!res.success) { showToast(res.message || 'Error listing', '❌'); return; }
+
+    state.inventory = res.inventory;
+    closeOverlay();
+    const c = getCreature(creatureId);
+    showToast(`${c?.name || 'Creature'} listed for ${price} MMO!`, '✅');
+    renderCards();
+    renderMarketplaceSell();
+    marketplaceCache.expiresAt = 0;
+    switchMarketplaceTab('mylistings');
+}
+
+async function renderMarketplaceMyListings() {
+    const container = document.getElementById('marketplaceMyListings');
+    if (!container) return;
+    
+    container.innerHTML = `<div style="text-align:center;color:#94a3b8;padding:20px;font-size:12px">Загрузка...</div>`;
+
+    const res = await apiRequest('GET', '/api/marketplace/my-listings');
+    if (!res || !res.success) { container.innerHTML = `<div class="empty-listings">Ошибка загрузки</div>`; return; }
+
+    const listings = Array.isArray(res.listings) ? res.listings : [];
+    if (!listings.length) { container.innerHTML = `<div class="empty-listings">У вас нет активных лотов</div>`; return; }
+
+    container.innerHTML = listings.map(l => {
+        const c = getCreature(l.creatureId);
+        if (!c) return '';
+        const color = RARITY_COLORS[c.rarity];
+        const date = new Date(l.createdAt).toLocaleDateString();
+        
+        return `<div class="marketplace-my-listing">
+            <div class="marketplace-my-listing-icon" style="background:${color}11;border-color:${color}44">${getIconHtml(c)}</div>
+            <div class="marketplace-my-listing-info">
+                <div class="marketplace-my-listing-name">${escapeHtml(c.name)}</div>
+                <div class="marketplace-my-listing-status">Listed ${date}</div>
+                <div class="marketplace-listing-rarity badge-${c.rarity}">${c.rarity}</div>
+            </div>
+            <div class="marketplace-my-listing-price">
+                <div class="marketplace-my-listing-amount">${l.price} MMO</div>
+                <button class="marketplace-cancel-btn" onclick="cancelMarketplaceListing('${l._id}')">ОТМЕНИТЬ</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function cancelMarketplaceListing(listingId) {
+    state.isLoading = true;
+    const res = await apiRequest('POST', '/api/marketplace/cancel', { listingId });
+    state.isLoading = false;
+
+    if (!res.success) { showToast(res.message || 'Error', '❌'); return; }
+
+    state.inventory = res.inventory;
+    renderCards();
+    marketplaceCache.expiresAt = 0;
+    renderMarketplaceMyListings();
+    showToast('Listing cancelled, card returned', '✅');
+}
+
+async function buyFromMarketplace(listingId, price, creatureId) {
+    if (state.isLoading) return;
+    if (state.serverBalance < price) { showToast(`Need ${price} MMO`, '❌'); return; }
+
+    state.isLoading = true;
+    const res = await apiRequest('POST', '/api/marketplace/buy', { listingId });
+    state.isLoading = false;
+
+    if (!res.success) { showToast(res.message || 'Error buying', '❌'); return; }
+
+    state.user = res.user;
+    state.inventory = res.inventory;
+    state.incomePerHour = res.incomePerHour;
+    
+    updateServerSnapshot(state.user.balance, state.incomePerHour, null);
+
+    const c = getCreature(creatureId);
+    updateHeader();
+    renderCards();
+    await loadUserStats();
+    marketplaceCache.expiresAt = 0;
+    renderMarketplaceBuy();
+    showToast(`Bought ${c?.name || 'creature'} for ${price} MMO!`, '✅');
+    spawnFloatingMMO(-price);
+}
+
+// ============================================================
+// LEADERBOARD
+// ============================================================
+async function renderLeaderboard() {
+    const list = document.getElementById('leaderboardList');
+    if (!list) return;
+
+    if (!state.token) { list.innerHTML = `<div style="text-align:center;color:#4a5568;padding:20px;font-size:12px">Loading...</div>`; return; }
+    
+    if (Date.now() < leaderboardCache.expiresAt && leaderboardCache.data) {
+        renderLeaderboardData(leaderboardCache.data);
+        return;
+    }
+
+    if (currentLeaderboardController) currentLeaderboardController.abort();
+    currentLeaderboardController = new AbortController();
+
+    const res = await apiRequest('GET', '/api/user/leaderboard', null, currentLeaderboardController.signal);
+    if (!res || !res.success) { if (res !== null) list.innerHTML = `<div style="text-align:center;color:#4a5568;padding:20px;font-size:12px">Ошибка сервера</div>`; return; }
+    
+    if (res.leaders) res.leaders = res.leaders.map(l => ({ ...l, telegramId: l.telegramId }));
+    
+    leaderboardCache = { data: res, expiresAt: Date.now() + 30 * 1000 };
+    renderLeaderboardData(res);
+    currentLeaderboardController = null;
+}
+
+function renderLeaderboardData(data) {
+    const list = document.getElementById('leaderboardList');
+    if (!list) return;
+    
+    const currentUserId = state.user?.telegramId;
+    if (!currentUserId) return;
+    
+    const leaders = data.leaders || [];
+    
+    if (!leaders.length) { list.innerHTML = `<div class="empty-listings">No players yet</div>`; return; }
+    
+    list.innerHTML = leaders.map(l => {
+        const rank = l.rank;
+        const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
+        const rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+        const isMe = l.telegramId === currentUserId;
+        
+        return `<div class="lb-item ${isMe ? 'me' : ''}">
+            <div class="lb-rank ${rankClass}">${rankIcon}</div>
+            <div class="lb-avatar" style="background:${isMe ? '#a855f7' : '#4a5568'}33;border:1px solid ${isMe ? '#a855f7' : '#4a5568'}44;color:${isMe ? '#a855f7' : '#fff'}">${l.username[0]?.toUpperCase() || '?'}</div>
+            <div class="lb-info">
+                <div class="lb-name">${escapeHtml(l.username)} ${isMe ? '<span style="font-size:9px;color:#a855f7">(You)</span>' : ''}</div>
+                <div class="lb-level" style="color:#22c55e">УР ${l.level} · ${getLevelTitle(l.level)}</div>
+                <div class="lb-xp" style="font-size:9px;color:#22c55e">ОП: ${l.xp}/${l.level * 100}</div>
+            </div>
+            <div class="lb-score" style="display:flex;flex-direction:column;align-items:flex-end">
+                <span style="font-size:14px;font-weight:700;color:#f59e0b">УР ${l.level}</span>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ============================================================
+// FRIENDS
+// ============================================================
+async function inviteFriend() {
+    const res = await apiRequest('GET', '/api/user/referrals');
+    const link = res.referralLink || `https://t.me/your_bot?start=${state.user?.referralCode}`;
+
+    if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Join DNA MMO and get bonus MMO!')}`);
+    } else {
+        try { await navigator.clipboard.writeText(link); showToast('Invite link copied!', '🔗'); } 
+        catch { showToast(link, '🔗'); }
+    }
+}
+
+async function renderFriendsList() {
+    const container = document.getElementById('friendsList');
+    if (!container) return;
+    
+    try {
+        const res = await apiRequest('GET', '/api/user/referrals');
+        if (!res || !res.success) {
+            container.innerHTML = `<div style="text-align:center;color:#4a5568;padding:30px 20px;font-size:12px"><i class="fa-solid fa-circle-exclamation"></i> Error loading friends</div>`;
+            return;
+        }
+        
+        const referrals = res.referrals || [];
+        const qualifiedCount = res.referralCount || 0;
+        
+        const friendCountDisplay = document.getElementById('friendCountDisplay');
+        if (friendCountDisplay) friendCountDisplay.textContent = `${qualifiedCount} друзей 5+ уровня из ${referrals.length}`;
+        
+        if (referrals.length === 0) {
+            container.innerHTML = `<div style="text-align:center;color:#4a5568;padding:30px 20px;font-size:12px"><i class="fa-solid fa-user-plus" style="font-size:24px;margin-bottom:10px;display:block"></i>Нет друзей<br>Пригласите друзей и помогите им достичь 5 уровня!</div>`;
+            return;
+        }
+        
+        container.innerHTML = referrals.map(friend => {
+            const date = new Date(friend.joinedAt);
+            const formattedDate = date.toLocaleDateString();
+            const isQualified = friend.level >= 5;
+            
+            return `<div style="background:#0d1120;border:1px solid ${isQualified ? '#22c55e' : '#1e2d4a'};border-radius:12px;padding:12px;display:flex;align-items:center;gap:12px;margin-bottom:8px">
+                <div style="width:40px;height:40px;background:${isQualified ? 'linear-gradient(135deg,#22c55e,#16a34a)' : 'linear-gradient(135deg,#1e2d4a,#0d1120)'};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;border:1px solid ${isQualified ? '#22c55e' : '#a855f744'}">👤</div>
+                <div style="flex:1">
+                    <div style="font-size:13px;font-weight:600;color:#e2e8f0">${escapeHtml(friend.username)}</div>
+                    <div style="font-size:10px;color:#4a5568">Уровень ${friend.level} • Присоединился ${formattedDate}</div>
+                </div>
+                <div style="text-align:right">
+                    ${isQualified ? '<div style="font-size:11px;color:#22c55e;font-weight:600">✅ 5+ уровень</div>' : `<div style="font-size:11px;color:#f59e0b">📈 нужно ${5 - friend.level} ур.</div>`}
+                    <div style="font-size:12px;font-weight:700;color:#a855f7">${formatNum(friend.balance)} MMO</div>
+                </div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        console.error('renderFriendsList error:', e);
+        container.innerHTML = `<div style="text-align:center;color:#4a5568;padding:20px;font-size:12px">Ошибка загрузки друзей</div>`;
+    }
+}
+
+// ============================================================
+// РЕФЕРАЛЬНЫЕ НАГРАДЫ
+// ============================================================
+async function claimFriendReward(requiredFriends, creatureId, creatureName, creatureIcon) {
+    if (state.isLoading) return;
+    
+    const currentFriends = state.user?.referralCount || 0;
+    if (currentFriends < requiredFriends) { showToast(`Нужно ${requiredFriends} друзей 5+ уровня (у вас ${currentFriends})`, '❌'); return; }
+    
+    const rewardKey = `friend_reward_${requiredFriends}`;
+    if (state.user?.completedSpecialQuests?.includes(rewardKey)) { showToast('Вы уже получили эту награду', 'ℹ️'); return; }
+    
+    state.isLoading = true;
+    showToast('🔄 Получение награды...', '');
+    
+    const res = await apiRequest('POST', '/api/game/claim-friend-reward', { requiredFriends, creatureId });
+    state.isLoading = false;
+    
+    if (!res.success) { showToast(res.message || 'Ошибка', '❌'); return; }
+    
+    state.user = res.user;
+    state.inventory = res.inventory;
+    state.incomePerHour = res.incomePerHour;
+    
+    updateServerSnapshot(state.user.balance, state.incomePerHour, null);
+    updateHeader();
+    renderCards();
+    await loadUserStats();
+    updateFriendRewardButtons();
+    renderSpecialQuests();
+    
+    showFriendRewardPopup(creatureName, creatureIcon);
+}
+
+function showFriendRewardPopup(creatureName, creatureIcon) {
+    const colorMap = { 'Rare Wolf': '#3b82f6', 'Epic Wolf': '#a855f7', 'Legendary Wolf': '#f59e0b' };
+    const color = colorMap[creatureName] || '#a855f7';
+    
+    document.getElementById('popup').innerHTML = `
+        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
+        <span class="popup-icon" style="filter:drop-shadow(0 0 16px ${color})">${creatureIcon || '🐺'}</span>
+        <div class="popup-title" style="color:${color}">${escapeHtml(creatureName)}</div>
+        <div class="popup-subtitle">Получен за ${creatureName === 'Legendary Wolf' ? '150' : creatureName === 'Epic Wolf' ? '50' : '10'} друзей 5+ уровня!</div>
+        <div class="popup-rarity" style="background:${color}22;color:${color};border:1px solid ${color}44">🎁 НАГРАДА</div>
+        <button class="popup-btn" onclick="closeOverlay()">ОТЛИЧНО!</button>
+    `;
+    document.getElementById('overlay').classList.add('show');
+    spawnStars('epic');
+}
+
+function updateFriendRewardButtons() {
+    const currentQualified = state.user?.referralCount || 0;
+    const completedQuests = new Set(state.user?.completedSpecialQuests || []);
+    
+    const rewards = [
+        { friends: 10, creatureId: 'wolf_r', creatureName: 'Rare Wolf', creatureIcon: '🐺', rarity: 'rare', btnId: 'reward-10-btn', cardId: 'reward-10' },
+        { friends: 50, creatureId: 'wolf_e', creatureName: 'Epic Wolf', creatureIcon: '🐺', rarity: 'epic', btnId: 'reward-50-btn', cardId: 'reward-50' },
+        { friends: 150, creatureId: 'wolf_l', creatureName: 'Legendary Wolf', creatureIcon: '🐺', rarity: 'legendary', btnId: 'reward-150-btn', cardId: 'reward-150' }
+    ];
+    
+    rewards.forEach(reward => {
+        const btn = document.getElementById(reward.btnId);
+        const card = document.getElementById(reward.cardId);
+        if (!btn) return;
+        
+        const alreadyClaimed = completedQuests.has(`friend_reward_${reward.friends}`);
+        
+        if (alreadyClaimed) {
+            btn.textContent = '✅ ПОЛУЧЕНО';
+            btn.style.background = 'rgba(34,197,94,0.2)';
+            btn.style.color = '#22c55e';
+            btn.style.cursor = 'default';
+            btn.disabled = true;
+            if (card) card.style.opacity = '0.6';
+        } else if (currentQualified >= reward.friends) {
+            btn.textContent = '🎁 ЗАБРАТЬ';
+            btn.style.background = `linear-gradient(135deg, #f59e0b, #d97706)`;
+            btn.style.color = '#fff';
+            btn.style.cursor = 'pointer';
+            btn.disabled = false;
+            btn.onclick = () => claimFriendReward(reward.friends, reward.creatureId, reward.creatureName, reward.creatureIcon);
+            if (card) card.style.borderColor = `var(--${reward.rarity})`;
+        } else {
+            btn.textContent = `🔒 ${reward.friends} ДРУЗЕЙ 5+ УРОВНЯ`;
+            btn.style.background = '#1a2540';
+            btn.style.color = '#94a3b8';
+            btn.style.cursor = 'not-allowed';
+            btn.disabled = true;
+        }
+    });
+    
+    renderFriendsList();
+}
+
+// ============================================================
+// SPECIAL QUESTS
+// ============================================================
+function loadQuestStatusesFromStorage() {
+    const saved = localStorage.getItem(QUESTS_STORAGE_KEY);
+    if (saved) {
+        try {
+            const parsed = JSON.parse(saved);
+            for (const [questId, data] of Object.entries(parsed)) {
+                if (data.expiresAt && data.expiresAt > Date.now()) {
+                    const remainingSeconds = Math.ceil((data.expiresAt - Date.now()) / 1000);
+                    questStatuses.set(questId, { status: data.status, expiresAt: data.expiresAt, timerId: null });
+                    restartQuestTimer(questId, remainingSeconds);
+                } else if (data.status === 'pending' && data.expiresAt && data.expiresAt <= Date.now()) {
+                    questStatuses.set(questId, { status: 'available', expiresAt: null, timerId: null });
+                    saveQuestStatusesToStorage();
+                    if (document.getElementById('tab-special').classList.contains('active')) updateQuestButton(questId, 'available');
+                } else if (data.status === 'available') {
+                    questStatuses.set(questId, { status: 'available', expiresAt: null, timerId: null });
+                }
+            }
+        } catch (e) { console.error('Ошибка загрузки статусов квестов:', e); }
+    }
+}
+
+function saveQuestStatusesToStorage() {
+    const toSave = {};
+    for (const [questId, data] of questStatuses.entries()) toSave[questId] = { status: data.status, expiresAt: data.expiresAt || null };
+    localStorage.setItem(QUESTS_STORAGE_KEY, JSON.stringify(toSave));
+}
+
+function restartQuestTimer(questId, remainingSeconds) {
+    if (remainingSeconds <= 0) return;
+    
+    const timerId = setTimeout(async () => {
+        const questData = questStatuses.get(questId);
+        if (questData && questData.status === 'pending') {
+            questStatuses.set(questId, { status: 'available', expiresAt: null, timerId: null });
+            saveQuestStatusesToStorage();
+            updateQuestButton(questId, 'available');
+            const quest = SPECIAL_QUESTS.find(q => q.id === questId);
+            if (quest) showToast(`✅ Квест "${quest.title}" выполнен! Нажмите "ЗАБРАТЬ" для получения награды.`, '🎁');
+        }
+    }, remainingSeconds * 1000);
+    
+    const questData = questStatuses.get(questId);
+    if (questData) { questData.timerId = timerId; questStatuses.set(questId, questData); }
+}
+
+function clearAllQuestTimers() {
+    for (const [questId, data] of questStatuses.entries()) { if (data.timerId) clearTimeout(data.timerId); }
+    questStatuses.clear();
+    localStorage.removeItem(QUESTS_STORAGE_KEY);
+}
+
+function getQuestTitle(questId) { const quest = SPECIAL_QUESTS.find(q => q.id === questId); return quest ? quest.title : 'квест'; }
+
+function updateQuestButton(questId, status) {
+    const questCard = document.querySelector(`.special-quest-card[data-quest-id="${questId}"]`);
+    if (!questCard) return;
+    const footer = questCard.querySelector('.special-quest-footer');
+    if (!footer) return;
+    const quest = SPECIAL_QUESTS.find(q => q.id === questId);
+    if (!quest) return;
+    
+    const isCompleted = state.user?.completedSpecialQuests?.includes(questId);
+    
+    if (isCompleted) {
+        footer.innerHTML = `<button class="special-quest-btn completed" disabled><i class="fa-solid fa-check"></i> ВЫПОЛНЕНО</button>`;
+        return;
+    }
+    
+    switch (status) {
+        case 'pending':
+            footer.innerHTML = `<button class="special-quest-btn pending" disabled style="background: #f59e0b; animation: pulse 1.5s infinite;"><i class="fa-solid fa-clock"></i> ⏳ НА ПРОВЕРКЕ...</button>`;
+            break;
+        case 'available':
+            footer.innerHTML = `<button class="special-quest-btn claim" onclick="claimSpecialQuest('${questId}')" style="background: linear-gradient(135deg, #eab308, #ca8a04); animation: pulse 1.5s infinite;"><i class="fa-solid fa-gift"></i> 🎁 ЗАБРАТЬ НАГРАДУ</button>`;
+            break;
+        default:
+            if (quest.type === 'telegram_channel') {
+                footer.innerHTML = `<button class="special-quest-btn" onclick="openChannelAndStartTimer('${quest.id}', '${quest.link}')"><i class="fa-brands fa-telegram"></i> ВЫПОЛНИТЬ</button>`;
+            } else if (quest.type === 'custom_link') {
+                footer.innerHTML = `<button class="special-quest-btn" onclick="openCustomLinkAndComplete('${quest.id}', '${quest.link}')"><i class="fa-solid fa-globe"></i> ВЫПОЛНИТЬ</button>`;
+            } else if (quest.type === 'referral_count') {
+                const currentFriends = state.user?.referralCount || 0;
+                const required = quest.required_count || 1;
+                if (currentFriends >= required) {
+                    footer.innerHTML = `<button class="special-quest-btn claim" onclick="claimSpecialQuest('${questId}')"><i class="fa-solid fa-gift"></i> ЗАБРАТЬ (${currentFriends}/${required})</button>`;
+                } else {
+                    footer.innerHTML = `<button class="special-quest-btn locked" disabled><i class="fa-solid fa-lock"></i> НУЖНО ${required} ДРУЗЕЙ 5+ (${currentFriends})</button>`;
+                }
+            }
+            break;
+    }
+}
+
+function openChannelAndStartTimer(questId, channelLink) {
+    if (channelLink) {
+        if (window.Telegram?.WebApp && channelLink.includes('t.me')) window.Telegram.WebApp.openTelegramLink(channelLink);
+        else window.open(channelLink, '_blank');
+    }
+    
+    if (state.user?.completedSpecialQuests?.includes(questId)) { showToast('Вы уже получили награду за этот квест', 'ℹ️'); return; }
+    
+    const existingStatus = questStatuses.get(questId);
+    if (existingStatus && existingStatus.status === 'pending') {
+        const remainingTime = existingStatus.expiresAt ? Math.ceil((existingStatus.expiresAt - Date.now()) / 1000) : 0;
+        if (remainingTime > 0) { showToast(`Квест уже на проверке! Осталось ${remainingTime} секунд.`, '⏳'); return; }
+    }
+    
+    if (existingStatus && existingStatus.status === 'available') { showToast('Квест уже выполнен! Нажмите "ЗАБРАТЬ НАГРАДУ".', '🎁'); updateQuestButton(questId, 'available'); return; }
+    
+    const expiresAt = Date.now() + 60000;
+    questStatuses.set(questId, { status: 'pending', expiresAt: expiresAt, timerId: null });
+    saveQuestStatusesToStorage();
+    updateQuestButton(questId, 'pending');
+    
+    const timerId = setTimeout(async () => {
+        const questData = questStatuses.get(questId);
+        if (questData && questData.status === 'pending') {
+            questStatuses.set(questId, { status: 'available', expiresAt: null, timerId: null });
+            saveQuestStatusesToStorage();
+            updateQuestButton(questId, 'available');
+            showToast(`✅ Квест "${getQuestTitle(questId)}" выполнен! Нажмите "ЗАБРАТЬ" для получения награды.`, '🎁');
+        }
+    }, 60000);
+    
+    const questData = questStatuses.get(questId);
+    questData.timerId = timerId;
+    questStatuses.set(questId, questData);
+    showToast('🔍 Проверка выполнения квеста... Подождите 60 секунд.', '⏳');
+}
+
+function openCustomLinkAndComplete(questId, link) {
+    if (link) window.open(link, '_blank');
+    
+    if (state.user?.completedSpecialQuests?.includes(questId)) { showToast('Вы уже получили награду за этот квест', 'ℹ️'); return; }
+    
+    const existingStatus = questStatuses.get(questId);
+    if (existingStatus && existingStatus.status === 'pending') {
+        const remainingTime = existingStatus.expiresAt ? Math.ceil((existingStatus.expiresAt - Date.now()) / 1000) : 0;
+        if (remainingTime > 0) { showToast(`Квест уже на проверке! Осталось ${remainingTime} секунд.`, '⏳'); return; }
+    }
+    
+    if (existingStatus && existingStatus.status === 'available') { showToast('Квест уже выполнен! Нажмите "ЗАБРАТЬ НАГРАДУ".', '🎁'); updateQuestButton(questId, 'available'); return; }
+    
+    const expiresAt = Date.now() + 60000;
+    questStatuses.set(questId, { status: 'pending', expiresAt: expiresAt, timerId: null });
+    saveQuestStatusesToStorage();
+    updateQuestButton(questId, 'pending');
+    
+    const timerId = setTimeout(async () => {
+        const questData = questStatuses.get(questId);
+        if (questData && questData.status === 'pending') {
+            questStatuses.set(questId, { status: 'available', expiresAt: null, timerId: null });
+            saveQuestStatusesToStorage();
+            updateQuestButton(questId, 'available');
+            showToast(`✅ Квест "${getQuestTitle(questId)}" выполнен! Нажмите "ЗАБРАТЬ" для получения награды.`, '🎁');
+        }
+    }, 60000);
+    
+    const questData = questStatuses.get(questId);
+    questData.timerId = timerId;
+    questStatuses.set(questId, questData);
+    showToast('🔍 Проверка выполнения квеста... Подождите 60 секунд.', '⏳');
+}
+
+async function claimSpecialQuest(questId) {
+    if (state.isLoading) return;
+    
+    const questStatus = questStatuses.get(questId);
+    if (questStatus && questStatus.status !== 'available') {
+        if (questStatus && questStatus.status === 'pending') {
+            const remainingTime = questStatus.expiresAt ? Math.ceil((questStatus.expiresAt - Date.now()) / 1000) : 0;
+            if (remainingTime > 0) showToast(`Квест ещё на проверке! Осталось ${remainingTime} секунд.`, '⏳');
+            else showToast('Квест ещё на проверке! Подождите немного.', '⏳');
+        } else showToast('Сначала выполните квест!', '⚠️');
+        return;
+    }
+    
+    if (state.user?.completedSpecialQuests?.includes(questId)) { showToast('Вы уже получили награду за этот квест', 'ℹ️'); return; }
+    
+    state.isLoading = true;
+    const res = await apiRequest('POST', '/api/game/complete-special-quest', { questId });
+    state.isLoading = false;
+    
+    if (!res.success) { showToast(res.message || 'Ошибка', '❌'); return; }
+    
+    state.user = res.user;
+    updateServerSnapshot(state.user.balance, state.incomePerHour, null);
+    updateHeader();
+    await loadUserStats();
+    
+    const existing = questStatuses.get(questId);
+    if (existing && existing.timerId) clearTimeout(existing.timerId);
+    questStatuses.delete(questId);
+    saveQuestStatusesToStorage();
+    
+    await renderSpecialQuests();
+    showToast(`+${res.reward} MMO получено!`, '✅');
+    spawnFloatingMMO(res.reward);
+}
+
+async function renderSpecialQuests() {
+    const container = document.getElementById('specialQuestsList');
+    if (!container) return;
+
+    if (!SPECIAL_QUESTS.length) {
+        container.innerHTML = `<div class="empty-grid" style="padding:40px;text-align:center">📢 Нет активных спец-квестов</div>`;
+        return;
+    }
+
+    const completedQuests = new Set(state.user?.completedSpecialQuests || []);
+    const filteredQuests = SPECIAL_QUESTS.filter(q => q.type === 'telegram_channel' || q.type === 'referral_count' || q.type === 'custom_link');
+    
+    if (filteredQuests.length === 0) {
+        container.innerHTML = `<div class="empty-grid" style="padding:40px;text-align:center">📢 Скоро появятся новые квесты!</div>`;
+        return;
+    }
+    
+    for (const [questId, data] of questStatuses.entries()) {
+        if (data.status === 'pending' && data.expiresAt && data.expiresAt <= Date.now()) {
+            questStatuses.set(questId, { status: 'available', expiresAt: null, timerId: null });
+            saveQuestStatusesToStorage();
+        }
+    }
+    
+    container.innerHTML = filteredQuests.map(quest => {
+        const isCompleted = completedQuests.has(quest.id);
+        const questStatus = questStatuses.get(quest.id);
+        
+        let actionHtml = '';
+        
+        if (isCompleted) {
+            actionHtml = `<button class="special-quest-btn completed" disabled><i class="fa-solid fa-check"></i> ВЫПОЛНЕНО</button>`;
+        } else if (questStatus && questStatus.status === 'pending') {
+            const remainingTime = questStatus.expiresAt ? Math.ceil((questStatus.expiresAt - Date.now()) / 1000) : 60;
+            const remainingText = remainingTime > 0 ? ` (${remainingTime}с)` : '';
+            actionHtml = `<button class="special-quest-btn pending" disabled style="background: #f59e0b; animation: pulse 1.5s infinite;"><i class="fa-solid fa-clock"></i> ⏳ НА ПРОВЕРКЕ${remainingText}</button>`;
+        } else if (questStatus && questStatus.status === 'available') {
+            actionHtml = `<button class="special-quest-btn claim" onclick="claimSpecialQuest('${quest.id}')" style="background: linear-gradient(135deg, #eab308, #ca8a04); animation: pulse 1.5s infinite;"><i class="fa-solid fa-gift"></i> 🎁 ЗАБРАТЬ НАГРАДУ</button>`;
+        } else {
+            switch (quest.type) {
+                case 'telegram_channel':
+                    actionHtml = `<button class="special-quest-btn" onclick="openChannelAndStartTimer('${quest.id}', '${quest.link}')"><i class="fa-brands fa-telegram"></i> ВЫПОЛНИТЬ</button>`;
+                    break;
+                case 'custom_link':
+                    actionHtml = `<button class="special-quest-btn" onclick="openCustomLinkAndComplete('${quest.id}', '${quest.link}')"><i class="fa-solid fa-globe"></i> ВЫПОЛНИТЬ</button>`;
+                    break;
+                case 'referral_count':
+                    const currentFriends = state.user?.referralCount || 0;
+                    const required = quest.required_count || 1;
+                    if (currentFriends >= required) {
+                        actionHtml = `<button class="special-quest-btn claim" onclick="claimSpecialQuest('${quest.id}')"><i class="fa-solid fa-gift"></i> ЗАБРАТЬ (${currentFriends}/${required})</button>`;
+                    } else {
+                        actionHtml = `<button class="special-quest-btn locked" disabled><i class="fa-solid fa-lock"></i> НУЖНО ${required} ДРУЗЕЙ 5+ (${currentFriends})</button>`;
+                    }
+                    break;
+            }
+        }
+        
+        return `<div class="special-quest-card" data-quest-id="${quest.id}">
+            <div class="special-quest-header">
+                <div class="special-quest-icon">${quest.icon || '🎯'}</div>
+                <div class="special-quest-info">
+                    <div class="special-quest-title">${escapeHtml(quest.title)}</div>
+                    <div class="special-quest-desc">${escapeHtml(quest.description || '')}</div>
+                </div>
+                <div class="special-quest-reward">+${quest.reward} MMO</div>
+            </div>
+            <div class="special-quest-footer">${actionHtml}</div>
+        </div>`;
+    }).join('');
+    
+    if (window.questTimerInterval) clearInterval(window.questTimerInterval);
+    window.questTimerInterval = setInterval(() => {
+        const pendingButtons = document.querySelectorAll('.special-quest-btn.pending');
+        if (pendingButtons.length === 0) { if (window.questTimerInterval) clearInterval(window.questTimerInterval); return; }
+        
+        for (const btn of pendingButtons) {
+            const card = btn.closest('.special-quest-card');
+            if (card) {
+                const questId = card.dataset.questId;
+                const questStatus = questStatuses.get(questId);
+                if (questStatus && questStatus.expiresAt) {
+                    const remaining = Math.ceil((questStatus.expiresAt - Date.now()) / 1000);
+                    if (remaining > 0) btn.innerHTML = `<i class="fa-solid fa-clock"></i> ⏳ НА ПРОВЕРКЕ (${remaining}с)`;
+                    else btn.innerHTML = `<i class="fa-solid fa-clock"></i> ⏳ НА ПРОВЕРКЕ...`;
+                }
+            }
+        }
+    }, 1000);
+}
+
+// ============================================================
+// DEPOSIT & WITHDRAW
+// ============================================================
+
+async function showDepositModal() {
+    if (state.isLoading) return;
+    
+    const activeCount = await checkActiveRequests();
+    if (activeCount >= MAX_ACTIVE_REQUESTS) { showToast(`У вас уже ${MAX_ACTIVE_REQUESTS} активных заявок. Дождитесь обработки.`, '⚠️'); return; }
+    
+    document.getElementById('popup').innerHTML = `
+        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
+        <div class="popup-title">💎 Пополнение баланса</div>
+        <div class="popup-subtitle" style="margin-bottom:16px">Минимальная сумма: ${MIN_TRANSACTION_AMOUNT.toLocaleString()} MMO</div>
+        <div class="price-input-modal">
+            <div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Сумма (MMO)</div><input type="number" class="price-input-field" id="depositAmount" placeholder="Введите сумму" min="${MIN_TRANSACTION_AMOUNT}"></div>
+        </div>
+        <button class="popup-btn" style="background:linear-gradient(135deg,#06b6d4,#0891b2);margin-top:16px" onclick="getPaymentDetails()"><i class="fa-solid fa-arrow-down"></i> ПРОДОЛЖИТЬ</button>
+        <button class="popup-btn" style="background:#1a2540;color:#e2e8f0;margin-top:8px" onclick="closeOverlay()">ОТМЕНА</button>
+    `;
+    document.getElementById('overlay').classList.add('show');
+}
+
+async function getPaymentDetails() {
+    const amountInput = document.getElementById('depositAmount');
+    const amount = parseInt(amountInput?.value);
+    
+    if (!amount || amount < MIN_TRANSACTION_AMOUNT) { showToast(`Минимальная сумма ${MIN_TRANSACTION_AMOUNT.toLocaleString()} MMO`, '❌'); return; }
+    
+    state.isLoading = true;
+    const res = await apiRequest('POST', '/api/wallet/get-payment-details', { amount });
+    state.isLoading = false;
+    
+    if (!res.success) { showToast(res.message || 'Ошибка', '❌'); return; }
+    
+    currentPaymentMemo = res.memo;
+    currentPaymentAmount = res.amount;
+    showPaymentDetails(res.wallet, res.memo, res.amount);
+}
+
+function showPaymentDetails(wallet, memo, amount) {
+    document.getElementById('popup').innerHTML = `
+        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
+        <div class="popup-title">💎 Оплатите депозит</div>
+        <div class="popup-subtitle">Сумма: ${amount.toLocaleString()} MMO</div>
+        <div style="background:#0d1120;border:1px solid #1e2d4a;border-radius:16px;padding:16px;margin-bottom:16px">
+            <div style="margin-bottom:12px">
+                <div style="font-size:10px;color:#94a3b8;margin-bottom:4px">💰 Сумма в MMO</div>
+                <div style="font-family:'Orbitron',monospace;font-size:18px;font-weight:700;color:#f59e0b">${amount.toLocaleString()} MMO</div>
+            </div>
+            <div style="margin-bottom:12px">
+                <div style="font-size:10px;color:#94a3b8;margin-bottom:4px">🏦 Кошелек</div>
+                <div style="background:#080b14;padding:10px;border-radius:10px;font-family:monospace;font-size:11px;word-break:break-all;border:1px solid #1e2d4a">${wallet}</div>
+                <button onclick="copyToClipboard('${wallet}')" style="margin-top:6px;padding:4px 10px;background:#1a2540;border:none;border-radius:6px;color:#94a3b8;font-size:10px;cursor:pointer"><i class="fa-regular fa-copy"></i> Копировать кошелек</button>
+            </div>
+            <div style="margin-bottom:12px">
+                <div style="font-size:10px;color:#94a3b8;margin-bottom:4px">📝 Мемо (ОБЯЗАТЕЛЬНО!)</div>
+                <div style="background:#080b14;padding:10px;border-radius:10px;font-family:monospace;font-size:11px;font-weight:700;color:#06b6d4;border:1px solid #1e2d4a">${memo}</div>
+                <button onclick="copyToClipboard('${memo}')" style="margin-top:6px;padding:4px 10px;background:#1a2540;border:none;border-radius:6px;color:#94a3b8;font-size:10px;cursor:pointer"><i class="fa-regular fa-copy"></i> Копировать мемо</button>
+            </div>
+            <div style="font-size:10px;color:#ef4444;background:rgba(239,68,68,0.1);padding:8px;border-radius:8px;margin-top:8px">
+                ⚠️ <b>Важно!</b> Укажите мемо в комментарии к переводу!<br>
+                После оплаты нажмите "Я ОПЛАТИЛ".
+            </div>
+        </div>
+        <div style="display:flex;gap:10px">
+            <button class="popup-btn" style="flex:1;background:linear-gradient(135deg,#22c55e,#16a34a)" onclick="createDepositRequestAfterPayment()">
+                <i class="fa-solid fa-check"></i> Я ОПЛАТИЛ
+            </button>
+            <button class="popup-btn" style="flex:1;background:#1a2540;color:#e2e8f0" onclick="closeOverlay()">
+                <i class="fa-solid fa-times"></i> ОТМЕНИТЬ
+            </button>
+        </div>
+    `;
+    document.getElementById('overlay').classList.add('show');
+}
+
+async function createDepositRequestAfterPayment() {
+    if (!currentPaymentMemo) {
+        showToast('Ошибка: данные оплаты утеряны. Начните заново.', '❌');
+        closeOverlay();
+        return;
+    }
+    
+    state.isLoading = true;
+    showToast('Создание заявки...', '⏳');
+    
+    const res = await apiRequest('POST', '/api/wallet/create-deposit-request', { 
+        memo: currentPaymentMemo
+    });
+    state.isLoading = false;
+    
+    if (!res.success) {
+        showToast(res.message || 'Ошибка создания заявки', '❌');
+        return;
+    }
+    
+    closeOverlay();
+    showToast('✅ Заявка создана! Администратор проверит платеж и начислит средства.', '✅');
+    await checkActiveRequests();
+    
+    currentPaymentMemo = null;
+    currentPaymentAmount = null;
+}
+
+async function showWithdrawModal() {
+    if (state.isLoading) return;
+    
+    const activeCount = await checkActiveRequests();
+    if (activeCount >= MAX_ACTIVE_REQUESTS) {
+        showToast(`У вас уже ${MAX_ACTIVE_REQUESTS} активных заявок. Дождитесь обработки.`, '⚠️');
+        return;
+    }
+    
+    document.getElementById('popup').innerHTML = `
+        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
+        <div class="popup-title">💸 Вывод средств</div>
+        <div class="popup-subtitle" style="margin-bottom:16px">Минимальная сумма: ${MIN_TRANSACTION_AMOUNT.toLocaleString()} MMO</div>
+        <div class="price-input-modal">
+            <div>
+                <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Сумма (MMO)</div>
+                <input type="number" class="price-input-field" id="withdrawAmount" placeholder="Введите сумму" min="${MIN_TRANSACTION_AMOUNT}">
+            </div>
+            <div>
+                <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">TON Кошелек</div>
+                <input type="text" class="price-input-field" id="withdrawWallet" placeholder="Введите TON адрес кошелька">
+            </div>
+        </div>
+        <button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e);margin-top:16px" onclick="createWithdrawRequest()">
+            <i class="fa-solid fa-arrow-up"></i> ОТПРАВИТЬ ЗАЯВКУ
+        </button>
+        <button class="popup-btn" style="background:#1a2540;color:#e2e8f0;margin-top:8px" onclick="closeOverlay()">ОТМЕНА</button>
+    `;
+    document.getElementById('overlay').classList.add('show');
+}
+
+async function createWithdrawRequest() {
+    const amountInput = document.getElementById('withdrawAmount');
+    const walletInput = document.getElementById('withdrawWallet');
+    
+    const amount = parseInt(amountInput?.value);
+    const wallet = walletInput?.value.trim();
+    
+    if (!amount || amount < MIN_TRANSACTION_AMOUNT) { showToast(`Минимальная сумма ${MIN_TRANSACTION_AMOUNT.toLocaleString()} MMO`, '❌'); return; }
+    if (!wallet || wallet.length < 20) { showToast('Введите корректный TON адрес кошелька (минимум 20 символов)', '❌'); return; }
+    if (state.user?.balance < amount) { showToast(`Недостаточно средств. Ваш баланс: ${state.user.balance.toLocaleString()} MMO`, '❌'); return; }
+    
+    state.isLoading = true;
+    const res = await apiRequest('POST', '/api/wallet/withdraw-request', { amount, wallet });
+    state.isLoading = false;
+    
+    if (!res.success) { showToast(res.message || 'Ошибка создания заявки', '❌'); return; }
+    
+    closeOverlay();
+    showToast(`Заявка на вывод ${amount.toLocaleString()} MMO создана! Ожидайте подтверждения администратора.`, '✅');
+    
+    await refreshUserProfile();
+    await checkActiveRequests();
+}
+
+async function checkActiveRequests() {
+    try {
+        const res = await apiRequest('GET', '/api/wallet/requests');
+        if (res?.success) {
+            const count = res.requests.length;
+            const pendingDiv = document.getElementById('pendingRequests');
+            if (pendingDiv) {
+                if (count > 0) {
+                    const requestsHtml = res.requests.map(req => `
+                        <div style="background:#f59e0b22;border:1px solid #f59e0b44;border-radius:12px;padding:12px;margin-top:8px">
+                            <div style="display:flex;justify-content:space-between;align-items:center">
+                                <div>
+                                    <div style="font-size:12px;font-weight:600;color:#f59e0b">
+                                        ${req.type === 'deposit' ? '📥 Депозит' : '📤 Вывод'}
+                                    </div>
+                                    <div style="font-size:11px;color:#94a3b8">${req.amount.toLocaleString()} MMO</div>
+                                    <div style="font-size:9px;color:#4a5568">${new Date(req.createdAt).toLocaleString()}</div>
+                                </div>
+                                <div style="background:#f59e0b;padding:4px 10px;border-radius:20px;font-size:10px;font-weight:700">⏳ ОЖИДАНИЕ</div>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                    pendingDiv.innerHTML = `
+                        <div style="background:#f59e0b22;border:1px solid #f59e0b44;border-radius:12px;padding:10px;margin-top:10px">
+                            <div style="font-size:11px;font-weight:600;color:#f59e0b;margin-bottom:8px">
+                                <i class="fa-solid fa-clock"></i> Активных заявок: ${count}/${MAX_ACTIVE_REQUESTS}
+                            </div>
+                            ${requestsHtml}
+                        </div>
+                    `;
+                } else {
+                    pendingDiv.innerHTML = '';
+                }
+            }
+            return count;
+        }
+    } catch (e) {
+        console.error('checkActiveRequests error:', e);
+    }
+    return 0;
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => showToast('Скопировано!', '📋')).catch(() => showToast('Не удалось скопировать', '❌'));
+}
+
+// ============================================================
+// ARENA - ИНИЦИАЛИЗАЦИЯ И ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ============================================================
+function initArenaWebhooks() {
+    if (!window.Telegram?.WebApp) return;
+    const tg = window.Telegram.WebApp;
+    
+    tg.onEvent('popupClosed', (event) => {
+        if (event.button_id === 'accept') acceptBattleWebhook();
+        else if (event.button_id === 'reject') rejectBattleWebhook();
+    });
+}
+
+function showNativeBattleConfirmation(battleData) {
+    const existingModal = document.getElementById('matchFoundModal');
+    if (existingModal) {
+        console.log('⚠️ Модалка уже открыта, не создаём новую');
+        updateConfirmationModal({
+            player1Confirmed: battleData.player1Confirmed,
+            player2Confirmed: battleData.player2Confirmed
+        });
+        return;
+    }
+    
+    console.log('🎯 Создаём новую модалку подтверждения', battleData);
+    showBattleConfirmationModal(battleData);
+}
+
+function showBattleConfirmationModal(battleData) {
+    const existingModal = document.getElementById('matchFoundModal');
+    if (existingModal) existingModal.remove();
+    
+    const modal = document.createElement('div');
+    modal.id = 'matchFoundModal';
+    modal.className = 'match-found-modal';
+    
+    // Соперник скрыт до начала боя
+    const leagueIcons = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '💎', diamond: '🏆' };
+
+    const isPlayer1 = battleData.isPlayer1;
+    const myConfirmed = isPlayer1 ? battleData.player1Confirmed : battleData.player2Confirmed;
+    const opponentConfirmed = isPlayer1 ? battleData.player2Confirmed : battleData.player1Confirmed;
+    
+    modal.innerHTML = `
+        <div class="match-found-card">
+            <div class="match-found-header">
+                <div class="match-found-icon">⚔️</div>
+                <div class="match-found-title">БОЙ НАЙДЕН!</div>
+            </div>
+            <div class="match-found-content">
+                <div class="opponent-info">
+                    <div class="opponent-avatar" style="letter-spacing:2px;font-size:14px;">???</div>
+                    <div class="opponent-details">
+                        <div class="opponent-name">?????</div>
+                        <div class="opponent-level">
+                            <span>Уровень ???</span>
+                            <span>⚔️ Соперник найден</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="confirmation-status" id="confirmationStatus">
+                    <div class="confirm-row">
+                        <span>Вы:</span>
+                        <span id="myConfirmStatus" class="${myConfirmed ? 'confirm-yes' : 'confirm-wait'}">${myConfirmed ? '✅ Принял' : '⏳ Ожидание'}</span>
+                    </div>
+                    <div class="confirm-row">
+                        <span>Соперник:</span>
+                        <span id="opponentConfirmStatus" class="${opponentConfirmed ? 'confirm-yes' : 'confirm-wait'}">${opponentConfirmed ? '✅ Принял' : '⏳ Ожидание'}</span>
+                    </div>
+                </div>
+                
+                <div class="prize-info">
+                    <div class="prize-label"><i class="fa-solid fa-gift"></i> Призовой фонд</div>
+                    <div class="prize-value">${battleData.prizePool.toLocaleString()} <small>MMO</small></div>
+                </div>
+                
+                <div class="prize-info" style="border-color: rgba(124,58,237,0.3);">
+                    <div class="prize-label"><i class="fa-solid fa-coins"></i> Ваша ставка</div>
+                    <div class="prize-value" style="color: var(--accent3);">${battleData.entryFee.toLocaleString()} <small>MMO</small></div>
+                </div>
+                
+                <div class="timer-badge">
+                    <span><i class="fa-regular fa-clock"></i> Принять за 15 секунд</span>
+                    <div class="timer-progress"><div class="timer-progress-fill"></div></div>
+                </div>
+                
+                <div class="match-buttons" id="matchBtns">
+                    <button class="match-btn-accept" onclick="acceptBattleFromModal('${battleData.battleId}')">
+                        <i class="fa-solid fa-check"></i> ПРИНЯТЬ
+                    </button>
+                    <button class="match-btn-reject" onclick="rejectBattleFromModal('${battleData.battleId}')">
+                        <i class="fa-solid fa-times"></i> ОТКЛОНИТЬ
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    modal.timeoutId = setTimeout(() => {
+        if (document.getElementById('matchFoundModal')) {
+            rejectBattleFromModal(battleData.battleId);
+        }
+    }, 15000);
+}
+
+function updateConfirmationModal(data) {
+    console.log('🔄 updateConfirmationModal вызван с данными:', data);
+    
+    const modal = document.getElementById('matchFoundModal');
+    if (!modal) {
+        console.log('❌ Модалка не найдена, возможно уже закрыта');
+        return;
+    }
+    
+    const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
+    const myConfirmed = isPlayer1 ? data.player1Confirmed : data.player2Confirmed;
+    const opponentConfirmed = isPlayer1 ? data.player2Confirmed : data.player1Confirmed;
+    
+    const myEl = document.getElementById('myConfirmStatus');
+    const oppEl = document.getElementById('opponentConfirmStatus');
+    
+    if (myEl) {
+        myEl.textContent = myConfirmed ? '✅ Принял' : '⏳ Ожидание';
+        myEl.className = myConfirmed ? 'confirm-yes' : 'confirm-wait';
+    }
+    if (oppEl) {
+        oppEl.textContent = opponentConfirmed ? '✅ Принял' : '⏳ Ожидание';
+        oppEl.className = opponentConfirmed ? 'confirm-yes' : 'confirm-wait';
+    }
+    
+    if (myConfirmed && !opponentConfirmed) {
+        const btns = document.getElementById('matchBtns');
+        if (btns) {
+            btns.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:8px;">⏳ Ожидаем соперника...</div>';
+        }
+    }
+    
+    if (myConfirmed && opponentConfirmed) {
+        console.log('✅ Оба игрока подтвердили бой, закрываем модалку');
+        if (modal.timeoutId) {
+            clearTimeout(modal.timeoutId);
+            modal.timeoutId = null;
+        }
+        
+        modal.style.transition = 'opacity 0.3s ease';
+        modal.style.opacity = '0';
+        
+        setTimeout(() => {
+            if (modal && modal.remove) {
+                modal.remove();
+            }
+        }, 500);
+    }
+}
+
+function getLeagueName(league) {
+    const leagueNames = {
+        bronze: 'Бронзовой',
+        silver: 'Серебряной',
+        gold: 'Золотой',
+        platinum: 'Платиновой',
+        diamond: 'Алмазной'
+    };
+    return leagueNames[league] || 'Бронзовой';
+}
+
+async function acceptBattleFromModal(battleId) {
+    const res = await apiRequest('POST', '/api/arena/accept-match', { battleId });
+    if (res?.success) {
+        const statusRes = await apiRequest('GET', '/api/arena/battle/status');
+        if (statusRes?.success && statusRes.hasBattle) {
+            updateConfirmationModal({
+                player1Confirmed: statusRes.player1Confirmed,
+                player2Confirmed: statusRes.player2Confirmed
+            });
+        }
+        if (res.bothConfirmed) {
+            const modal = document.getElementById('matchFoundModal');
+            if (modal) modal.remove();
+            if (arenaClient && statusRes?.timeLeft !== undefined) {
+                arenaClient.startBattleTimer(statusRes.timeLeft);
+            }
+        }
+    } else {
+        showToast(res?.message || 'Ошибка при принятии боя', '❌');
+    }
+}
+
+async function rejectBattleFromModal(battleId) {
+    const modal = document.getElementById('matchFoundModal');
+    if (modal) {
+        if (modal.timeoutId) clearTimeout(modal.timeoutId);
+        modal.remove();
+    }
+    
+    const res = await apiRequest('POST', '/api/arena/reject-match', { battleId });
+    if (res?.success) {
+        arenaClient?.stopSearch();
+        showToast('Бой отклонён', '⚠️');
+        renderArenaFightTab();
+    } else {
+        showToast(res?.message || 'Ошибка', '❌');
+    }
+}
+
+function showNativeBattleResult(isWin, prizePool) {
+    if (!window.Telegram?.WebApp) {
+        const overlay = document.getElementById('overlay');
+        const popup = document.getElementById('popup');
+        popup.innerHTML = `<div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div><div class="popup-icon">${isWin ? '🏆' : '💀'}</div><div class="popup-title" style="color:${isWin ? 'var(--legendary)' : 'var(--mythic)'}">${isWin ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}</div><div class="popup-subtitle">${isWin ? `Вы выиграли ${prizePool} MMO!` : 'В следующий раз повезёт!'}</div><button class="popup-btn" onclick="closeOverlay(); renderArenaFightTab();">Закрыть</button></div>`;
+        overlay.classList.add('show');
+        return;
+    }
+    const tg = window.Telegram.WebApp;
+    const title = isWin ? '🏆 ПОБЕДА!' : '💀 ПОРАЖЕНИЕ';
+    const message = isWin ? `Вы выиграли ${prizePool} MMO! 🎉\nВаш рейтинг повышается!` : `Вы проиграли бой.\nВ следующий раз повезёт!`;
+    tg.showPopup({ title, message, buttons: [{ id: 'ok', type: 'default', text: 'ОК' }] });
+}
+
+// ============================================================
+// ARENA - UI ФУНКЦИИ
+// ============================================================
+function switchArenaTab(tab) {
+    document.querySelectorAll('.arena-subtab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.arena-tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`arena-${tab}-tab`).classList.add('active');
+    document.querySelector(`.arena-tab-btn[data-arena-tab="${tab}"]`).classList.add('active');
+    
+    if (tab === 'team') renderArenaTeamInventory();
+    if (tab === 'fight') renderArenaFightTab();
+    if (tab === 'ranks') updateArenaRanksInfo();
+    if (tab === 'history') renderArenaHistory();
+}
+
+async function renderArenaTeamInventory() {
+    const container = document.getElementById('arenaTeamInventory');
+    if (!container) return;
+
+    const selectedTeam = arenaClient?.getSelectedTeam() || [];
+    if (selectedTeam.length === 0 && !arenaClient?.state._teamLoaded && !arenaClient?.state._teamResetPending) {
+        const teamRes = await apiRequest('GET', '/api/arena/team');
+        if (teamRes?.success && teamRes.teamIds) {
+            arenaClient.setSelectedTeam(teamRes.teamIds);
+        }
+        if (arenaClient) arenaClient.state._teamLoaded = true;
+    }
+    if (arenaClient?.state._teamResetPending) {
+        arenaClient.state._teamResetPending = false;
+        if (arenaClient) arenaClient.state._teamLoaded = false;
+    }
+
+    const currentSelected = arenaClient?.getSelectedTeam() || [];
+    const level = state.user?.level || 1;
+
+    container.innerHTML = state.inventory.map(item => {
+        const c = getCreature(item.creatureId);
+        if (!c) return '';
+
+        const isSelected = currentSelected.includes(c.id);
+        const isDisabled = !isSelected && currentSelected.length >= 3;
+        const skill = window.ARENA_SKILLS_MAP?.[c.id] || null;
+        const multiplier = RARITY_MULTIPLIERS[c.rarity] || 1;
+        const hp  = Math.ceil((50 + (c.incomeBase * 2) + (level * 5)) * multiplier);
+        const atk = Math.ceil((10 + (c.incomeBase / 2) + (level * 2)) * multiplier);
+        const def = Math.ceil((5  + (c.incomeBase / 3) + (level * 1)) * multiplier);
+        const selectedNum = isSelected ? currentSelected.indexOf(c.id) + 1 : 0;
+
+        return `
+        <div class="arena-list-card ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}"
+             onclick="toggleArenaCreature('${c.id}')">
+            <div class="arena-list-left">
+                <div class="arena-list-icon">${getIconHtml(c)}</div>
+                ${isSelected ? `<div class="arena-list-num">${selectedNum}</div>` : ''}
+            </div>
+            <div class="arena-list-info">
+                <div class="arena-list-name">${escapeHtml(c.name)}
+                    <span class="arena-list-rarity rarity-${c.rarity}">${c.rarity}</span>
+                </div>
+                <div class="arena-list-stats">
+                    <span>❤️ ${hp}</span>
+                    <span>⚔️ ${atk}</span>
+                    <span>🛡️ ${def}</span>
+                </div>
+                ${skill ? `
+                <div class="arena-list-skill">
+                    <span class="arena-list-skill-name">${skill.name}</span>
+                    <span class="arena-list-skill-chance">${Math.round(skill.chance * 100)}%</span>
+                    <div class="arena-list-skill-desc">${skill.description}</div>
+                </div>` : ''}
+            </div>
+            <div class="arena-list-check">
+                ${isSelected ? '<i class="fa-solid fa-circle-check"></i>' : '<i class="fa-regular fa-circle"></i>'}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function toggleArenaCreature(creatureId) {
+    const team = arenaClient?.getSelectedTeam() || [];
+    const index = team.indexOf(creatureId);
+    if (index !== -1) team.splice(index, 1);
+    else if (team.length < 3) team.push(creatureId);
+    else { showToast('Нельзя выбрать больше 3 питомцев', '⚠️'); return; }
+    arenaClient.setSelectedTeam(team);
+    renderArenaTeamInventory();
+}
+
+async function saveArenaTeam() {
+    const team = arenaClient?.getSelectedTeam() || [];
+    if (team.length !== 3) { showToast('Нужно выбрать ровно 3 питомца', '⚠️'); return; }
+    const res = await apiRequest('POST', '/api/arena/team', { team });
+    if (res?.success) showToast('Команда сохранена!', '✅');
+    else showToast(res?.message || 'Ошибка сохранения', '❌');
+}
+
+function resetArenaTeam() {
+    if (arenaClient) {
+        arenaClient.setSelectedTeam([]);
+        arenaClient.state._teamResetPending = true;
+        renderArenaTeamInventory();
+        showToast('Команда сброшена', '🗑️');
+    }
+}
+
+async function findMatch() {
+    if (findingMatch) { 
+        showToast('Поиск уже запущен...', '⏳'); 
+        return; 
+    }
+    if (arenaClient?.isSearching()) { 
+        showToast('Поиск уже идёт...', '⏳'); 
+        return; 
+    }
+    
+    const teamRes = await apiRequest('GET', '/api/arena/team');
+    if (!teamRes?.success || teamRes.teamIds?.length !== 3) { 
+        showToast('Сначала сохраните команду из 3 питомцев', '⚠️'); 
+        return; 
+    }
+
+    if ((state.user?.level || 1) < 3) {
+        showToast('Арена доступна с 3 уровня', '🔒');
+        return;
+    }
+
+    if (!isArenaOpenClient()) {
+        showArenaClosedModal();
+        return;
+    }
+
+    if (state.arenaBattlesLeft <= 0) {
+        showToast('Нет доступных боёв. Восстановление через час.', '⚔️');
+        return;
+    }
+    
+    findingMatch = true;
+    try {
+        arenaClient?.startSearch();
+        const findBtn = document.getElementById('findMatchBtn');
+        const searchStatus = document.getElementById('arenaSearchStatus');
+        if (findBtn) { 
+            findBtn.disabled = true; 
+            findBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Поиск...'; 
+        }
+        if (searchStatus) searchStatus.innerHTML = '🔍 Поиск соперника...';
+        
+        const res = await apiRequest('POST', '/api/arena/find-match');
+        if (!res?.success) {
+            arenaClient?.stopSearch();
+            showToast(res?.message || 'Ошибка поиска', '❌');
+            if (findBtn) { 
+                findBtn.disabled = false; 
+                findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; 
+            }
+            if (searchStatus) searchStatus.innerHTML = '';
+            // Если команда сброшена — переключаем на вкладку команды
+            if (res?.teamReset) {
+                setTimeout(() => switchArenaTab('team'), 500);
+            }
+        } else {
+            // Обновляем счётчик боёв из ответа сервера
+            if (res.battlesLeft !== undefined) {
+                state.arenaBattlesLeft = res.battlesLeft;
+                state.maxArenaBattles = res.maxArenaBattles || 10;
+                const battlesEl = document.getElementById('arenaBattlesLeft');
+                if (battlesEl) battlesEl.textContent = `${state.arenaBattlesLeft}/${state.maxArenaBattles}`;
+            }
+            if (res.isNew && searchStatus) {
+                searchStatus.innerHTML = '⏳ В очереди поиска... <button onclick="cancelBattleSearch()" style="margin-left:8px;background:#ef4444;color:#fff;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px;">✕ Отменить</button>';
+            }
+        }
+    } finally {
+        findingMatch = false;
+    }
+}
+
+function cancelBattleSearch() {
+    arenaClient?.stopSearch();
+    const findBtn = document.getElementById('findMatchBtn');
+    const searchStatus = document.getElementById('arenaSearchStatus');
+    if (findBtn) { 
+        findBtn.disabled = false; 
+        findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; 
+    }
+    if (searchStatus) searchStatus.innerHTML = '';
+    showToast('Поиск отменён', '⚠️');
+}
+
+async function acceptBattleWebhook() {
+    const battleId = arenaClient?.getBattleId();
+    if (!battleId) return;
+    const res = await apiRequest('POST', '/api/arena/accept-match', { battleId });
+    if (res?.success) {
+        closeOverlay();
+        arenaClient?.setConfirmationShown(false);
+        const modal = document.getElementById('matchFoundModal');
+        if (modal) {
+            if (modal.timeoutId) clearTimeout(modal.timeoutId);
+            modal.remove();
+        }
+    }
+}
+
+async function rejectBattleWebhook() {
+    const battleId = arenaClient?.getBattleId();
+    if (!battleId) return;
+    
+    const modal = document.getElementById('matchFoundModal');
+    if (modal) {
+        if (modal.timeoutId) clearTimeout(modal.timeoutId);
+        modal.remove();
+    }
+    
+    const res = await apiRequest('POST', '/api/arena/reject-match', { battleId });
+    
+    if (res?.success) {
+        arenaClient?.stopSearch();
+        arenaClient?.setConfirmationShown(false);
+        showToast(res.message || 'Бой отклонён, ставка возвращена', '⚠️');
+        renderArenaFightTab();
+    } else {
+        showToast(res?.message || 'Ошибка при отклонении боя', '❌');
+    }
+}
+
+function showSkillBanner(name, description) {
+    const existing = document.getElementById('skillBanner');
+    if (existing) existing.remove();
+    const banner = document.createElement('div');
+    banner.id = 'skillBanner';
+    banner.style.cssText = 'position:fixed;top:30%;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;padding:12px 24px;border-radius:16px;font-weight:700;font-size:15px;z-index:9999;text-align:center;box-shadow:0 4px 20px rgba(124,58,237,0.5);animation:fadeInOut 2.5s ease forwards;pointer-events:none;';
+    banner.innerHTML = `<div>${name}</div><div style="font-size:11px;opacity:0.85;margin-top:4px;">${description}</div>`;
+    document.body.appendChild(banner);
+    setTimeout(() => banner.remove(), 2500);
+}
+
+// ============================================================
+// MAKE ATTACK
+// ============================================================
+async function makeAttack(targetIndex) {
+    if (!arenaClient?.isBattleActive()) { 
+        showToast('Бой не активен', '⚠️'); 
+        return; 
+    }
+    
+    const battleId = arenaClient?.getBattleId();
+    if (!battleId) { 
+        showToast('ID боя не найден', '⚠️'); 
+        return; 
+    }
+
+    // Глобальный лок — не допускаем двойной атаки пока не пришёл ответ
+    if (makeAttack._inProgress) return;
+    makeAttack._inProgress = true;
+    
+    try {
+    
+    const attackBtn = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${targetIndex}"] .arena-attack-btn`);
+    if (attackBtn) {
+        attackBtn.disabled = true;
+        attackBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    }
+    
+    const res = await apiRequest('POST', '/api/arena/move', { battleId, targetIndex });
+    makeAttack._inProgress = false;
+    
+    if (!res?.success) {
+        showToast(res?.message || 'Ошибка атаки', '❌');
+        if (attackBtn) {
+            attackBtn.disabled = false;
+            attackBtn.innerHTML = '⚔️ Атаковать';
+        }
+        return;
+    }
+
+    if (res.stunSkipped) {
+        showToast('😵 Питомец оглушён и пропускает ход!', '⚡');
+        const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
+        updateBattleUIFromClient({
+            myTeam: res.myTeam,
+            opponentTeam: res.enemyTeam,
+            currentTurn: res.currentTurn
+        }, isPlayer1);
+        return;
+    }
+
+    if (res.finished) {
+        // Всегда завершаем бой на клиенте по HTTP-ответу — не ждём WebSocket
+        arenaClient?.endBattle(res.winnerId || null, res.prizePool || 0);
+        const isWin = !!res.winnerId && res.winnerId === arenaClient?.getCurrentUserId();
+        showNativeBattleResult(isWin, res.prizePool || 0);
+        renderArenaFightTab();
+    } else {
+        const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
+        if (res.skillResult) {
+            showSkillBanner(res.skillResult.skillName, res.skillResult.description);
+            if (res.skillResult.poisoned) showToast('☠️ Противник отравлен на 3 хода!', '☠️');
+        }
+        if (res.poisonLog && res.poisonLog.length > 0) {
+            const totalDmg = res.poisonLog.reduce((s, p) => s + p.dmg, 0);
+            showToast(`☠️ Яд: -${totalDmg} HP у врагов`, '💀');
+        }
+        updateBattleUIFromClient({
+            myTeam: res.myTeam,
+            opponentTeam: res.enemyTeam,
+            lastMove: res.lastMove,
+            currentTurn: res.currentTurn,
+            turnCount: res.turnCount
+        }, isPlayer1);
+        
+        if (res.lastMove && res.lastMove.targetIndex !== undefined) {
+            showDamageAnimation(res.lastMove.targetIndex, res.lastMove.damage, res.lastMove.isCrit, false);
+        }
+    }
+    } catch(e) {
+        makeAttack._inProgress = false;
+        showToast('Ошибка соединения', '❌');
+    }
+}
+makeAttack._inProgress = false;
+
+async function surrenderBattle() {
+    const battleId = arenaClient?.getBattleId();
+    if (!battleId) return;
+    
+    if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.showPopup({
+            title: '⚠️ Сдаться?',
+            message: 'Вы потеряете MMO за вход в бой.',
+            buttons: [
+                { id: 'confirm', type: 'destructive', text: 'Сдаться' },
+                { id: 'cancel', type: 'cancel', text: 'Отмена' }
+            ]
+        }, async (buttonId) => {
+            if (buttonId !== 'confirm') return;
+            const res = await apiRequest('POST', '/api/arena/surrender', { battleId });
+            if (res?.success) { showToast('Вы сдались', '⚠️'); renderArenaFightTab(); }
+        });
+    } else {
+        if (!confirm('Вы уверены, что хотите сдаться? Вы потеряете MMO за вход.')) return;
+        const res = await apiRequest('POST', '/api/arena/surrender', { battleId });
+        if (res?.success) { showToast('Вы сдались', '⚠️'); renderArenaFightTab(); }
+    }
+}
+
+// ============================================================
+// RENDER ARENA FIGHT TAB
+// ============================================================
+async function renderArenaFightTab() {
+    const statusContainer = document.getElementById('arenaFightStatus');
+    const battleContainer = document.getElementById('arenaBattleContainer');
+    
+    if (arenaClient && state.token && !arenaClient.isConnected()) {
+        arenaClient.connectSocket(state.token, API_URL);
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    if (arenaClient?.isBattleActive()) {
+        if (battleContainer) battleContainer.style.display = 'block';
+        if (statusContainer) statusContainer.style.display = 'none';
+        return;
+    }
+    
+    try {
+        const battleRes = await apiRequest('GET', '/api/arena/battle/status');
+        
+        if (!battleRes) {
+            if (statusContainer) statusContainer.style.display = 'block';
+            if (battleContainer) battleContainer.style.display = 'none';
+            return;
+        }
+        
+        if (battleRes.hasBattle === true && battleRes.status !== 'finished' && battleRes.status !== 'expired') {
+            if (statusContainer) statusContainer.style.display = 'none';
+            if (battleContainer) battleContainer.style.display = 'block';
+            
+            if (battleRes.status === 'waiting') {
+                if (statusContainer) statusContainer.style.display = 'block';
+                if (battleContainer) battleContainer.style.display = 'none';
+                const findBtn = document.getElementById('findMatchBtn');
+                if (findBtn) { findBtn.disabled = true; findBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Поиск...'; }
+                const searchStatus = document.getElementById('arenaSearchStatus');
+                if (searchStatus) searchStatus.innerHTML = '⏳ В очереди поиска... <button onclick="cancelBattleSearch()" style="margin-left:8px;background:#ef4444;color:#fff;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px;">✕ Отменить</button>';
+            } else if (battleRes.status === 'active') {
+                const justEnded = arenaClient?.state.battleEndedAt && (Date.now() - arenaClient.state.battleEndedAt < 8000);
+                if (!arenaClient?.isBattleActive() && !justEnded) {
+                    arenaClient?.startBattle(battleRes.battleId, battleRes.isPlayer1, battleRes.myTeam, battleRes.opponentTeam);
+                    renderBattleInterface(battleRes);
+                }
+            } else if (battleRes.status === 'pending_confirmation') {
+                const myConfirmed = battleRes.isPlayer1 ? battleRes.player1Confirmed : battleRes.player2Confirmed;
+                const modalAlreadyOpen = !!document.getElementById('matchFoundModal');
+                if (!myConfirmed && !modalAlreadyOpen) {
+                    arenaClient?.setConfirmationShown(true);
+                    showNativeBattleConfirmation(battleRes);
+                }
+            }
+        } else {
+            if (statusContainer) statusContainer.style.display = 'block';
+            if (battleContainer) battleContainer.style.display = 'none';
+            
+            arenaClient?.stopSearch();
+            const findBtn = document.getElementById('findMatchBtn');
+            if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; }
+            const searchStatus = document.getElementById('arenaSearchStatus');
+            if (searchStatus) searchStatus.innerHTML = '';
+            
+            try {
+                const leaderboardRes = await apiRequest('GET', '/api/arena/leaderboard');
+                if (leaderboardRes?.success && leaderboardRes.myStats) {
+                    const myLeague = leaderboardRes.myStats.league || 'bronze';
+                    const leagueConfigs = {
+                        bronze: { entryFee: 0, prizePool: 0, name: '🥉 Бронзовая' },
+                        silver: { entryFee: 500, prizePool: 800, name: '🥈 Серебряная' },
+                        gold: { entryFee: 1000, prizePool: 1600, name: '🥇 Золотая' },
+                        platinum: { entryFee: 2000, prizePool: 3200, name: '💎 Платиновая' },
+                        diamond: { entryFee: 5000, prizePool: 8000, name: '🏆 Алмазная' }
+                    };
+                    const config = leagueConfigs[myLeague] || leagueConfigs.bronze;
+                    
+                    const entryFeeEl = document.getElementById('arenaEntryFee');
+                    const prizePoolEl = document.getElementById('arenaPrizePool');
+                    const leagueEl = document.getElementById('arenaLeague');
+
+                    const entryRow = document.getElementById('arenaEntryFeeRow');
+                    if (entryRow) entryRow.style.display = config.entryFee === 0 ? 'none' : '';
+                    if (entryFeeEl) entryFeeEl.textContent = config.entryFee;
+                    if (prizePoolEl) prizePoolEl.textContent = config.prizePool;
+                    if (leagueEl) {
+                        leagueEl.innerHTML = `<span class="arena-league-badge league-${myLeague}">${config.name}</span>`;
+                    }
+                }
+            } catch (err) {
+                console.error('Ошибка получения лиги:', err);
+            }
+
+            // Счётчик боёв арены
+            try {
+                const battlesRes = await apiRequest('GET', '/api/arena/battles-status');
+                if (battlesRes?.success) {
+                    state.arenaBattlesLeft = battlesRes.battlesLeft;
+                    state.maxArenaBattles = battlesRes.maxArenaBattles || 10;
+                }
+            } catch (err) { /* тихо, некритично */ }
+            const battlesEl = document.getElementById('arenaBattlesLeft');
+            if (battlesEl) battlesEl.textContent = `${state.arenaBattlesLeft}/${state.maxArenaBattles}`;
+            
+            const teamRes = await apiRequest('GET', '/api/arena/team');
+            if (teamRes?.success && teamRes.team) {
+                const teamContainer = document.getElementById('arenaCurrentTeam');
+                if (teamContainer) {
+                    teamContainer.innerHTML = teamRes.team.map(creature => `
+                        <div class="arena-current-creature">
+                            <div class="arena-current-icon">${getIconHtml(creature)}</div>
+                            <div class="arena-current-name">${escapeHtml(creature.name)}</div>
+                        </div>
+                    `).join('');
+                }
+                if (teamRes.teamIds && teamRes.teamIds.length === 3) {
+                    arenaClient?.setSelectedTeam(teamRes.teamIds);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('renderArenaFightTab error:', err);
+        if (statusContainer) statusContainer.style.display = 'block';
+        if (battleContainer) battleContainer.style.display = 'none';
+    }
+}
+
+// ============================================================
+// RENDER BATTLE INTERFACE
+// ============================================================
+function renderBattleInterface(battleData) {
+    const container = document.getElementById('arenaBattleContainer');
+    if (!container) return;
+    
+    const statusContainer = document.getElementById('arenaFightStatus');
+    if (statusContainer) statusContainer.style.display = 'none';
+    container.style.display = 'block';
+    
+    const isPlayer1 = battleData.isPlayer1;
+    const actualMyTeam = battleData.myTeam || (isPlayer1 ? battleData.player1Team : battleData.player2Team);
+    const actualEnemyTeam = battleData.opponentTeam || (isPlayer1 ? battleData.player2Team : battleData.player1Team);
+    
+    if (!actualMyTeam || !actualEnemyTeam) {
+        container.innerHTML = '<div class="arena-battle-container" style="text-align:center;padding:40px;color:red;">Ошибка загрузки боя</div>';
+        return;
+    }
+    
+    const isMyTurn = (battleData.currentTurn === 'player1' && isPlayer1) || 
+                     (battleData.currentTurn === 'player2' && !isPlayer1);
+    
+    container.innerHTML = `
+        <div class="arena-battle-container">
+            <div class="arena-team-side">
+                <div class="arena-side-title">⚔️ ВАША КОМАНДА</div>
+                <div class="arena-creatures-row" id="arenaMyCreatures">
+                    ${actualMyTeam.map((creature, idx) => `
+                        <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-creature-index="${idx}">
+                            <div class="creature-icon">${getIconHtml(creature)}</div>
+                            <div class="creature-name">${escapeHtml(creature.name)}</div>
+                            <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
+                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
+                            ${creature.skill ? `<div class="creature-skill-badge" title="${creature.skill.description}">${creature.skill.name}</div>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="arena-battle-vs">VS</div>
+            <div class="arena-team-side">
+                <div class="arena-side-title">🛡️ КОМАНДА СОПЕРНИКА</div>
+                <div class="arena-creatures-row" id="arenaEnemyCreatures">
+                    ${actualEnemyTeam.map((creature, idx) => `
+                        <div class="arena-battle-creature ${!creature.isAlive ? 'dead' : ''}" data-enemy-index="${idx}">
+                            <div class="creature-icon">${getIconHtml(creature)}</div>
+                            <div class="creature-name">${escapeHtml(creature.name)}</div>
+                            <div class="creature-hp">❤️ ${creature.currentHp}/${creature.maxHp}</div>
+                            <div class="arena-hp-bar"><div class="arena-hp-fill" style="width: ${(creature.currentHp / creature.maxHp) * 100}%"></div></div>
+                            ${creature.skill ? `<div class="creature-skill-badge" title="${creature.skill.description}">${creature.skill.name}</div>` : ''}
+                            ${isMyTurn && creature.isAlive ? `<button class="arena-attack-btn" data-enemy-idx="${idx}" onclick="makeAttack(${idx})">⚔️ Атаковать</button>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="arena-battle-log" id="arenaBattleLog">
+                ${battleData.battleLog && battleData.battleLog.length ? 
+                    battleData.battleLog.slice(-10).map(log => `<div class="arena-log-entry ${log.isCrit ? 'crit' : ''}">Ход ${log.turn}: ${log.attackerName || 'Питомец'} → ${log.targetName || 'Враг'}: ${log.damage} урона ${log.isCrit ? '💥 КРИТ!' : ''}</div>`).join('') : 
+                    '<div class="arena-log-entry">Бой начинается...</div>'}
+            </div>
+            <div class="arena-battle-timer" id="arenaBattleTimer">⏱ ${battleData.timeLeft !== undefined ? battleData.timeLeft : 30}</div>
+            <button class="arena-surrender-btn" onclick="surrenderBattle()"><i class="fa-solid fa-flag"></i> Сдаться</button>
+        </div>
+    `;
+}
+
+// ============================================================
+// UPDATE BATTLE UI FROM CLIENT
+// ============================================================
+function updateBattleUIFromClient(data, isPlayer1) {
+    if (!data) return;
+    
+    let myTeam, enemyTeam;
+    
+    if (data.player1Team && data.player2Team) {
+        myTeam = isPlayer1 ? data.player1Team : data.player2Team;
+        enemyTeam = isPlayer1 ? data.player2Team : data.player1Team;
+    } else if (data.myTeam && data.opponentTeam) {
+        myTeam = data.myTeam;
+        enemyTeam = data.opponentTeam;
+    } else {
+        return;
+    }
+    
+    if (!myTeam || !enemyTeam) return;
+    
+    // Обновляем ТОЛЬКО свою команду (без анимации урона)
+    for (let i = 0; i < myTeam.length; i++) {
+        const creature = myTeam[i];
+        const creatureEl = document.querySelector(`#arenaMyCreatures .arena-battle-creature[data-creature-index="${i}"]`);
+        if (creatureEl && creature) {
+            const hpEl = creatureEl.querySelector('.creature-hp');
+            const fillEl = creatureEl.querySelector('.arena-hp-fill');
+            if (hpEl) hpEl.textContent = `❤️ ${Math.max(0, creature.currentHp)}/${creature.maxHp}`;
+            if (fillEl) fillEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
+            if (!creature.isAlive) creatureEl.classList.add('dead');
+            else creatureEl.classList.remove('dead');
+        }
+    }
+    
+    const isMyTurn = data.currentTurn && ((data.currentTurn === 'player1' && isPlayer1) || (data.currentTurn === 'player2' && !isPlayer1));
+    
+    // Обновляем команду соперника (обычно без кнопки атаки)
+    for (let i = 0; i < enemyTeam.length; i++) {
+        const creature = enemyTeam[i];
+        const creatureEl = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${i}"]`);
+        if (!creatureEl || !creature) continue;
+        
+        const oldHp = parseInt(creatureEl.querySelector('.creature-hp')?.textContent?.match(/[\d.]+/)?.[0] || creature.currentHp);
+        const newHp = creature.currentHp;
+        
+        const hpEl = creatureEl.querySelector('.creature-hp');
+        const fillEl = creatureEl.querySelector('.arena-hp-fill');
+        if (hpEl) hpEl.textContent = `❤️ ${Math.max(0, creature.currentHp)}/${creature.maxHp}`;
+        if (fillEl) fillEl.style.width = `${(creature.currentHp / creature.maxHp) * 100}%`;
+        
+        if (!creature.isAlive) {
+            creatureEl.classList.add('dead');
+        } else {
+            creatureEl.classList.remove('dead');
+        }
+        
+        // Если у врага уменьшилось HP — показываем анимацию урона
+        if (oldHp > newHp && data.lastMove && data.lastMove.targetIndex === i) {
+            const damage = oldHp - newHp;
+            showDamageAnimation(i, damage, data.lastMove.isCrit || false, false);
+        }
+        
+        const existingBtn = creatureEl.querySelector('.arena-attack-btn');
+        const canAttack = isMyTurn && creature.isAlive && arenaClient?.isBattleActive();
+        
+        if (canAttack && !existingBtn) {
+            const btn = document.createElement('button');
+            btn.className = 'arena-attack-btn';
+            btn.setAttribute('data-enemy-idx', i);
+            btn.innerHTML = '⚔️ Атаковать';
+            btn.onclick = (function(index) {
+                return function() { makeAttack(index); };
+            })(i);
+            creatureEl.appendChild(btn);
+        } else if (!canAttack && existingBtn) {
+            existingBtn.remove();
+        } else if (canAttack && existingBtn) {
+            existingBtn.disabled = false;
+            existingBtn.style.opacity = '1';
+            existingBtn.innerHTML = '⚔️ Атаковать';
+        }
+    }
+    
+    // Обновляем лог боя
+    if (data.lastMove) {
+        const logContainer = document.getElementById('arenaBattleLog');
+        if (logContainer) {
+            const logEntry = document.createElement('div');
+            logEntry.className = `arena-log-entry ${data.lastMove.isCrit ? 'crit' : ''}`;
+            logEntry.innerHTML = `Ход ${data.turnCount || '?'}: Нанесено ${data.lastMove.damage} урона ${data.lastMove.isCrit ? '💥 КРИТ!' : ''}`;
+            logContainer.insertBefore(logEntry, logContainer.firstChild);
+            if (logContainer.children.length > 10) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
+        }
+    }
+}
+
+// ============================================================
+// SHOW DAMAGE ANIMATION
+// ============================================================
+function showDamageAnimation(targetIndex, damage, isCrit, hitMy = false) {
+    let el;
+    if (hitMy) {
+        el = document.querySelector(`#arenaMyCreatures .arena-battle-creature[data-creature-index="${targetIndex}"]`);
+    } else {
+        el = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${targetIndex}"]`);
+    }
+
+    if (!el) return;
+
+    const damageDiv = document.createElement('div');
+    damageDiv.className = `arena-damage-number ${isCrit ? 'crit' : ''}`;
+    damageDiv.textContent = `-${damage}`;
+    el.style.position = 'relative';
+    el.appendChild(damageDiv);
+
+    if (isCrit) {
+        el.style.animation = 'damageShake 0.3s ease';
+        setTimeout(() => { el.style.animation = ''; }, 300);
+    }
+
+    setTimeout(() => { if (damageDiv && damageDiv.remove) damageDiv.remove(); }, 1000);
+
+    el.style.transition = 'background 0.1s ease';
+    el.style.background = 'rgba(239, 68, 68, 0.3)';
+    setTimeout(() => { if (el) el.style.background = ''; }, 150);
+}
+
+// ============================================================
+// RENDER ARENA RANKING
+// ============================================================
+async function renderArenaRanking() {
+    try {
+        const res = await apiRequest('GET', '/api/arena/leaderboard');
+        if (!res?.success) return;
+        
+        const myRatingEl = document.getElementById('arenaMyRating');
+        const myWinsEl = document.getElementById('arenaMyWins');
+        const myLossesEl = document.getElementById('arenaMyLosses');
+        const myStreakEl = document.getElementById('arenaMyStreak');
+        
+        if (myRatingEl) myRatingEl.textContent = res.myStats?.rating || 1000;
+        if (myWinsEl) myWinsEl.textContent = res.myStats?.wins || 0;
+        if (myLossesEl) myLossesEl.textContent = res.myStats?.losses || 0;
+        if (myStreakEl) myStreakEl.textContent = res.myStats?.streak || 0;
+        
+        const currentRating = res.myStats?.rating || 1000;
+        const nextRatingRequired = res.nextRatingRequired;
+        const currentLeagueRating = res.currentLeagueRating || 0;
+        const nextLeague = res.nextLeague;
+        
+        const progressContainer = document.getElementById('arenaProgressContainer');
+        const nextLeagueInfo = document.getElementById('arenaNextLeagueInfo');
+        const progressFill = document.getElementById('arenaProgressFill');
+        const currentRatingSpan = document.getElementById('arenaCurrentRating');
+        const nextRatingSpan = document.getElementById('arenaNextRating');
+        
+        if (nextRatingRequired && nextLeague && progressContainer) {
+            const leagueNamesRu = { silver: 'Серебряную', gold: 'Золотую', platinum: 'Платиновую', diamond: 'Алмазную' };
+            const leagueName = leagueNamesRu[nextLeague] || nextLeague;
+            if (nextLeagueInfo) nextLeagueInfo.innerHTML = `<span style="color: var(--legendary);">✨ ${leagueName} лига</span>`;
+            
+            const range = nextRatingRequired - currentLeagueRating;
+            const progress = currentRating - currentLeagueRating;
+            let percent = (progress / range) * 100;
+            percent = Math.min(100, Math.max(0, percent));
+            
+            if (progressFill) progressFill.style.width = `${percent}%`;
+            if (currentRatingSpan) currentRatingSpan.textContent = `${currentRating}`;
+            if (nextRatingSpan) nextRatingSpan.textContent = `${nextRatingRequired}`;
+        } else if (progressContainer && res.myStats?.league === 'diamond') {
+            if (nextLeagueInfo) nextLeagueInfo.innerHTML = '<span style="color: var(--mythic);">🏆 ВЫ В АЛМАЗНОЙ ЛИГЕ! 🏆</span>';
+            if (progressFill) progressFill.style.width = '100%';
+            if (currentRatingSpan) currentRatingSpan.textContent = `${currentRating}`;
+            if (nextRatingSpan) nextRatingSpan.textContent = 'МАКСИМУМ';
+        }
+        
+        const container = document.getElementById('arenaLeaderboardList');
+        if (container && res.leaders) {
+            const leagueDisplay = {
+                bronze: { name: '🥉 Бронза', class: 'league-badge-bronze' },
+                silver: { name: '🥈 Серебро', class: 'league-badge-silver' },
+                gold: { name: '🥇 Золото', class: 'league-badge-gold' },
+                platinum: { name: '💎 Платина', class: 'league-badge-platinum' },
+                diamond: { name: '🏆 Алмаз', class: 'league-badge-diamond' }
+            };
+            
+            container.innerHTML = res.leaders.map((player, idx) => {
+                const rank = idx + 1;
+                const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
+                const rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+                const isMe = player.rating === res.myStats?.rating && player.name === (state.user?.username || state.user?.firstName);
+                const league = player.league || 'bronze';
+                const leagueInfo = leagueDisplay[league] || leagueDisplay.bronze;
+                
+                return `<div class="lb-item ${isMe ? 'me' : ''}">
+                    <div class="lb-rank ${rankClass}">${rankIcon}</div>
+                    <div class="lb-avatar" style="background: linear-gradient(135deg, var(--accent), var(--accent3));">
+                        ${(player.name || '?')[0]?.toUpperCase() || '?'}
+                    </div>
+                    <div class="lb-info">
+                        <div class="lb-name">
+                            ${escapeHtml(player.name)} ${isMe ? '<span style="font-size:9px;color:var(--accent3)">(Вы)</span>' : ''}
+                        </div>
+                        <div class="lb-level">
+                            УР ${player.level}
+                            <span class="arena-league-badge-small ${leagueInfo.class}">${leagueInfo.name}</span>
+                        </div>
+                    </div>
+                    <div class="lb-score">
+                        <span>${player.rating}</span>
+                        <span style="font-size:9px;">${player.wins}/${player.losses}</span>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+    } catch (err) {
+        console.error('renderArenaRanking error:', err);
+    }
+}
+
+// ============================================================
+// ARENA RANKS TAB FUNCTIONS
+// ============================================================
+async function toggleRankDetailsCompact(rankId) {
+    const details = document.getElementById(`rankCompactDetails-${rankId}`);
+    const item = details?.closest('.rank-item-compact');
+    
+    if (details) {
+        if (details.style.display === 'none') {
+            details.style.display = 'block';
+            item?.classList.add('expanded');
+            await loadCompactRankPlayers(rankId);
+        } else {
+            details.style.display = 'none';
+            item?.classList.remove('expanded');
+        }
+    }
+}
+
+async function loadCompactRankPlayers(league) {
+    const container = document.getElementById(`${league}CompactList`);
+    if (!container) return;
+    
+    container.innerHTML = '<div style="padding: 8px; text-align: center; color: var(--text3); font-size: 10px;">Загрузка...</div>';
+    
+    try {
+        const res = await apiRequest('GET', '/api/arena/leaderboard');
+        if (res?.success && res.leaders) {
+            const leaguePlayers = res.leaders.filter(p => (p.league || 'bronze') === league);
+            
+            if (leaguePlayers.length === 0) {
+                container.innerHTML = '<div style="padding: 8px; text-align: center; color: var(--text3); font-size: 10px;">Нет игроков в этой лиге</div>';
+                return;
+            }
+            
+            container.innerHTML = leaguePlayers.slice(0, 5).map(player => `
+                <div class="compact-player-item">
+                    <div class="compact-player-name">
+                        <div class="compact-player-avatar">${(player.name || '?')[0].toUpperCase()}</div>
+                        <span>${escapeHtml(player.name)}</span>
+                    </div>
+                    <div class="compact-player-rating">${player.rating}</div>
+                </div>
+            `).join('');
+        } else {
+            container.innerHTML = '<div style="padding: 8px; text-align: center; color: var(--text3); font-size: 10px;">Ошибка загрузки</div>';
+        }
+    } catch (err) {
+        console.error(`Ошибка загрузки игроков лиги ${league}:`, err);
+        container.innerHTML = '<div style="padding: 8px; text-align: center; color: var(--text3); font-size: 10px;">Ошибка загрузки</div>';
+    }
+}
+
+async function updateArenaRanksInfo() {
+    try {
+        const res = await apiRequest('GET', '/api/arena/leaderboard');
+        if (!res?.success) return;
+        
+        const myStats = res.myStats;
+        const myRating = myStats?.rating || 1000;
+        const myLeague = myStats?.league || 'bronze';
+        
+        const leagueIcons = {
+            bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '💎', diamond: '🏆'
+        };
+        const leagueNames = {
+            bronze: 'Бронзовая лига', silver: 'Серебряная лига', gold: 'Золотая лига',
+            platinum: 'Платиновая лига', diamond: 'Алмазная лига'
+        };
+        
+        const iconEl = document.getElementById('arenaCurrentRankIcon');
+        const nameEl = document.getElementById('arenaCurrentRankName');
+        const ratingEl = document.getElementById('arenaCurrentRankRating');
+        const winsEl = document.getElementById('arenaRankWins');
+        const lossesEl = document.getElementById('arenaRankLosses');
+        const streakEl = document.getElementById('arenaRankStreak');
+        
+        if (iconEl) iconEl.textContent = leagueIcons[myLeague] || '🥉';
+        if (nameEl) nameEl.textContent = leagueNames[myLeague] || 'Бронзовая лига';
+        if (ratingEl) ratingEl.textContent = myRating;
+        if (winsEl) winsEl.textContent = myStats?.wins || 0;
+        if (lossesEl) lossesEl.textContent = myStats?.losses || 0;
+        if (streakEl) streakEl.textContent = myStats?.streak || 0;
+        
+        const nextRatingRequired = res.nextRatingRequired;
+        const currentLeagueRating = res.currentLeagueRating || 0;
+        const nextLeague = res.nextLeague;
+        
+        const nextRankEl = document.getElementById('arenaNextRankName');
+        const progressFill = document.getElementById('arenaRankProgressFill');
+        const currentSpan = document.getElementById('arenaCurrentRankValue');
+        const nextSpan = document.getElementById('arenaNextRankValue');
+        
+        if (nextRatingRequired && nextLeague) {
+            const nextLeagueNames = {
+                silver: 'Серебряная лига', gold: 'Золотая лига',
+                platinum: 'Платиновая лига', diamond: 'Алмазная лига'
+            };
+            if (nextRankEl) nextRankEl.textContent = nextLeagueNames[nextLeague] || 'Следующая лига';
+            
+            const range = nextRatingRequired - currentLeagueRating;
+            const progress = myRating - currentLeagueRating;
+            let percent = (progress / range) * 100;
+            percent = Math.min(100, Math.max(0, percent));
+            
+            if (progressFill) progressFill.style.width = `${percent}%`;
+            if (currentSpan) currentSpan.textContent = myRating;
+            if (nextSpan) nextSpan.textContent = nextRatingRequired;
+        } else if (myLeague === 'diamond') {
+            if (nextRankEl) nextRankEl.innerHTML = '<span style="color: var(--mythic);">🏆 ВЫ В АЛМАЗНОЙ ЛИГЕ!</span>';
+            if (progressFill) progressFill.style.width = '100%';
+            if (currentSpan) currentSpan.textContent = myRating;
+            if (nextSpan) nextSpan.textContent = 'МАКСИМУМ';
+        }
+    } catch (err) {
+        console.error('updateArenaRanksInfo error:', err);
+    }
+}
+
+// ============================================================
+// ARENA HISTORY
+// ============================================================
+async function renderArenaHistory() {
+    const container = document.getElementById('arenaHistoryList');
+    if (!container) return;
+    container.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;">⏳ Загрузка...</div>';
+    
+    try {
+        const res = await apiRequest('GET', '/api/arena/history');
+        if (!res?.success || !res.history?.length) {
+            container.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;">📭 Нет завершённых боёв</div>';
+            return;
+        }
+        
+        const leagueIcons = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '💎', diamond: '🏆' };
+        
+        container.innerHTML = res.history.map(b => {
+            const date = new Date(b.createdAt).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            const icon = leagueIcons[b.league] || '⚔️';
+            return `
+            <div class="arena-history-item ${b.isWin ? 'win' : 'loss'}">
+                <div class="history-result">${b.isWin ? '🏆' : '💀'}</div>
+                <div class="history-info">
+                    <div class="history-opponent">vs ${escapeHtml(b.opponent)}</div>
+                    <div class="history-meta">${icon} ${date}</div>
+                </div>
+                <div class="history-prize ${b.isWin ? 'prize-win' : 'prize-loss'}">
+                    ${b.isWin ? '+' : '-'}${b.isWin ? b.prizePool : (b.entryFee ?? b.prizePool ?? '?')} MMO
+                </div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        container.innerHTML = `<div style="text-align:center;padding:20px;color:#ef4444;">Ошибка: ${e.message}</div>`;
+    }
+}
+
+// ============================================================
+// NAVIGATION
+// ============================================================
+function switchTab(tab) {
+    // Проверки ПЕРЕД переключением DOM
+    if (tab === 'arena') {
+        const userLevel = state.user?.level || 1;
+        if (userLevel < 3) {
+            showToast(`Арена доступна с 3 уровня (ваш: ${userLevel})`, '🔒');
+            return;
+        }
+        if (!isArenaOpenClient()) {
+            showArenaClosedModal();
+            return;
+        }
+    }
+
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById(`tab-${tab}`).classList.add('active');
+    document.getElementById(`nav-${tab}`).classList.add('active');
+    document.getElementById('mainContent').scrollTop = 0;
+    isMarketplaceTabActive = (tab === 'shop');
+    if (tab === 'leaderboard') { leaderboardCache = { data: null, expiresAt: 0 }; renderLeaderboard(); }
+    if (tab === 'special') renderSpecialQuests();
+    if (tab === 'wallet') { updateHeader(); checkActiveRequests(); loadUserStats(); loadStakingStatus(); }
+    if (tab === 'shop') renderMarketplaceBuy();
+    if (tab === 'friends') renderFriendsList();
+    if (tab === 'arena') {
+        if (arenaClient && state.token && !arenaClient.isConnected()) {
+            arenaClient.connectSocket(state.token, API_URL);
+        }
+        renderArenaTeamInventory();
+        renderArenaFightTab();
+        renderArenaRanking();
+    }
+}
+
+// ============================================================
+// OVERLAY & TOAST
+// ============================================================
+function closeOverlay(e) { if (e && e.target !== document.getElementById('overlay')) return; document.getElementById('overlay').classList.remove('show'); }
+function showToast(msg, icon = '') { const t = document.getElementById('toast'); t.textContent = (icon ? icon + ' ' : '') + msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2500); }
+
+// ============================================================
+// EFFECTS
+// ============================================================
+function spawnStars(rarity) {
+    const count = rarity === 'legendary' || rarity === 'mythic' ? 8 : rarity === 'epic' ? 5 : 3;
+    const icons = ['✨', '⭐', '🌟', '💫', '✦'];
+    for (let i = 0; i < count; i++) {
+        setTimeout(() => {
+            const el = document.createElement('div');
+            el.className = 'star-burst';
+            el.textContent = icons[Math.floor(Math.random() * icons.length)];
+            el.style.left = (30 + Math.random() * 40) + '%';
+            el.style.top = (20 + Math.random() * 40) + '%';
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 900);
+        }, i * 80);
+    }
+}
+
+function spawnFloatingMMO(amount) {
+    const el = document.createElement('div');
+    el.className = 'float-mmo';
+    el.textContent = `${amount > 0 ? '+' : ''}${amount} MMO`;
+    el.style.left = '50%';
+    el.style.top = '40%';
+    el.style.transform = 'translateX(-50%)';
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 1600);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+async function initTelegramApp() {
+    clearAllIntervals();
+    showLoadingScreen(true);
+
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+        tg.ready();
+        tg.expand();
+        if (tg.enableClosingConfirmation) tg.enableClosingConfirmation();
+        if (tg.requestFullscreen) { try { await tg.requestFullscreen(); } catch (e) {} }
+        setTimeout(() => { const top = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tg-safe-area-inset-top')) || 55; document.querySelector('.header').style.paddingTop = (top + 40) + 'px'; }, 400);
+        if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+        setTimeout(() => { if (tg && typeof tg.expand === 'function') tg.expand(); }, 500);
+        tg.setHeaderColor('#080b14');
+        tg.setBackgroundColor('#080b14');
+    }
+
+    let initData = tg?.initData || '';
+    let tgUser = tg?.initDataUnsafe?.user;
+    let referralCode = null;
+    if (tg?.initDataUnsafe?.start_param) referralCode = tg.initDataUnsafe.start_param;
+    const urlParams = new URLSearchParams(window.location.search);
+    if (!referralCode && urlParams.get('startapp')) referralCode = urlParams.get('startapp');
+    if (!referralCode && urlParams.get('ref')) referralCode = urlParams.get('ref');
+
+    if (!initData && window.location.hostname === 'localhost') {
+        const mockUser = { id: 123456789, first_name: 'Test', username: 'testuser' };
+        initData = `user=${encodeURIComponent(JSON.stringify(mockUser))}&hash=devhash`;
+        tgUser = mockUser;
+    }
+
+    if (!initData) { showLoadingScreen(false); showToast('Открой игру через Telegram!', '⚠️'); return; }
+
+    const loginRes = await apiRequest('POST', '/api/auth/login', { initData, referralCode });
+    if (!loginRes.success) { showLoadingScreen(false); showToast(loginRes.message || 'Ошибка авторизации', '❌'); return; }
+
+    state.token = loginRes.token;
+state.user = loginRes.user;
+state.inventory = loginRes.inventory || [];
+state.incomePerHour = 0;
+
+console.log('📦 Логин успешен:');
+
+const profileRes = await apiRequest('GET', '/api/user/profile');
+if (profileRes && profileRes.success) {
+    state.user = profileRes.user;
+    state.inventory = profileRes.inventory || [];
+    state.incomePerHour = profileRes.incomePerHour || 0;
+    state.serverBalance = state.user.balance;
+    state.lastServerSync = Date.now();
+    console.log('   - Баланс после профиля:', state.user.balance);
+} else {
+    state.serverBalance = state.user.balance;
+    state.lastServerSync = Date.now();
+}
+
+await loadGameConfig();
+await loadCreaturesFromServer();
+    loadQuestStatusesFromStorage();
+    updatePlayerInfo();
+    showLoadingScreen(false);
+    renderAll();
+    startVisualTicker();
+    startCollectIncomeLoop();
+    startOptimizedIntervals();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    if (loginRes.isNewUser && referralCode) setTimeout(() => showToast('🎉 Добро пожаловать! Реферальный бонус: 2% от депозитов друга', '🎁'), 800);
+    else if (loginRes.isNewUser) setTimeout(() => showToast('Open a DNA Capsule to start!', '🧬'), 800);
+    setTimeout(() => { checkActiveRequests(); loadUserStats(); }, 1000);
+    updateAdsStatus();
+    
+    arenaClient = window.arenaClient;
+    if (arenaClient) {
+        arenaClient.stopSearch();
+        arenaClient.loadTeamFromStorage();
+        arenaClient.connectSocket(state.token, API_URL);
+        arenaClient.on('onMatchFound', (data) => showNativeBattleConfirmation(data));
+        arenaClient.on('onBattleStartUI', (data) => {
+            const confirmModal = document.getElementById('matchFoundModal');
+            if (confirmModal) {
+                if (confirmModal.timeoutId) clearTimeout(confirmModal.timeoutId);
+                confirmModal.remove();
+            }
+            if (document.getElementById('overlay')?.classList.contains('show')) closeOverlay(); 
+            renderBattleInterface(data);
+        });
+        arenaClient.on('onBattleUpdate', (data, isPlayer1) => {
+            if (data.skillResult) {
+                showSkillBanner(data.skillResult.skillName, data.skillResult.description);
+            }
+            updateBattleUIFromClient(data, isPlayer1);
+        });
+        arenaClient.on('onBattleEnd', (isWin, prizePool) => { 
+            showNativeBattleResult(isWin, prizePool); 
+            refreshUserProfile();
+            setTimeout(() => {
+                renderArenaFightTab();
+                renderArenaRanking();
+                renderArenaHistory();
+            }, 1000);
+        });
+        arenaClient.on('onTimerTick', (timeLeft) => { 
+            const timerEl = document.getElementById('arenaBattleTimer'); 
+            if (timerEl) { 
+                timerEl.textContent = `⏱ ${timeLeft}`; 
+                if (timeLeft <= 5) timerEl.classList.add('warning'); 
+                else timerEl.classList.remove('warning'); 
+            } 
+        });
+        arenaClient.on('onSearchTimeout', () => { 
+            const findBtn = document.getElementById('findMatchBtn'); 
+            const searchStatus = document.getElementById('arenaSearchStatus'); 
+            if (findBtn) { findBtn.disabled = false; findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; } 
+            if (searchStatus) searchStatus.innerHTML = '⏱ Поиск отменён (таймаут)'; 
+            showToast('Поиск занял слишком много времени, попробуйте снова', '⚠️'); 
+        });
+        arenaClient.on('onSearchTick', (secondsLeft) => { 
+            const searchStatus = document.getElementById('arenaSearchStatus'); 
+            if (searchStatus && arenaClient.isSearching()) { 
+                searchStatus.innerHTML = `⏳ В очереди поиска... <span style="color:var(--text2);font-size:11px;">${secondsLeft}с</span> <button onclick="cancelBattleSearch()" style="margin-left:8px;background:#ef4444;color:#fff;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px;">✕ Отменить</button>`; 
+            } 
+        });
+        arenaClient.on('onConnected', () => console.log('✅ WebSocket соединение установлено'));
+        arenaClient.on('onDisconnected', (reason) => console.log(`❌ WebSocket отключён: ${reason}`));
+        arenaClient.on('onConfirmationUpdate', (data) => { updateConfirmationModal(data); });
+        arenaClient.on('onMatchRejected', (data) => {
+            const modal = document.getElementById('matchFoundModal');
+            if (modal) {
+                if (modal.timeoutId) clearTimeout(modal.timeoutId);
+                const card = modal.querySelector('.match-found-card');
+                if (card) card.innerHTML = `
+                    <div style="text-align:center;padding:24px;">
+                        <div style="font-size:36px;margin-bottom:12px;">❌</div>
+                        <div style="font-size:16px;font-weight:700;color:#ef4444;margin-bottom:8px;">БОЙ ОТМЕНЁН</div>
+                        <div style="color:#94a3b8;font-size:13px;">${data.message || 'Соперник отклонил бой. Ставка возвращена.'}</div>
+                    </div>`;
+                setTimeout(() => {
+                    modal.remove();
+                    arenaClient?.stopSearch();
+                    arenaClient?.setConfirmationShown(false);
+                    renderArenaFightTab();
+                }, 2500);
+            } else {
+                showToast(data.message || 'Соперник отклонил бой', '❌');
+                arenaClient?.stopSearch();
+                arenaClient?.setConfirmationShown(false);
+                renderArenaFightTab();
+            }
+        });
+    }
+    
+    initArenaWebhooks();
+    
+    document.querySelectorAll('img').forEach(img => {
+        img.addEventListener('contextmenu', (e) => { e.preventDefault(); return false; });
+        img.addEventListener('touchstart', (e) => { if (e.touches.length > 1) e.preventDefault(); });
+    });
+    window.addEventListener('beforeunload', () => { if (arenaClient) arenaClient.disconnectSocket(); });
+    window.addEventListener('online', () => { if ((arenaClient?.isSearching() || arenaClient?.isBattleActive()) && !arenaClient?.isConnected()) arenaClient?.connectSocket(state.token, API_URL); });
+}
+
+function renderAll() {
+    updateHeader();
+    renderCards();
+    updateUpgradeButton();
+    renderLeaderboard();
+    renderSpecialQuests();
+    updateFriendRewardButtons();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initTelegramApp();
+});
+
+// ЭКСПОРТ ГЛОБАЛЬНЫХ ФУНКЦИЙ
+window.updateHeader = updateHeader;
+window.renderCards = renderCards;
+window.renderLeaderboard = renderLeaderboard;
+window.renderSpecialQuests = renderSpecialQuests;
+window.renderFriendsList = renderFriendsList;
+window.updateFriendRewardButtons = updateFriendRewardButtons;
+window.renderMarketplaceBuy = renderMarketplaceBuy;
+window.renderMarketplaceSell = renderMarketplaceSell;
+window.renderMarketplaceMyListings = renderMarketplaceMyListings;
+window.showToast = showToast;
+window.state = state;
+window.formatNum = formatNum;
+window.getVisualBalance = getVisualBalance;
+window.updateAdsStatus = updateAdsStatus;
+window.switchTab = switchTab;
+window.closeOverlay = closeOverlay;
+window.showCapsuleModal = showCapsuleModal;
+window.openCapsule = openCapsule;
+window.onCardClick = onCardClick;
+window.showMergePreview = showMergePreview;
+window.executeMerge = executeMerge;
+window.upgradeInventory = upgradeInventory;
+window.watchAd = watchAd;
+window.showEncyclopedia = showEncyclopedia;
+window.showCreatureInfo = showCreatureInfo;
+window.switchMarketplaceTab = switchMarketplaceTab;
+window.openSellModal = openSellModal;
+window.updateFeeCalculator = updateFeeCalculator;
+window.confirmSellListing = confirmSellListing;
+window.cancelMarketplaceListing = cancelMarketplaceListing;
+window.buyFromMarketplace = buyFromMarketplace;
+window.inviteFriend = inviteFriend;
+window.claimFriendReward = claimFriendReward;
+window.openChannelAndStartTimer = openChannelAndStartTimer;
+window.claimSpecialQuest = claimSpecialQuest;
+window.openCustomLinkAndComplete = openCustomLinkAndComplete;
+window.showDepositModal = showDepositModal;
+window.getPaymentDetails = getPaymentDetails;
+window.createDepositRequestAfterPayment = createDepositRequestAfterPayment;
+window.showWithdrawModal = showWithdrawModal;
+window.createWithdrawRequest = createWithdrawRequest;
+window.copyToClipboard = copyToClipboard;
+window.checkActiveRequests = checkActiveRequests;
+window.loadUserStats = loadUserStats;
+window.refreshUserProfile = refreshUserProfile;
+window.switchArenaTab = switchArenaTab;
+window.toggleArenaCreature = toggleArenaCreature;
+window.saveArenaTeam = saveArenaTeam;
+window.findMatch = findMatch;
+window.acceptBattleWebhook = acceptBattleWebhook;
+window.rejectBattleWebhook = rejectBattleWebhook;
+window.makeAttack = makeAttack;
+window.surrenderBattle = surrenderBattle;
+window.cancelBattleSearch = cancelBattleSearch;
+window.renderBattleInterface = renderBattleInterface;
+window.updateBattleUIFromClient = updateBattleUIFromClient;
+window.showDamageAnimation = showDamageAnimation;
+window.renderArenaRanking = renderArenaRanking;
+window.toggleRankDetailsCompact = toggleRankDetailsCompact;
+window.loadCompactRankPlayers = loadCompactRankPlayers;
+window.updateArenaRanksInfo = updateArenaRanksInfo;
+window.renderArenaHistory = renderArenaHistory;
+window.acceptBattleFromModal = acceptBattleFromModal;
+window.rejectBattleFromModal = rejectBattleFromModal;
+window.resetArenaTeam = resetArenaTeam;
+window.renderArenaFightTab = renderArenaFightTab;
+// ============================================================
+// STAKING
+// ============================================================
+let stakingTimerInterval = null;
+let currentStakingPlan = null;
+
+const STAKING_PLANS_CLIENT = {
+    10: { days: 10, rate: 0.10, minAmount: 300000, label: '+10%', capybara: true },
+    30: { days: 30, rate: 0.20, minAmount: 50000,  label: '+20%' }
+};
+
+async function loadStakingStatus() {
+    try {
+        const data = await apiRequest('GET', '/api/staking/status');
+        if (data && data.success && data.staking) {
+            renderActiveStaking(data.staking);
+        } else {
+            const block = document.getElementById('activeStakingBlock');
+            if (block) block.style.display = 'none';
+        }
+    } catch (e) {}
+}
+
+function renderActiveStaking(s) {
+    const block = document.getElementById('activeStakingBlock');
+    if (!block) return;
+    block.style.display = 'block';
+    document.getElementById('stakeAmount').textContent = formatNum(s.amount) + ' MMO';
+    document.getElementById('stakeReward').textContent = '+' + formatNum(s.reward) + ' MMO'
+        + (s.days === 10 ? ' + 🦫 Capybara' : '');
+
+    if (stakingTimerInterval) clearInterval(stakingTimerInterval);
+
+    function tick() {
+        const diff = new Date(s.endsAt).getTime() - Date.now();
+        const claimBtn = document.getElementById('stakeClaimBtn');
+        const timerEl  = document.getElementById('stakeTimer');
+        if (!timerEl) return;
+        if (diff <= 0) {
+            timerEl.textContent = 'Готово! ✅';
+            if (claimBtn) claimBtn.style.display = 'flex';
+            clearInterval(stakingTimerInterval);
+        } else {
+            const d   = Math.floor(diff / 86400000);
+            const h   = Math.floor((diff % 86400000) / 3600000);
+            const m   = Math.floor((diff % 3600000) / 60000);
+            const sec = Math.floor((diff % 60000) / 1000);
+            timerEl.textContent = (d > 0 ? d + 'д ' : '') +
+                String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+            if (claimBtn) claimBtn.style.display = 'none';
+        }
+    }
+    tick();
+    stakingTimerInterval = setInterval(tick, 1000);
+}
+
+function selectStakingPlan(days) {
+    document.querySelectorAll('.staking-plan').forEach(el => el.classList.remove('selected'));
+    const el = document.getElementById('stakingPlan' + days);
+    if (el) el.classList.add('selected');
+    openStakingModal(days);
+}
+
+function openStakingModal(days) {
+    const plan = STAKING_PLANS_CLIENT[days];
+    if (!plan) return;
+    currentStakingPlan = plan;
+    document.getElementById('stakingModalDays').textContent = days;
+    document.getElementById('stakingModalRate').textContent = plan.label;
+    document.getElementById('stakingModalMin').textContent  = 'Минимум: ' + formatNum(plan.minAmount) + ' MMO';
+    document.getElementById('stakingAmountInput').value     = '';
+    document.getElementById('stakingModalPreview').textContent = '';
+    document.getElementById('stakingModal').style.display   = 'flex';
+
+    document.getElementById('stakingAmountInput').oninput = function() {
+        const val     = Math.floor(Number(this.value));
+        const preview = document.getElementById('stakingModalPreview');
+        if (val >= plan.minAmount) {
+            const reward = Math.floor(val * plan.rate);
+            preview.textContent = 'Получите: ' + formatNum(val + reward) + ' MMO'
+                + (plan.capybara ? ' + 🦫 Capybara Rare' : '');
+        } else {
+            preview.textContent = val > 0 ? 'Минимум ' + formatNum(plan.minAmount) + ' MMO' : '';
+        }
+    };
+}
+
+function closeStakingModal(e) {
+    if (e && e.target !== document.getElementById('stakingModal')) return;
+    document.getElementById('stakingModal').style.display = 'none';
+    currentStakingPlan = null;
+}
+
+async function confirmStaking() {
+    if (!currentStakingPlan) return;
+    const plan   = currentStakingPlan;
+    const amount = Math.floor(Number(document.getElementById('stakingAmountInput').value));
+
+    if (!amount || amount < plan.minAmount) {
+        showToast('Минимум ' + formatNum(plan.minAmount) + ' MMO', '⚠️'); return;
+    }
+    if (amount > (state.user?.balance || 0)) {
+        showToast('Недостаточно MMO', '❌'); return;
+    }
+
+    const data = await apiRequest('POST', '/api/staking/start', { days: plan.days, amount });
+    if (data && data.success) {
+        document.getElementById('stakingModal').style.display = 'none';
+        currentStakingPlan = null;
+        document.querySelectorAll('.staking-plan').forEach(el => el.classList.remove('selected'));
+        if (data.user) { state.user = data.user; updateHeader(); }
+        renderActiveStaking(data.staking);
+        showToast('Стейкинг на ' + plan.days + ' дней запущен!', '🔒');
+    } else {
+        showToast((data && data.message) || 'Ошибка', '❌');
+    }
+}
+
+async function claimStaking() {
+    const data = await apiRequest('POST', '/api/staking/claim');
+    if (data && data.success) {
+        if (stakingTimerInterval) clearInterval(stakingTimerInterval);
+        const block = document.getElementById('activeStakingBlock');
+        if (block) block.style.display = 'none';
+        if (data.user) { state.user = data.user; updateHeader(); }
+        if (data.capybara) {
+            showToast('+' + formatNum(data.reward) + ' MMO + 🦫 Capybara Rare!', '🎉');
+        } else {
+            showToast('+' + formatNum(data.reward) + ' MMO получено!', '🎉');
+        }
+    } else {
+        showToast((data && data.message) || 'Ошибка', '❌');
+    }
+}
+
+window.selectStakingPlan = selectStakingPlan;
+window.openStakingModal   = openStakingModal;
+window.closeStakingModal  = closeStakingModal;
+window.confirmStaking     = confirmStaking;
+window.claimStaking       = claimStaking;
+window.loadStakingStatus  = loadStakingStatus;

@@ -1,1386 +1,1891 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>TradeTON Admin</title>
-<style>
-  :root {
-    --bg: #0a0d14;
-    --bg2: #111520;
-    --bg3: #161b28;
-    --card: #1a2035;
-    --border: #252d42;
-    --accent: #3b82f6;
-    --accent2: #6366f1;
-    --green: #10b981;
-    --red: #ef4444;
-    --yellow: #f59e0b;
-    --text: #e2e8f0;
-    --muted: #64748b;
-    --muted2: #4b5563;
-    --nav-h: 64px;
-    --header-h: 52px;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>DNA MMO — Админ-панель</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
 
-  /* ── LOGIN ── */
-  #loginScreen {
-    position: fixed; inset: 0; background: var(--bg);
-    display: flex; align-items: center; justify-content: center;
-    flex-direction: column; gap: 0; z-index: 1000;
-  }
-  .login-box {
-    width: min(360px, 92vw);
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 20px; padding: 32px 28px; display: flex; flex-direction: column; gap: 20px;
-  }
-  .login-logo { text-align: center; margin-bottom: 4px; }
-  .login-logo .logo-icon {
-    width: 56px; height: 56px; background: linear-gradient(135deg, var(--accent), var(--accent2));
-    border-radius: 16px; display: inline-flex; align-items: center; justify-content: center;
-    font-size: 26px; margin-bottom: 12px;
-  }
-  .login-logo h1 { font-size: 20px; font-weight: 700; color: var(--text); }
-  .login-logo p { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  .login-field { display: flex; flex-direction: column; gap: 6px; }
-  .login-field label { font-size: 12px; color: var(--muted); font-weight: 500; letter-spacing: .04em; }
-  .login-field input {
-    background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
-    padding: 12px 14px; font-size: 15px; color: var(--text); outline: none; width: 100%;
-    transition: border-color .2s;
-  }
-  .login-field input:focus { border-color: var(--accent); }
-  .login-btn {
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
-    border: none; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 600;
-    color: #fff; cursor: pointer; width: 100%; transition: opacity .15s;
-  }
-  .login-btn:active { opacity: .8; }
-  .login-err { font-size: 13px; color: var(--red); text-align: center; display: none; }
+        body {
+            background: #0a0c15;
+            color: #e2e8f0;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            padding-bottom: 70px;
+        }
 
-  /* ── APP ── */
-  #app { display: none; height: 100%; flex-direction: column; }
-  #app.visible { display: flex; }
+        .admin-header {
+            background: #0d1120;
+            border-bottom: 1px solid #1e2d4a;
+            padding: 12px 16px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
 
-  .header {
-    height: var(--header-h); background: var(--bg2); border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: space-between; padding: 0 16px;
-    flex-shrink: 0;
-  }
-  .header-title { font-size: 16px; font-weight: 700; color: var(--text); }
-  .header-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
-  .header-right { display: flex; gap: 8px; align-items: center; }
-  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
-  .logout-btn {
-    background: none; border: 1px solid var(--border); border-radius: 8px;
-    padding: 5px 10px; font-size: 12px; color: var(--muted); cursor: pointer;
-  }
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
 
-  .content {
-    flex: 1; overflow-y: auto; padding: 12px 12px 8px;
-    padding-bottom: calc(var(--nav-h) + 8px);
-    -webkit-overflow-scrolling: touch;
-  }
+        .admin-header h1 {
+            font-size: 18px;
+            color: #a855f7;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
 
-  /* ── NAV ── */
-  .nav {
-    height: var(--nav-h); background: var(--bg2); border-top: 1px solid var(--border);
-    display: grid; grid-template-columns: repeat(5, 1fr); flex-shrink: 0;
-    position: sticky; bottom: 0;
-  }
-  .nav-btn {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 3px; background: none; border: none; cursor: pointer; color: var(--muted);
-    font-size: 10px; font-weight: 500; transition: color .15s; padding: 0;
-    position: relative;
-  }
-  .nav-btn .nav-icon { font-size: 20px; line-height: 1; }
-  .nav-btn.active { color: var(--accent); }
-  .nav-btn.active .nav-icon { transform: scale(1.08); }
-  .badge {
-    position: absolute; top: 6px; right: calc(50% - 16px);
-    background: var(--red); color: #fff; font-size: 9px; font-weight: 700;
-    padding: 1px 4px; border-radius: 8px; min-width: 16px; text-align: center;
-  }
+        .metrics-bar {
+            display: flex;
+            gap: 20px;
+            padding: 10px 16px;
+            background: #0d1120;
+            border-bottom: 1px solid #1e2d4a;
+            flex-wrap: wrap;
+            justify-content: space-between;
+        }
 
-  /* ── PAGES ── */
-  .page { display: none; }
-  .page.active { display: block; }
+        .metric-item {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            font-size: 12px;
+        }
 
-  /* ── CARDS ── */
-  .card {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 16px; padding: 16px; margin-bottom: 10px;
-  }
-  .card-title { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 10px; }
-  
-  /* ── STAT GRID ── */
-  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
-  .stat-card {
-    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
-    padding: 14px 12px;
-  }
-  .stat-label { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
-  .stat-value { font-size: 22px; font-weight: 700; color: var(--text); line-height: 1; }
-  .stat-value.green { color: var(--green); }
-  .stat-value.blue { color: var(--accent); }
-  .stat-value.yellow { color: var(--yellow); }
-  .stat-sub { font-size: 10px; color: var(--muted); margin-top: 3px; }
+        .metric-label {
+            color: #94a3b8;
+        }
 
-  /* ── ERRORS ── */
-  .error-item {
-    background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25);
-    border-radius: 12px; padding: 12px; margin-bottom: 8px;
-  }
-  .error-code { font-size: 11px; font-weight: 700; color: var(--red); margin-bottom: 3px; }
-  .error-msg { font-size: 13px; color: var(--text); margin-bottom: 4px; word-break: break-all; }
-  .error-time { font-size: 10px; color: var(--muted); }
+        .metric-value {
+            font-weight: 700;
+            color: #a855f7;
+            font-size: 18px;
+        }
 
-  /* ── LOG ITEMS ── */
-  .log-item {
-    padding: 8px 0; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: flex-start;
-  }
-  .log-item:last-child { border-bottom: none; }
-  .log-level {
-    font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 6px; flex-shrink: 0; margin-top: 1px;
-  }
-  .log-level.INFO { background: rgba(59,130,246,.2); color: var(--accent); }
-  .log-level.WARN { background: rgba(245,158,11,.2); color: var(--yellow); }
-  .log-level.ERR  { background: rgba(239,68,68,.2); color: var(--red); }
-  .log-text { font-size: 12px; color: var(--text); word-break: break-all; flex: 1; font-family: 'SF Mono', monospace; }
-  .log-time { font-size: 10px; color: var(--muted); flex-shrink: 0; }
+        .metric-value.zero {
+            color: #22c55e;
+        }
+        
+        .metric-value.error {
+            color: #ef4444;
+        }
 
-  /* ── SEARCH ── */
-  .search-wrap { position: relative; margin-bottom: 12px; }
-  .search-wrap input {
-    width: 100%; background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-    padding: 10px 14px 10px 36px; font-size: 14px; color: var(--text); outline: none;
-    transition: border-color .2s;
-  }
-  .search-wrap input:focus { border-color: var(--accent); }
-  .search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 16px; pointer-events: none; }
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #0d1120;
+            border-top: 1px solid #1e2d4a;
+            display: flex;
+            padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+            z-index: 100;
+        }
 
-  /* ── USER CARD ── */
-  .user-list-item {
-    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
-    padding: 14px; margin-bottom: 8px; cursor: pointer; transition: border-color .15s;
-  }
-  .user-list-item:active { border-color: var(--accent); }
-  .user-list-top { display: flex; align-items: center; gap: 10px; }
-  .user-avatar {
-    width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
-    display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700;
-  }
-  .user-info { flex: 1; min-width: 0; }
-  .user-name { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .user-id { font-size: 11px; color: var(--muted); margin-top: 1px; }
-  .user-balance { font-size: 15px; font-weight: 700; color: var(--green); }
+        .nav-item {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            background: none;
+            border: none;
+            color: #4a5568;
+            font-size: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            padding: 4px;
+        }
 
-  /* ── USER DETAIL ── */
-  #userDetail { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 200; flex-direction: column; }
-  #userDetail.open { display: flex; }
-  .detail-header {
-    height: var(--header-h); background: var(--bg2); border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; gap: 12px; padding: 0 16px; flex-shrink: 0;
-  }
-  .back-btn {
-    background: none; border: none; color: var(--accent); font-size: 15px; cursor: pointer; padding: 6px 0;
-  }
-  .detail-body { flex: 1; overflow-y: auto; padding: 12px; -webkit-overflow-scrolling: touch; }
+        .nav-item i {
+            font-size: 18px;
+        }
 
-  .info-row {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 8px 0; border-bottom: 1px solid var(--border);
-  }
-  .info-row:last-child { border-bottom: none; }
-  .info-key { font-size: 12px; color: var(--muted); }
-  .info-val { font-size: 13px; color: var(--text); font-weight: 500; text-align: right; max-width: 60%; word-break: break-all; }
+        .nav-item.active {
+            color: #a855f7;
+        }
 
-  .bot-item {
-    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
-    padding: 10px 12px; margin-bottom: 6px;
-  }
-  .bot-item-name { font-size: 13px; font-weight: 600; color: var(--text); }
-  .bot-item-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
-  .bot-badge {
-    display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 7px;
-    border-radius: 6px; margin-left: 6px; vertical-align: middle;
-  }
-  .bot-badge.done { background: rgba(16,185,129,.2); color: var(--green); }
-  .bot-badge.running { background: rgba(59,130,246,.2); color: var(--accent); }
+        .main-content {
+            padding: 16px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
 
-  /* ── ACTIONS ── */
-  .action-btn {
-    width: 100%; border: none; border-radius: 12px; padding: 13px; font-size: 14px;
-    font-weight: 600; cursor: pointer; margin-bottom: 8px; transition: opacity .15s;
-  }
-  .action-btn:active { opacity: .8; }
-  .action-btn.danger { background: rgba(239,68,68,.15); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
-  .action-btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; }
-  .action-btn.secondary { background: var(--bg3); color: var(--text); border: 1px solid var(--border); }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
 
-  /* ── BALANCE MODAL ── */
-  .modal-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 400;
-    align-items: flex-end;
-  }
-  .modal-overlay.open { display: flex; }
-  .modal-sheet {
-    background: var(--bg2); border-radius: 20px 20px 0 0; padding: 20px 16px 36px;
-    width: 100%; border-top: 1px solid var(--border);
-  }
-  .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
-  .modal-input {
-    width: 100%; background: var(--bg3); border: 1px solid var(--border); border-radius: 12px;
-    padding: 12px 14px; font-size: 15px; color: var(--text); outline: none; margin-bottom: 12px;
-  }
-  .modal-input:focus { border-color: var(--accent); }
-  .modal-row { display: flex; gap: 8px; }
-  .modal-row .action-btn { margin-bottom: 0; }
-  textarea.modal-input { min-height: 100px; resize: none; font-family: inherit; }
+        .stat-card {
+            background: #141c2e;
+            border: 1px solid #1e2d4a;
+            border-radius: 16px;
+            padding: 16px;
+        }
 
-  /* ── BROADCAST ── */
-  .preview-box {
-    background: var(--bg3); border: 1px solid var(--border); border-radius: 12px;
-    padding: 12px; font-size: 13px; color: var(--text); min-height: 60px; margin-bottom: 10px;
-    white-space: pre-wrap; word-break: break-word;
-  }
+        .stat-card h3 {
+            font-size: 11px;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
 
-  /* ── TX ITEM ── */
-  .tx-item {
-    display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border);
-  }
-  .tx-item:last-child { border-bottom: none; }
-  .tx-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
-  .tx-icon.deposit { background: rgba(16,185,129,.15); }
-  .tx-icon.withdraw { background: rgba(239,68,68,.15); }
-  .tx-icon.bot_start { background: rgba(59,130,246,.15); }
-  .tx-icon.bot_claim { background: rgba(99,102,241,.15); }
-  .tx-icon.referral { background: rgba(245,158,11,.15); }
-  .tx-info { flex: 1; min-width: 0; }
-  .tx-type { font-size: 13px; font-weight: 500; color: var(--text); }
-  .tx-date { font-size: 11px; color: var(--muted); margin-top: 1px; }
-  .tx-amount { font-size: 14px; font-weight: 700; }
-  .tx-amount.pos { color: var(--green); }
-  .tx-amount.neg { color: var(--red); }
+        .stat-card .value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #a855f7;
+        }
 
-  /* ── EMPTY ── */
-  .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); }
-  .empty-state .empty-icon { font-size: 40px; margin-bottom: 10px; }
-  .empty-state p { font-size: 14px; }
+        .data-table {
+            width: 100%;
+            overflow-x: auto;
+        }
 
-  /* ── PILL TABS ── */
-  .pill-tabs { display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; scrollbar-width: none; }
-  .pill-tabs::-webkit-scrollbar { display: none; }
-  .pill { background: var(--bg3); border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px; font-size: 12px; font-weight: 500; color: var(--muted); cursor: pointer; white-space: nowrap; flex-shrink: 0; }
-  .pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
 
-  /* ── SPINNER ── */
-  .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; margin: 30px auto; }
-  @keyframes spin { to { transform: rotate(360deg); } }
+        th, td {
+            padding: 10px 6px;
+            text-align: left;
+            border-bottom: 1px solid #1e2d4a;
+        }
 
-  /* ── CONFIRM DIALOG ── */
-  .confirm-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 500;
-    align-items: center; justify-content: center;
-  }
-  .confirm-overlay.open { display: flex; }
-  .confirm-box {
-    background: var(--card); border: 1px solid var(--border); border-radius: 20px;
-    padding: 24px; width: min(320px, 90vw); text-align: center;
-  }
-  .confirm-icon { font-size: 40px; margin-bottom: 12px; }
-  .confirm-title { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
-  .confirm-text { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
-  .confirm-btns { display: flex; gap: 8px; }
-  .confirm-btns button { flex: 1; border: none; border-radius: 12px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; }
-  .btn-cancel { background: var(--bg3); color: var(--text); border: 1px solid var(--border) !important; }
-  .btn-ok { background: var(--red); color: #fff; }
+        th {
+            color: #94a3b8;
+            font-weight: 600;
+        }
 
-  /* ── TOAST ── */
-  .toast {
-    position: fixed; bottom: calc(var(--nav-h) + 12px); left: 50%; transform: translateX(-50%) translateY(20px);
-    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-    padding: 10px 18px; font-size: 13px; color: var(--text); z-index: 600;
-    opacity: 0; transition: all .25s; pointer-events: none; white-space: nowrap;
-  }
-  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-  .toast.success { border-color: var(--green); color: var(--green); }
-  .toast.error { border-color: var(--red); color: var(--red); }
+        button {
+            background: linear-gradient(135deg, #7c3aed, #a855f7);
+            border: none;
+            border-radius: 8px;
+            padding: 6px 12px;
+            color: white;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
 
-  /* ── SCROLLBAR ── */
-  ::-webkit-scrollbar { width: 4px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        button:active {
+            transform: scale(0.96);
+        }
 
-  .section-title { font-size: 13px; font-weight: 600; color: var(--muted); margin: 14px 0 8px; }
-  .ref-item { padding: 8px 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
-  .ref-item:last-child { border-bottom: none; }
-  .ref-name { font-size: 13px; color: var(--text); }
-  .ref-date { font-size: 11px; color: var(--muted); }
+        button.danger {
+            background: linear-gradient(135deg, #dc2626, #ef4444);
+        }
 
-  .requests-tab .req-item {
-    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
-    padding: 14px; margin-bottom: 8px;
-  }
-  .req-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-  .req-type { font-size: 12px; font-weight: 600; }
-  .req-status { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 6px; }
-  .req-status.pending { background: rgba(245,158,11,.2); color: var(--yellow); }
-  .req-status.approved { background: rgba(16,185,129,.2); color: var(--green); }
-  .req-status.rejected { background: rgba(239,68,68,.2); color: var(--red); }
-  .req-amount { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
-  .req-user { font-size: 12px; color: var(--muted); }
-  .req-actions { display: flex; gap: 6px; margin-top: 10px; }
-  .req-btn {
-    flex: 1; border: none; border-radius: 10px; padding: 9px; font-size: 13px;
-    font-weight: 600; cursor: pointer;
-  }
-  .req-btn.approve { background: rgba(16,185,129,.15); color: var(--green); border: 1px solid rgba(16,185,129,.3); }
-  .req-btn.reject { background: rgba(239,68,68,.1); color: var(--red); border: 1px solid rgba(239,68,68,.25); }
-</style>
+        button.warning {
+            background: linear-gradient(135deg, #d97706, #f59e0b);
+        }
+
+        button.secondary {
+            background: #1e2d4a;
+        }
+
+        button.success {
+            background: linear-gradient(135deg, #16a34a, #22c55e);
+        }
+
+        input, select, textarea {
+            background: #0d1120;
+            border: 1px solid #1e2d4a;
+            border-radius: 8px;
+            padding: 8px 10px;
+            color: #e2e8f0;
+            font-size: 13px;
+            width: 100%;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 11px;
+            color: #94a3b8;
+            margin-bottom: 4px;
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+
+        .modal-content {
+            background: #141c2e;
+            border: 1px solid #1e2d4a;
+            border-radius: 20px;
+            padding: 20px;
+            width: 100%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-content h3 {
+            margin-bottom: 16px;
+            color: #a855f7;
+        }
+
+        .modal-content h4 {
+            margin: 16px 0 8px;
+            color: #e2e8f0;
+            font-size: 13px;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #22c55e;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 30px;
+            font-size: 12px;
+            z-index: 1100;
+            animation: fadeInOut 2s ease;
+        }
+
+        .toast.error {
+            background: #ef4444;
+        }
+
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateX(-50%) translateY(20px); }
+            15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+            85% { opacity: 1; }
+            100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+        }
+
+        .spinner {
+            text-align: center;
+            padding: 40px;
+            color: #4a5568;
+        }
+
+        .user-card, .log-card, .market-log-card {
+            background: #141c2e;
+            border: 1px solid #1e2d4a;
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .search-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        
+        .search-bar input {
+            flex: 2;
+            min-width: 150px;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .rarity-common { color: #94a3b8; }
+        .rarity-uncommon { color: #22c55e; }
+        .rarity-rare { color: #3b82f6; }
+        .rarity-epic { color: #a855f7; }
+        .rarity-legendary { color: #f59e0b; }
+        .rarity-mythic { color: #ef4444; }
+
+        .badge-active { background: #22c55e22; color: #22c55e; padding: 2px 8px; border-radius: 20px; font-size: 10px; }
+        .badge-inactive { background: #ef444422; color: #ef4444; padding: 2px 8px; border-radius: 20px; font-size: 10px; }
+        
+        .inventory-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+        .inventory-item { background: #0d1120; border-radius: 8px; padding: 4px 8px; font-size: 11px; }
+        
+        .log-entry { font-size: 11px; padding: 8px 0; border-bottom: 1px solid #1e2d4a; font-family: monospace; }
+        
+        .sale-history-item {
+            background: #0d1120;
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 8px;
+            transition: all 0.2s;
+        }
+        
+        .sale-history-item:hover {
+            background: #1a2538;
+        }
+        
+        .creature-icon-preview {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: #0d1120;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+        
+        .creature-icon-img {
+            width: 32px;
+            height: 32px;
+            object-fit: contain;
+            border-radius: 8px;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .button-row input {
+            flex: 1;
+        }
+
+        /* Кнопки рассылки */
+        .button-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .button-row input {
+            flex: 1;
+        }
+
+        @media (min-width: 768px) {
+            .stats-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+    
+        /* ── ARENA TAB STYLES ─────────────────────────────── */
+        .arena-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        @media (min-width: 600px) { .arena-stats-grid { grid-template-columns: repeat(4, 1fr); } }
+
+        .arena-league-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 700;
+        }
+        .league-bronze  { background: #cd7c3a22; color: #cd7c3a; }
+        .league-silver  { background: #94a3b822; color: #94a3b8; }
+        .league-gold    { background: #f59e0b22; color: #f59e0b; }
+        .league-platinum{ background: #a855f722; color: #a855f7; }
+        .league-diamond { background: #06b6d422; color: #06b6d4; }
+
+        .battle-row { transition: background 0.15s; }
+        .battle-row:hover { background: #1a2538; }
+
+        .arena-filter-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .arena-filter-bar select { max-width: 140px; }
+
+        .battle-status-waiting    { color: #94a3b8; }
+        .battle-status-pending    { color: #f59e0b; }
+        .battle-status-active     { color: #22c55e; }
+        .battle-status-finished   { color: #a855f7; }
+        .battle-status-expired,
+        .battle-status-cancelled  { color: #ef4444; }
+
+        .mini-team {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .mini-creature {
+            width: 26px;
+            height: 26px;
+            object-fit: contain;
+            border-radius: 6px;
+            background: #0d1120;
+        }
+        .arena-section-title {
+            font-size: 13px;
+            color: #a855f7;
+            font-weight: 700;
+            margin: 20px 0 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .rating-bar-wrap {
+            background: #1e2d4a;
+            border-radius: 4px;
+            height: 4px;
+            width: 80px;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .rating-bar-fill {
+            background: linear-gradient(90deg, #7c3aed, #a855f7);
+            border-radius: 4px;
+            height: 4px;
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
 
-<!-- LOGIN -->
-<div id="loginScreen">
-  <div class="login-box">
-    <div class="login-logo">
-      <div class="logo-icon">📊</div>
-      <h1>TradeTON</h1>
-      <p>Панель администратора</p>
+<div class="admin-header">
+    <div class="header-top">
+        <h1><i class="fas fa-dna"></i> DNA MMO Admin</h1>
     </div>
-    <div class="login-field">
-      <label>Логин</label>
-      <input type="text" id="loginUser" placeholder="admin" autocomplete="off">
-    </div>
-    <div class="login-field">
-      <label>Пароль</label>
-      <input type="password" id="loginPass" placeholder="••••••••">
-    </div>
-    <div class="login-err" id="loginErr">Неверный логин или пароль</div>
-    <button class="login-btn" onclick="doLogin()">Войти</button>
-  </div>
 </div>
 
-<!-- APP -->
-<div id="app">
-  <div class="header">
-    <div>
-      <div class="header-title" id="pageTitle">Дашборд</div>
-      <div class="header-sub" id="pageSubtitle">TradeTON Admin</div>
-    </div>
-    <div class="header-right">
-      <div class="status-dot" id="statusDot"></div>
-      <button class="logout-btn" onclick="doLogout()">Выйти</button>
-    </div>
-  </div>
-
-  <div class="content" id="mainContent">
-    <!-- pages injected here -->
-  </div>
-
-<nav class="nav">
-  <button class="nav-btn active" onclick="switchPage('dashboard')" id="nav-dashboard">
-    <span class="nav-icon">📊</span>
-    <span>Главная</span>
-  </button>
-  <button class="nav-btn" onclick="switchPage('users')" id="nav-users">
-    <span class="nav-icon">👥</span>
-    <span>Пользователи</span>
-  </button>
-  <button class="nav-btn" onclick="switchPage('requests')" id="nav-requests">
-    <span class="nav-icon">📋</span>
-    <span>Заявки</span>
-    <span class="badge" id="reqBadge" style="display:none"></span>
-  </button>
-  <button class="nav-btn" onclick="switchPage('broadcast')" id="nav-broadcast">
-    <span class="nav-icon">📢</span>
-    <span>Рассылка</span>
-  </button>
-  <!-- 👇 НОВАЯ КНОПКА ТУТ 👇 -->
-  <button class="nav-btn" onclick="switchPage('promos')" id="nav-promos">
-    <span class="nav-icon">🎁</span>
-    <span>Промокоды</span>
-  </button>
-  <!-- 👆 НОВАЯ КНОПКА ТУТ 👆 -->
-  <button class="nav-btn" onclick="switchPage('logs')" id="nav-logs">
-    <span class="nav-icon">🔍</span>
-    <span>Логи</span>
-  </button>
-</nav>
-
-<!-- USER DETAIL PANEL -->
-<div id="userDetail">
-  <div class="detail-header">
-    <button class="back-btn" onclick="closeUserDetail()">← Назад</button>
-    <div style="flex:1">
-      <div class="header-title" id="detailName">Пользователь</div>
-      <div class="header-sub" id="detailId"></div>
-    </div>
-  </div>
-  <div class="detail-body" id="detailBody">
-    <div class="spinner"></div>
-  </div>
+<div class="metrics-bar" id="metricsBar">
+    <div class="metric-item"><span class="metric-label">📡 Запросов/мин</span><span class="metric-value" id="reqCount">0</span></div>
+    <div class="metric-item"><span class="metric-label">⚠️ Ошибок 5xx</span><span class="metric-value zero" id="errorRate">0.000%</span></div>
+    <div class="metric-item"><span class="metric-label">⏱️ Аптайм</span><span class="metric-value" id="uptime">0</span></div>
+    <div class="metric-item"><span class="metric-label">🖥️ RAM</span><span class="metric-value" id="ramUsage">0 MB</span></div>
 </div>
 
-<!-- BALANCE MODAL -->
-<div class="modal-overlay" id="balanceModal">
-  <div class="modal-sheet">
-    <div class="modal-title" id="balModalTitle">Изменить баланс</div>
-    <input class="modal-input" type="number" id="balAmount" placeholder="Сумма (положительная = +, отрицательная = -)">
-    <div class="modal-row">
-      <button class="action-btn secondary" style="flex:1;margin:0" onclick="closeBalModal()">Отмена</button>
-      <button class="action-btn primary" style="flex:1;margin:0" onclick="submitBalance()">Применить</button>
-    </div>
-  </div>
+<div class="main-content" id="mainContent">
+    <div class="spinner">Загрузка...</div>
 </div>
 
-<!-- BROADCAST MODAL -->
-<div class="modal-overlay" id="broadcastModal">
-  <div class="modal-sheet">
-    <div class="modal-title">Рассылка</div>
-    <textarea class="modal-input" id="broadcastText" placeholder="Текст сообщения (HTML поддерживается)"></textarea>
-    <div class="preview-box" id="broadcastPreview">Здесь появится предпросмотр...</div>
-    <div class="modal-row">
-      <button class="action-btn secondary" style="flex:1;margin:0" onclick="document.getElementById('broadcastModal').classList.remove('open')">Отмена</button>
-      <button class="action-btn primary" style="flex:1;margin:0" onclick="sendBroadcast()">Отправить всем</button>
-    </div>
-  </div>
+<div class="bottom-nav" id="bottomNav">
+    <button class="nav-item active" data-tab="dashboard"><i class="fas fa-chart-line"></i><span>Обзор</span></button>
+    <button class="nav-item" data-tab="users"><i class="fas fa-users"></i><span>Пользователи</span></button>
+    <button class="nav-item" data-tab="transactions"><i class="fas fa-exchange-alt"></i><span>Заявки</span></button>
+    <button class="nav-item" data-tab="market"><i class="fas fa-store"></i><span>Маркет</span></button>
+    <button class="nav-item" data-tab="ads"><i class="fas fa-tv"></i><span>Реклама</span></button>
+    <button class="nav-item" data-tab="creatures"><i class="fas fa-paw"></i><span>Существа</span></button>
+    <button class="nav-item" data-tab="quests"><i class="fas fa-star"></i><span>Квесты</span></button>
+    <button class="nav-item" data-tab="broadcast"><i class="fas fa-bullhorn"></i><span>Рассылка</span></button>
+    <button class="nav-item" data-tab="arena" id="navArena" style="display:none"><i class="fas fa-fist-raised"></i><span>Арена</span></button>
 </div>
-
-<!-- CONFIRM -->
-<div class="confirm-overlay" id="confirmOverlay">
-  <div class="confirm-box">
-    <div class="confirm-icon" id="confirmIcon">⚠️</div>
-    <div class="confirm-title" id="confirmTitle">Вы уверены?</div>
-    <div class="confirm-text" id="confirmText"></div>
-    <div class="confirm-btns">
-      <button class="btn-cancel" onclick="closeConfirm()">Отмена</button>
-      <button class="btn-ok" id="confirmOk">Удалить</button>
-    </div>
-  </div>
-</div>
-
-<!-- TOAST -->
-<div class="toast" id="toast"></div>
 
 <script>
-// ═══════════════════════════════════════════
-//  CONFIG — поменяй под себя
-// ═══════════════════════════════════════════
-const API = 'https://tr-production-d035.up.railway.app';
+    // ============================================================
+    // CONFIG
+    // ============================================================
+    const API_URL = 'https://serv-production-dbf3.up.railway.app';
+    let adminToken = localStorage.getItem('admin_session_token');
+    let creaturesList = [];
+    let currentPage = 1;
+    let totalUsers = 0;
+    let metricsInterval = null;
+    let isRefreshing = false;
 
-// ═══════════════════════════════════════════
-//  STATE
-// ═══════════════════════════════════════════
-let currentPage = 'dashboard';
-let currentUser = null;
-let users = [];
-let errors5xx = [];
-let serverLogs = [];
-let pendingRequests = [];
-let dashStats = {};
-let broadcastTarget = 'all';
-
-// Логин/пароль берутся из формы — проверяет сервер по .env
-let _login = '';
-let _pass  = '';
-
-// ═══════════════════════════════════════════
-//  AUTH
-// ═══════════════════════════════════════════
-async function doLogin() {
-  const u   = document.getElementById('loginUser').value.trim();
-  const p   = document.getElementById('loginPass').value;
-  const err = document.getElementById('loginErr');
-  const btn = document.querySelector('.login-btn');
-  if (!u || !p) { err.textContent = 'Введите логин и пароль'; err.style.display = 'block'; return; }
-
-  btn.textContent = 'Проверяем…';
-  btn.disabled = true;
-
-  try {
-    const r = await fetch(API + '/api/admin/stats', {
-      headers: { 'x-admin-key': `${u}:${p}` },
-    });
-    if (r.status === 401) {
-      err.textContent = 'Неверный логин или пароль';
-      err.style.display = 'block';
-      document.getElementById('loginPass').value = '';
-    } else if (!r.ok) {
-      err.textContent = 'Ошибка сервера: ' + r.status;
-      err.style.display = 'block';
-    } else {
-      _login = u;
-      _pass  = p;
-      err.style.display = 'none';
-      document.getElementById('loginScreen').style.display = 'none';
-      document.getElementById('app').classList.add('visible');
-      init();
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
-  } catch(e) {
-    err.textContent = 'Нет связи с сервером';
-    err.style.display = 'block';
-  }
 
-  btn.textContent = 'Войти';
-  btn.disabled = false;
-}
-document.getElementById('loginPass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-document.getElementById('loginUser').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+    async function apiRequest(path, method = 'GET', body = null) {
+        const opts = {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Admin-Token': adminToken || ''
+            }
+        };
+        if (body) opts.body = JSON.stringify(body);
 
-function doLogout() {
-  _login = '';
-  _pass  = '';
-  document.getElementById('loginScreen').style.display = 'flex';
-  document.getElementById('app').classList.remove('visible');
-  document.getElementById('loginUser').value = '';
-  document.getElementById('loginPass').value = '';
-}
-
-// ═══════════════════════════════════════════
-//  API HELPER
-// ═══════════════════════════════════════════
-async function api(path, opts = {}) {
-  try {
-    const r = await fetch(API + path, {
-      headers: {
-        'Content-Type': 'application/json',
-        'x-admin-key': `${_login}:${_pass}`,
-        ...opts.headers,
-      },
-      ...opts,
-    });
-    if (!r.ok) {
-      const txt = await r.text();
-      if (r.status >= 500) {
-        logError(r.status, path, txt);
-      }
-      throw new Error(`${r.status}: ${txt}`);
-    }
-    return await r.json();
-  } catch (e) {
-    if (e.message && e.message.match(/^5\d\d/)) {
-      logError(parseInt(e.message), path, e.message);
-    }
-    throw e;
-  }
-}
-
-// ═══════════════════════════════════════════
-//  ERROR TRACKING
-// ═══════════════════════════════════════════
-function logError(code, path, msg) {
-  errors5xx.unshift({ code, path, msg, time: new Date() });
-  if (errors5xx.length > 100) errors5xx.pop();
-  if (currentPage === 'logs') renderPage();
-}
-
-// ═══════════════════════════════════════════
-//  LOGS  (simulated from API health + errors)
-// ═══════════════════════════════════════════
-function addLog(level, text) {
-  serverLogs.unshift({ level, text, time: new Date() });
-  if (serverLogs.length > 200) serverLogs.pop();
-}
-
-// ═══════════════════════════════════════════
-//  INIT
-// ═══════════════════════════════════════════
-async function init() {
-  switchPage('dashboard');
-  setInterval(refreshRequests, 30000);
-}
-
-// ═══════════════════════════════════════════
-//  NAVIGATION
-// ═══════════════════════════════════════════
-function switchPage(page) {
-  currentPage = page;
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('nav-' + page).classList.add('active');
-
-  const titles = {
-  dashboard: ['Дашборд', 'Статистика проекта'],
-  users:     ['Пользователи', 'Поиск и управление'],
-  requests:  ['Заявки', 'Депозиты и выводы'],
-  broadcast: ['Рассылка', 'Сообщения всем'],
-  promos:    ['Промокоды', 'Управление промокодами'],  // 👈 ЭТУ СТРОКУ
-  logs:      ['Логи', '5xx ошибки и события'],
-};
-
-  document.getElementById('pageTitle').textContent = titles[page][0];
-  document.getElementById('pageSubtitle').textContent = titles[page][1];
-
-  renderPage();
-}
-
-function renderPage() {
-  const content = document.getElementById('mainContent');
-  switch(currentPage) {
-    case 'dashboard': renderDashboard(content); break;
-    case 'users':     renderUsers(content); break;
-    case 'requests':  renderRequests(content); break;
-    case 'broadcast': renderBroadcast(content); break;
-    case 'promos':    renderPromos(content); break;  // 👈 ЭТУ СТРОКУ
-    case 'logs':      renderLogs(content); break;
-  }
-}
-
-// ═══════════════════════════════════════════
-//  DASHBOARD
-// ═══════════════════════════════════════════
-async function renderDashboard(el) {
-  el.innerHTML = '<div class="spinner"></div>';
-  try {
-    // Fetch users for stats
-    const data = await api('/api/admin/stats');
-    dashStats = data;
-    addLog('INFO', 'Dashboard stats loaded');
-  } catch(e) {
-    // Build from users list
-    addLog('WARN', 'Admin stats endpoint missing, using users data');
-  }
-
-  // Load users for real stats
-  try {
-    const data = await api('/api/admin/users?limit=1000');
-    users = data.users || [];
-  } catch(e) {
-    users = [];
-  }
-
-  const totalUsers = users.length;
-  const totalBalance = users.reduce((s, u) => s + (u.balance || 0), 0);
-  const totalEarned = users.reduce((s, u) => s + (u.totalEarned || 0), 0);
-  const today = new Date(); today.setHours(0,0,0,0);
-  const newToday = users.filter(u => new Date(u.createdAt) >= today).length;
-
-  // health check
-  let health = '—';
-  try {
-    const h = await fetch(API + '/health');
-    const hd = await h.json();
-    health = hd.db === 'connected' ? '🟢 Онлайн' : '🔴 Нет БД';
-    document.getElementById('statusDot').style.background = hd.db === 'connected' ? 'var(--green)' : 'var(--red)';
-    addLog('INFO', `Health: ${hd.status}, DB: ${hd.db}`);
-  } catch(e) {
-    health = '🔴 Нет связи';
-    document.getElementById('statusDot').style.background = 'var(--red)';
-    addLog('ERR', 'Health check failed: ' + e.message);
-  }
-
-  await refreshRequests(false);
-
-  el.innerHTML = `
-    <div class="stat-grid">
-      <div class="stat-card">
-        <div class="stat-label">Всего пользователей</div>
-        <div class="stat-value blue">${totalUsers}</div>
-        <div class="stat-sub">+${newToday} сегодня</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Баланс (сумма)</div>
-        <div class="stat-value green">${totalBalance.toFixed(2)}</div>
-        <div class="stat-sub">TON на счетах</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Всего заработано</div>
-        <div class="stat-value yellow">${totalEarned.toFixed(2)}</div>
-        <div class="stat-sub">TON выплачено</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Ошибок 5xx</div>
-        <div class="stat-value ${errors5xx.length > 0 ? 'red' : ''}" style="${errors5xx.length>0?'color:var(--red)':''}">${errors5xx.length}</div>
-        <div class="stat-sub">За сессию</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Сервер</div>
-      <div class="info-row">
-        <span class="info-key">Статус</span>
-        <span class="info-val">${health}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-key">API</span>
-        <span class="info-val" style="font-size:11px;color:var(--muted)">${API}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-key">Заявки (pending)</span>
-        <span class="info-val">${pendingRequests.length}</span>
-      </div>
-    </div>
-
-    ${pendingRequests.length > 0 ? `
-    <div class="card">
-      <div class="card-title">⚠️ Ожидают обработки</div>
-      ${pendingRequests.slice(0,3).map(r => `
-        <div class="info-row">
-          <span class="info-key">${r.type==='deposit'?'💰 Пополнение':'📤 Вывод'} · ${(r.amount||0).toFixed(2)} TON</span>
-          <span class="info-val" style="color:var(--yellow)">Pending</span>
-        </div>
-      `).join('')}
-      ${pendingRequests.length > 3 ? `<div style="font-size:12px;color:var(--muted);margin-top:6px">+${pendingRequests.length-3} ещё…</div>` : ''}
-    </div>` : ''}
-
-    ${errors5xx.length > 0 ? `
-    <div class="card">
-      <div class="card-title">Последние ошибки</div>
-      ${errors5xx.slice(0,3).map(e => `
-        <div class="error-item">
-          <div class="error-code">HTTP ${e.code}</div>
-          <div class="error-msg">${e.path}</div>
-          <div class="error-time">${fmtTime(e.time)}</div>
-        </div>
-      `).join('')}
-    </div>` : ''}
-  `;
-}
-
-// ═══════════════════════════════════════════
-//  USERS
-// ═══════════════════════════════════════════
-let userSearch = '';
-
-async function renderUsers(el) {
-  el.innerHTML = `
-    <div class="search-wrap">
-      <span class="search-icon">🔍</span>
-      <input type="text" placeholder="Имя, username или Telegram ID…" 
-        value="${userSearch}" oninput="onUserSearch(this.value)">
-    </div>
-    <div id="userListContent"><div class="spinner"></div></div>
-  `;
-  await loadUsers();
-}
-
-function onUserSearch(v) {
-  userSearch = v;
-  renderUserList();
-}
-
-async function loadUsers() {
-  try {
-    const data = await api('/api/admin/users?limit=500');
-    users = data.users || [];
-    addLog('INFO', `Loaded ${users.length} users`);
-  } catch(e) {
-    addLog('ERR', 'Load users: ' + e.message);
-    users = [];
-  }
-  renderUserList();
-}
-
-function renderUserList() {
-  const el = document.getElementById('userListContent');
-  if (!el) return;
-  const q = userSearch.toLowerCase();
-  const filtered = q
-    ? users.filter(u =>
-        (u.firstName||'').toLowerCase().includes(q) ||
-        (u.username||'').toLowerCase().includes(q) ||
-        String(u.telegramId).includes(q)
-      )
-    : users;
-
-  if (!filtered.length) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-icon">👤</div><p>Пользователи не найдены</p></div>';
-    return;
-  }
-  el.innerHTML = filtered.map(u => `
-    <div class="user-list-item" onclick="openUserDetail('${u._id}')">
-      <div class="user-list-top">
-        <div class="user-avatar">${(u.firstName||'?')[0].toUpperCase()}</div>
-        <div class="user-info">
-          <div class="user-name">${u.firstName || 'Без имени'}${u.username ? ` @${u.username}` : ''}</div>
-          <div class="user-id">ID: ${u.telegramId} · ${timeAgo(u.lastSeen)}</div>
-        </div>
-        <div class="user-balance">${(u.balance||0).toFixed(2)}</div>
-      </div>
-    </div>
-  `).join('');
-}
-
-// ═══════════════════════════════════════════
-//  USER DETAIL
-// ═══════════════════════════════════════════
-async function openUserDetail(userId) {
-  currentUser = users.find(u => u._id === userId) || { _id: userId };
-  document.getElementById('detailName').textContent = currentUser.firstName || 'Пользователь';
-  document.getElementById('detailId').textContent = 'TG: ' + (currentUser.telegramId || '—');
-  document.getElementById('detailBody').innerHTML = '<div class="spinner"></div>';
-  document.getElementById('userDetail').classList.add('open');
-
-  try {
-    const data = await api(`/api/admin/users/${userId}`);
-    currentUser = data.user || currentUser;
-    const bots = data.bots || [];
-    const txs = data.transactions || [];
-    const refs = data.referrals || [];
-
-    document.getElementById('detailName').textContent = currentUser.firstName || 'Без имени';
-    document.getElementById('detailId').textContent = 'TG: ' + currentUser.telegramId;
-
-    document.getElementById('detailBody').innerHTML = `
-      <!-- INFO -->
-      <div class="card">
-        <div class="card-title">Профиль</div>
-        <div class="info-row"><span class="info-key">Имя</span><span class="info-val">${currentUser.firstName||'—'}</span></div>
-        <div class="info-row"><span class="info-key">Username</span><span class="info-val">${currentUser.username ? '@'+currentUser.username : '—'}</span></div>
-        <div class="info-row"><span class="info-key">Telegram ID</span><span class="info-val">${currentUser.telegramId}</span></div>
-        <div class="info-row"><span class="info-key">Реф. код</span><span class="info-val">${currentUser.referralCode||'—'}</span></div>
-        <div class="info-row"><span class="info-key">Зарегистрирован</span><span class="info-val">${fmtDate(currentUser.createdAt)}</span></div>
-        <div class="info-row"><span class="info-key">Последний визит</span><span class="info-val">${timeAgo(currentUser.lastSeen)}</span></div>
-      </div>
-
-      <!-- BALANCE -->
-      <div class="card">
-        <div class="card-title">Баланс</div>
-        <div class="info-row"><span class="info-key">Текущий баланс</span><span class="info-val" style="color:var(--green);font-size:20px;font-weight:700">${(currentUser.balance||0).toFixed(4)} TON</span></div>
-        <div class="info-row"><span class="info-key">Всего заработано</span><span class="info-val">${(currentUser.totalEarned||0).toFixed(4)} TON</span></div>
-        <div class="info-row"><span class="info-key">Рефералов</span><span class="info-val">${refs.length}</span></div>
-      </div>
-
-      <!-- ACTIONS -->
-      <div class="card">
-        <div class="card-title">Действия</div>
-        <button class="action-btn primary" onclick="openBalModal()">💰 Изменить баланс</button>
-        <button class="action-btn secondary" onclick="openBroadcastToUser()">📩 Сообщение пользователю</button>
-        <button class="action-btn danger" onclick="confirmDeleteUser()">🗑 Удалить пользователя</button>
-      </div>
-
-      <!-- BOTS -->
-      ${bots.length > 0 ? `
-      <div class="card">
-        <div class="card-title">Боты (${bots.length})</div>
-        ${bots.map(b => `
-          <div class="bot-item">
-            <div class="bot-item-name">
-              ${b.name} · ${b.pair}
-              <span class="bot-badge ${b.done ? 'done' : 'running'}">${b.done ? (b.claimed ? 'Выплачен' : 'Завершён') : 'Активен'}</span>
-            </div>
-            <div class="bot-item-meta">
-              ${b.tier.toUpperCase()} · ${b.days} д. · Цена: ${b.price} TON · Заработано: ${(b.earned||0).toFixed(4)} TON
-            </div>
-            <div class="bot-item-meta" style="margin-top:2px">
-              ${fmtDate(b.startedAt)} → ${fmtDate(b.endsAt)}
-            </div>
-          </div>
-        `).join('')}
-      </div>` : ''}
-
-      <!-- REFERRALS -->
-      ${refs.length > 0 ? `
-      <div class="card">
-        <div class="card-title">Рефералы (${refs.length})</div>
-        ${refs.map(r => `
-          <div class="ref-item">
-            <span class="ref-name">${r.name||'Трейдер'}</span>
-            <span class="ref-date">${fmtDate(r.joinedAt)}</span>
-          </div>
-        `).join('')}
-      </div>` : ''}
-
-      <!-- TRANSACTIONS -->
-      ${txs.length > 0 ? `
-      <div class="card">
-        <div class="card-title">Транзакции (${txs.length})</div>
-        ${txs.slice(0, 20).map(tx => `
-          <div class="tx-item">
-            <div class="tx-icon ${tx.type}">${txIcon(tx.type)}</div>
-            <div class="tx-info">
-              <div class="tx-type">${txLabel(tx.type)}</div>
-              <div class="tx-date">${fmtDate(tx.createdAt)}</div>
-            </div>
-            <div class="tx-amount ${tx.amount >= 0 ? 'pos' : 'neg'}">${tx.amount > 0 ? '+' : ''}${(tx.amount||0).toFixed(4)}</div>
-          </div>
-        `).join('')}
-      </div>` : ''}
-
-      <!-- USER LOGS -->
-      <div class="card">
-        <div class="card-title">Логи пользователя</div>
-        <div id="userLogs">
-        ${serverLogs.filter(l => l.userId === currentUser.telegramId).length > 0
-          ? serverLogs.filter(l => l.userId === currentUser.telegramId).map(l => `
-            <div class="log-item">
-              <span class="log-level ${l.level}">${l.level}</span>
-              <span class="log-text">${l.text}</span>
-              <span class="log-time">${fmtTime(l.time)}</span>
-            </div>`).join('')
-          : '<div style="font-size:13px;color:var(--muted);padding:8px 0">Нет логов для этого пользователя</div>'
+        try {
+            const res = await fetch(API_URL + path, opts);
+            const data = await res.json();
+            
+            if (res.status === 401) {
+                if (!path.includes('/metrics')) {
+                    localStorage.removeItem('admin_session_token');
+                    adminToken = null;
+                    showToast('Сессия истекла, войдите снова', 'error');
+                    showLoginModal();
+                    if (metricsInterval) clearInterval(metricsInterval);
+                }
+                return null;
+            }
+            
+            if (!res.ok) {
+                console.warn(`API ${path} error:`, data.message);
+                return data;
+            }
+            return data;
+        } catch (e) {
+            if (e.name !== 'AbortError') {
+                console.error(`API ${path} error:`, e.message);
+            }
+            return null;
         }
-        </div>
-      </div>
-    `;
-  } catch(e) {
-    document.getElementById('detailBody').innerHTML = `
-      <div class="card" style="text-align:center;padding:24px">
-        <div style="font-size:32px;margin-bottom:10px">⚠️</div>
-        <div style="color:var(--red);font-size:14px">Ошибка загрузки: ${e.message}</div>
-        <div style="margin-top:6px;font-size:12px;color:var(--muted)">Проверьте /api/admin/users/:id на сервере</div>
-      </div>
-      
-      <!-- Fallback: show what we have -->
-      <div class="card">
-        <div class="card-title">Из кэша</div>
-        <div class="info-row"><span class="info-key">Имя</span><span class="info-val">${currentUser.firstName||'—'}</span></div>
-        <div class="info-row"><span class="info-key">Telegram ID</span><span class="info-val">${currentUser.telegramId||'—'}</span></div>
-        <div class="info-row"><span class="info-key">Баланс</span><span class="info-val">${(currentUser.balance||0).toFixed(4)} TON</span></div>
-        <div class="info-row"><span class="info-key">Последний визит</span><span class="info-val">${timeAgo(currentUser.lastSeen)}</span></div>
-      </div>
-      <div class="card">
-        <div class="card-title">Действия</div>
-        <button class="action-btn danger" onclick="confirmDeleteUser()">🗑 Удалить пользователя</button>
-      </div>
-    `;
-  }
-}
+    }
 
-function closeUserDetail() {
-  document.getElementById('userDetail').classList.remove('open');
-}
+    function showToast(msg, type = 'success') {
+        const toast = document.createElement('div');
+        toast.className = 'toast ' + (type === 'error' ? 'error' : '');
+        toast.textContent = msg;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2500);
+    }
 
-// ═══════════════════════════════════════════
-//  BALANCE CHANGE
-// ═══════════════════════════════════════════
-function openBalModal() {
-  document.getElementById('balAmount').value = '';
-  document.getElementById('balModalTitle').textContent = `Баланс: ${currentUser.firstName||''}`;
-  document.getElementById('balanceModal').classList.add('open');
-}
-function closeBalModal() {
-  document.getElementById('balanceModal').classList.remove('open');
-}
+    function showLoginModal() {
+        const oldModal = document.getElementById('loginModal');
+        if (oldModal) oldModal.remove();
+        
+        const modalHtml = `
+            <div class="modal" id="loginModal">
+                <div class="modal-content">
+                    <h3>🔐 Вход в админ-панель</h3>
+                    <div class="form-group">
+                        <label>Логин</label>
+                        <input type="text" id="adminLogin" placeholder="Введите логин" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label>Пароль</label>
+                        <input type="password" id="adminPassword" placeholder="Введите пароль">
+                    </div>
+                    <div class="modal-buttons">
+                        <button onclick="adminLogin()">Войти</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    }
 
-async function submitBalance() {
-  const amt = parseFloat(document.getElementById('balAmount').value);
-  if (isNaN(amt)) { showToast('Введите сумму', 'error'); return; }
-  try {
-    await api(`/api/admin/users/${currentUser._id}/balance`, {
-      method: 'POST',
-      body: JSON.stringify({ delta: amt }),
+    window.adminLogin = async function() {
+        const login = document.getElementById('adminLogin').value;
+        const password = document.getElementById('adminPassword').value;
+        
+        if (!login || !password) {
+            showToast('Введите логин и пароль', 'error');
+            return;
+        }
+        
+        try {
+            const res = await fetch(`${API_URL}/api/admin/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ login, password })
+            });
+            
+            const data = await res.json();
+            
+            if (data.success) {
+                adminToken = data.token;
+                localStorage.setItem('admin_session_token', adminToken);
+                document.getElementById('loginModal')?.remove();
+                loadDashboard();
+                startRealMetrics();
+                showToast('Добро пожаловать в админ-панель!', 'success');
+            } else {
+                showToast(data.message || 'Ошибка входа', 'error');
+            }
+        } catch (e) {
+            showToast('Ошибка соединения', 'error');
+        }
+    };
+
+    // ============================================================
+    // РЕАЛЬНЫЕ МЕТРИКИ
+    // ============================================================
+    async function fetchRealMetrics() {
+        const res = await apiRequest('/api/admin/metrics');
+        if (res && res.success) {
+            document.getElementById('reqCount').innerText = res.requestsLastMinute || 0;
+            
+            const hours = Math.floor(res.uptime / 3600);
+            const minutes = Math.floor((res.uptime % 3600) / 60);
+            const seconds = res.uptime % 60;
+            document.getElementById('uptime').innerHTML = `${hours}ч ${minutes}м ${seconds}с`;
+            
+            const errorRate = res.errorRate5xx || 0;
+            const errSpan = document.getElementById('errorRate');
+            errSpan.innerText = errorRate.toFixed(3) + '%';
+            if (errorRate > 1) {
+                errSpan.classList.add('error');
+                errSpan.classList.remove('zero');
+            } else if (errorRate > 0) {
+                errSpan.classList.remove('error', 'zero');
+            } else {
+                errSpan.classList.add('zero');
+                errSpan.classList.remove('error');
+            }
+            
+            const ram = res.memoryUsage || 0;
+            document.getElementById('ramUsage').innerText = ram + ' MB';
+        }
+    }
+
+    function startRealMetrics() {
+        if (metricsInterval) clearInterval(metricsInterval);
+        fetchRealMetrics();
+        metricsInterval = setInterval(fetchRealMetrics, 30000);
+    }
+
+    function formatNum(n) {
+        if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
+        if (n >= 1000) return (n/1000).toFixed(1) + 'K';
+        return Math.floor(n).toString();
+    }
+
+    window.closeModal = function() {
+        document.querySelectorAll('.modal').forEach(m => m.remove());
+    };
+
+    // ============================================================
+    // НАВИГАЦИЯ
+    // ============================================================
+    document.querySelectorAll('.nav-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const tab = btn.dataset.tab;
+            if (tab === 'dashboard') loadDashboard();
+            if (tab === 'users') loadUsers(1);
+            if (tab === 'transactions') loadTransactions();
+            if (tab === 'market') loadMarketSection();
+            if (tab === 'ads') loadAdsPanel();
+            if (tab === 'creatures') loadCreatures();
+            if (tab === 'quests') loadSpecialQuests();
+            if (tab === 'broadcast') loadBroadcastTab();
+            if (tab === 'arena') loadArenaTab();
+        });
     });
-    closeBalModal();
-    showToast(`Баланс изменён: ${amt > 0 ? '+' : ''}${amt} TON`, 'success');
-    addLog('INFO', `Balance changed for ${currentUser.telegramId}: ${amt}`);
-    await openUserDetail(currentUser._id);
-  } catch(e) {
-    showToast('Ошибка: ' + e.message, 'error');
-    addLog('ERR', `Balance change failed: ${e.message}`);
-  }
-}
 
-// ═══════════════════════════════════════════
-//  DELETE USER
-// ═══════════════════════════════════════════
-function confirmDeleteUser() {
-  showConfirm(
-    '🗑',
-    'Удалить пользователя?',
-    `${currentUser.firstName||'Пользователь'} (${currentUser.telegramId}) и все его данные будут удалены безвозвратно.`,
-    async () => {
-      try {
-        await api(`/api/admin/users/${currentUser._id}`, { method: 'DELETE' });
-        showToast('Пользователь удалён', 'success');
-        addLog('WARN', `User deleted: ${currentUser.telegramId}`);
-        closeUserDetail();
-        users = users.filter(u => u._id !== currentUser._id);
-        renderUserList();
-      } catch(e) {
-        showToast('Ошибка: ' + e.message, 'error');
-        addLog('ERR', `Delete user failed: ${e.message}`);
-      }
+    // ============================================================
+    // DASHBOARD
+    // ============================================================
+    async function loadDashboard() {
+        const main = document.getElementById('mainContent');
+        main.innerHTML = '<div class="spinner">Загрузка...</div>';
+        
+        const statsRes = await apiRequest('/api/admin/stats');
+        if (!statsRes) {
+            main.innerHTML = '<div class="spinner">Ошибка загрузки статистики</div>';
+            return;
+        }
+        
+        const stats = statsRes.stats;
+        
+        const html = `
+            <div class="stats-grid">
+                <div class="stat-card"><h3>Всего игроков</h3><div class="value">${stats.totalUsers}</div></div>
+                <div class="stat-card"><h3>Активные сегодня</h3><div class="value">${stats.activeToday}</div></div>
+                <div class="stat-card"><h3>Новых за 7 дней</h3><div class="value">${stats.newUsersLast7Days}</div></div>
+                <div class="stat-card"><h3>Забанено</h3><div class="value">${stats.bannedUsers}</div></div>
+                <div class="stat-card"><h3>Общий баланс</h3><div class="value">${formatNum(stats.totalBalance)} MMO</div></div>
+                <div class="stat-card"><h3>Средний уровень</h3><div class="value">${stats.avgLevel.toFixed(1)}</div></div>
+                <div class="stat-card"><h3>Всего слияний</h3><div class="value">${formatNum(stats.totalMerges)}</div></div>
+                <div class="stat-card"><h3>Открыто капсул</h3><div class="value">${formatNum(stats.totalCapsules)}</div></div>
+            </div>
+            <div class="user-card">
+                <h3>⚡ Быстрые действия</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px;">
+                    <button onclick="showGiveAllCoins()"><i class="fas fa-gift"></i> Выдать MMO всем</button>
+                    <button onclick="showGiveAllCreature()"><i class="fas fa-paw"></i> Выдать существо всем</button>
+                    <button class="secondary" onclick="refreshCache()"><i class="fas fa-sync"></i> Обновить кэш</button>
+                    <button style="background: linear-gradient(135deg, #0369a1, #0ea5e9);" onclick="goToArenaTab()">⚔️ Арена</button>
+                </div>
+            </div>
+        `;
+        main.innerHTML = html;
     }
-  );
-}
 
-// ═══════════════════════════════════════════
-//  REQUESTS
-// ═══════════════════════════════════════════
-async function refreshRequests(updateBadge = true) {
-  try {
-    const data = await api('/api/admin/requests');
-    pendingRequests = (data.requests || []).filter(r => r.status === 'pending');
-    if (updateBadge) {
-      const badge = document.getElementById('reqBadge');
-      if (pendingRequests.length > 0) {
-        badge.textContent = pendingRequests.length;
-        badge.style.display = 'block';
-      } else {
-        badge.style.display = 'none';
-      }
+    // ============================================================
+    // ПОЛЬЗОВАТЕЛИ
+    // ============================================================
+    let _lastUserSearch = '';
+
+    async function loadUsers(page = 1) {
+        currentPage = page;
+        const main = document.getElementById('mainContent');
+        
+        const existingInput = document.getElementById('userSearch');
+        if (existingInput) _lastUserSearch = existingInput.value;
+        const search = _lastUserSearch;
+        
+        main.innerHTML = '<div class="spinner">Загрузка...</div>';
+        
+        const skip = (page - 1) * 20;
+        
+        const res = await apiRequest(`/api/admin/users?limit=20&skip=${skip}&search=${encodeURIComponent(search)}`);
+        if (!res) {
+            main.innerHTML = '<div class="spinner">Ошибка загрузки пользователей</div>';
+            return;
+        }
+        
+        totalUsers = res.total || 0;
+        
+        if (creaturesList.length === 0) {
+            const creaturesRes = await apiRequest('/api/admin/creatures');
+            if (creaturesRes?.creatures) creaturesList = creaturesRes.creatures;
+        }
+        
+        const html = `
+            <div class="search-bar">
+                <input type="text" id="userSearch" placeholder="Поиск по ID, имени, username..." value="${escapeHtml(search)}" onkeydown="if(event.key==='Enter') searchUsers()">
+                <button onclick="searchUsers()"><i class="fas fa-search"></i> Поиск</button>
+                <button onclick="clearSearchAndReload()" class="secondary"><i class="fas fa-times"></i> Сброс</button>
+            </div>
+            <div class="data-table">
+                <table style="width:100%">
+                    <thead>
+                        <tr><th>Telegram ID</th><th>Имя</th><th>Баланс</th><th>Уровень</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        ${res.users && res.users.length > 0 ? res.users.map(u => `
+                            <tr>
+                                <td><code>${escapeHtml(u.telegramId)}</code></td>
+                                <td>${escapeHtml(u.username || u.firstName || 'Аноним')}</td>
+                                <td>${formatNum(u.balance)} MMO</td>
+                                <td>${u.level} (${u.xp}/${u.level*100} XP)</td>
+                                <td>
+                                    <button onclick="showUserDetail('${u._id}')"><i class="fas fa-eye"></i></button>
+                                    <button onclick="showUserLogs('${u._id}', '${escapeHtml(u.username || u.firstName || 'User')}')" class="secondary"><i class="fas fa-history"></i></button>
+                                </td>
+                            </tr>
+                        `).join('') : '<tr><td colspan="5" style="text-align:center">Пользователи не найдены</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+            <div class="pagination">
+                ${page > 1 ? `<button onclick="loadUsers(${page - 1})">← Назад</button>` : ''}
+                <span style="padding: 8px;">Стр. ${page} / ${Math.max(1, Math.ceil(totalUsers / 20))}</span>
+                ${page < Math.ceil(totalUsers / 20) ? `<button onclick="loadUsers(${page + 1})">Вперёд →</button>` : ''}
+            </div>
+        `;
+        main.innerHTML = html;
     }
-  } catch(e) {
-    pendingRequests = [];
-  }
-}
 
-let reqFilter = 'pending';
-async function renderRequests(el) {
-  el.innerHTML = `
-    <div class="pill-tabs">
-      <div class="pill ${reqFilter==='pending'?'active':''}" onclick="setReqFilter('pending')">Ожидают</div>
-      <div class="pill ${reqFilter==='all'?'active':''}" onclick="setReqFilter('all')">Все</div>
-      <div class="pill ${reqFilter==='deposit'?'active':''}" onclick="setReqFilter('deposit')">Пополнения</div>
-      <div class="pill ${reqFilter==='withdraw'?'active':''}" onclick="setReqFilter('withdraw')">Выводы</div>
-    </div>
-    <div id="reqList"><div class="spinner"></div></div>
-  `;
-  await loadRequests();
-}
+    window.searchUsers = function() {
+        loadUsers(1);
+    };
 
-async function loadRequests() {
-  const el = document.getElementById('reqList');
-  if (!el) return;
-  try {
-    const data = await api('/api/admin/requests');
-    let reqs = data.requests || [];
-    pendingRequests = reqs.filter(r => r.status === 'pending');
-    const badge = document.getElementById('reqBadge');
-    if (pendingRequests.length > 0) { badge.textContent = pendingRequests.length; badge.style.display = 'block'; }
-    else badge.style.display = 'none';
+    window.clearSearchAndReload = function() {
+        _lastUserSearch = '';
+        const searchInput = document.getElementById('userSearch');
+        if (searchInput) searchInput.value = '';
+        loadUsers(1);
+    };
 
-    if (reqFilter === 'pending') reqs = reqs.filter(r => r.status === 'pending');
-    else if (reqFilter === 'deposit') reqs = reqs.filter(r => r.type === 'deposit');
-    else if (reqFilter === 'withdraw') reqs = reqs.filter(r => r.type === 'withdraw');
+    window.showUserLogs = async function(userId, userName) {
+        const res = await apiRequest(`/api/admin/users/${userId}`);
+        if (!res || !res.user) {
+            showToast('Ошибка загрузки логов', 'error');
+            return;
+        }
+        
+        const user = res.user;
+        const transactions = user.transactions || [];
+        
+        const modalHtml = `
+            <div class="modal" id="logsModal">
+                <div class="modal-content">
+                    <h3>📜 Логи: ${escapeHtml(userName)}</h3>
+                    <div style="max-height: 400px; overflow-y: auto;">
+                        ${transactions.length > 0 ? transactions.map(tx => `
+                            <div class="log-entry">
+                                <span style="color:#a855f7;">[${new Date(tx.time).toLocaleString()}]</span>
+                                <span>${escapeHtml(tx.name)}</span>
+                                <span style="color:${tx.amount > 0 ? '#22c55e' : tx.amount < 0 ? '#ef4444' : '#94a3b8'}">
+                                    ${tx.amount > 0 ? '+' : ''}${tx.amount !== 0 ? formatNum(tx.amount) + ' MMO' : 'MERGE'}
+                                </span>
+                            </div>
+                        `).join('') : '<div class="log-entry">Нет транзакций</div>'}
+                    </div>
+                    <div class="modal-buttons"><button onclick="closeModal()">Закрыть</button></div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    };
 
-    if (!reqs.length) {
-      el.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><p>Заявок нет</p></div>';
-      return;
+    // ============================================================
+    // ДЕТАЛИ ПОЛЬЗОВАТЕЛЯ
+    // ============================================================
+    window.showUserDetail = async function(userId) {
+        const res = await apiRequest(`/api/admin/users/${userId}`);
+        if (!res) return;
+        const u = res.user;
+        const inv = res.inventory || [];
+        const referrals = res.referrals || [];
+        const adsWatched = res.adsWatched || 0;
+        const adsEarned = res.adsEarned || 0;
+        
+        const modalHtml = `
+            <div class="modal" id="userModal">
+                <div class="modal-content">
+                    <h3>${escapeHtml(u.username || u.firstName || 'Пользователь')}</h3>
+                    <div style="display: grid; grid-template-columns: repeat(2,1fr); gap: 8px; font-size: 12px; margin-bottom: 16px;">
+                        <div><strong>ID:</strong> ${escapeHtml(u.telegramId)}</div>
+                        <div><strong>Баланс:</strong> ${formatNum(u.balance)} MMO</div>
+                        <div><strong>Уровень:</strong> ${u.level}</div>
+                        <div><strong>XP:</strong> ${u.xp}/${u.level * 100}</div>
+                        <div><strong>Рефералов:</strong> ${u.referralCount}</div>
+                        <div><strong>Слияний:</strong> ${u.mergeCount}</div>
+                        <div><strong>📺 Просмотров рекламы:</strong> ${adsWatched}</div>
+                        <div><strong>💰 Заработано с рекламы:</strong> ${formatNum(adsEarned)} MMO</div>
+                        <div><strong>Статус:</strong> ${u.isBanned ? '🔴 Забанен' : '🟢 Активен'}</div>
+                    </div>
+                    
+                    <h4>📦 Инвентарь</h4>
+                    <div class="inventory-list">${inv.map(i => `<div class="inventory-item">${escapeHtml(i.icon)} ${escapeHtml(i.name)} x${i.count} (${i.incomeBase}/hr)</div>`).join('') || 'Пусто'}</div>
+                    
+                    <h4>👥 Рефералы (${referrals.length})</h4>
+                    <div class="inventory-list">${referrals.map(r => `<div class="inventory-item">${escapeHtml(r.username || r.firstName || 'Аноним')} — ${formatNum(r.balance)} MMO</div>`).join('') || 'Нет рефералов'}</div>
+                    
+                    <h4>⚙️ Действия</h4>
+                    
+                    <div class="form-group"><label>Изменить баланс</label>
+                        <div style="display:flex;gap:8px;">
+                            <input type="number" id="balanceAmount" placeholder="Сумма (+/-)" style="flex:2">
+                            <button onclick="changeBalance('${userId}')">Применить</button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group"><label>Выдать существо</label>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <select id="giveCreatureId" style="flex:2">
+                                <option value="">Выберите...</option>
+                                ${creaturesList.map(c => `<option value="${c.id}">${escapeHtml(c.icon)} ${escapeHtml(c.name)} (${c.rarity})</option>`).join('')}
+                            </select>
+                            <input type="number" id="giveCount" placeholder="Кол-во" style="width:80px;" value="1">
+                            <button onclick="giveItem('${userId}')" class="success">Выдать</button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group"><label>Удалить существо</label>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <select id="removeCreatureId" style="flex:2">
+                                <option value="">Выберите...</option>
+                                ${creaturesList.map(c => `<option value="${c.id}">${escapeHtml(c.icon)} ${escapeHtml(c.name)}</option>`).join('')}
+                            </select>
+                            <input type="number" id="removeCount" placeholder="Кол-во" style="width:80px;" value="1">
+                            <button onclick="removeItem('${userId}')" class="danger">Удалить</button>
+                        </div>
+                    </div>
+                    
+                    <div class="modal-buttons">
+                        <button onclick="toggleBan('${userId}', ${!u.isBanned})" class="warning">${u.isBanned ? 'Разбанить' : 'Забанить'}</button>
+                        <button onclick="resetProgress('${userId}')" class="danger">Сброс прогресса</button>
+                        <button onclick="resetUserAdsStats('${userId}', '${escapeHtml(u.username || u.firstName)}')" class="warning">Сброс статистики рекламы</button>
+                        <button onclick="closeModal()">Закрыть</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    };
+
+    window.changeBalance = async function(userId) {
+        const amount = parseInt(document.getElementById('balanceAmount')?.value);
+        if (isNaN(amount)) { showToast('Введите сумму', 'error'); return; }
+        const res = await apiRequest(`/api/admin/users/${userId}/balance`, 'PUT', { amount, reason: 'Админ' });
+        if (res?.success) { 
+            showToast(`Баланс изменён на ${amount > 0 ? '+' : ''}${amount}`);
+            closeModal();
+            loadUsers(currentPage);
+        } else {
+            showToast(res?.message || 'Ошибка', 'error');
+        }
+    };
+
+    window.giveItem = async function(userId) {
+        const creatureId = document.getElementById('giveCreatureId')?.value;
+        const count = parseInt(document.getElementById('giveCount')?.value || 1);
+        if (!creatureId) { showToast('Выберите существо', 'error'); return; }
+        if (count < 1) { showToast('Количество должно быть больше 0', 'error'); return; }
+        
+        const res = await apiRequest(`/api/admin/users/${userId}/give-item`, 'POST', { creatureId, count });
+        if (res?.success) { 
+            showToast(`Выдано ${count} ${creatureId}`);
+            closeModal();
+            loadUsers(currentPage);
+        } else {
+            showToast(res?.message || 'Ошибка выдачи', 'error');
+        }
+    };
+
+    window.removeItem = async function(userId) {
+        const creatureId = document.getElementById('removeCreatureId')?.value;
+        const count = parseInt(document.getElementById('removeCount')?.value || 1);
+        if (!creatureId) { showToast('Выберите существо', 'error'); return; }
+        if (count < 1) { showToast('Количество должно быть больше 0', 'error'); return; }
+        
+        const res = await apiRequest(`/api/admin/users/${userId}/item`, 'DELETE', { creatureId, count });
+        if (res?.success) { 
+            showToast(`Удалено ${count} ${creatureId}`);
+            closeModal();
+            loadUsers(currentPage);
+        } else {
+            showToast(res?.message || 'Ошибка удаления', 'error');
+        }
+    };
+
+    window.toggleBan = async function(userId, ban) {
+        const reason = ban ? prompt('Причина бана:') : '';
+        const res = await apiRequest(`/api/admin/users/${userId}/ban`, 'PUT', { isBanned: ban, reason });
+        if (res?.success) { 
+            showToast(ban ? 'Пользователь забанен' : 'Пользователь разбанен');
+            closeModal();
+            loadUsers(currentPage);
+        }
+    };
+
+    window.resetProgress = async function(userId) {
+        if (!confirm('Сбросить прогресс пользователя? Это действие необратимо!')) return;
+        const res = await apiRequest(`/api/admin/users/${userId}/reset`, 'POST');
+        if (res?.success) { 
+            showToast('Прогресс сброшен');
+            closeModal();
+            loadUsers(currentPage);
+        }
+    };
+
+    // ============================================================
+    // МАРКЕТ
+    // ============================================================
+    async function loadMarketSection() {
+        const main = document.getElementById('mainContent');
+        main.innerHTML = '<div class="spinner">Загрузка...</div>';
+        
+        const creaturesRes = await apiRequest('/api/admin/creatures');
+        if (creaturesRes?.creatures) creaturesList = creaturesRes.creatures;
+        
+        const listingsRes = await apiRequest('/api/marketplace/listings');
+        const historyRes = await apiRequest('/api/admin/market-sales-history?limit=50');
+        
+        const listings = (listingsRes && listingsRes.listings) ? listingsRes.listings : [];
+        const history = (historyRes && historyRes.history) ? historyRes.history : [];
+        
+        const html = `
+            <div class="user-card">
+                <h3><i class="fas fa-store"></i> Активные лоты маркетплейса</h3>
+                <div style="font-size: 11px; color: #94a3b8; margin-bottom: 12px;">Текущие предложения на продажу</div>
+                <div class="data-table">
+                    <table style="width:100%">
+                        <thead>
+                            <tr><th>Продавец</th><th>Существо</th><th>Редкость</th><th>Цена</th><th>Комиссия (10%)</th><th>Продавец получит</th><th>Дата</th></tr>
+                        </thead>
+                        <tbody>
+                            ${listings.length > 0 ? listings.map(l => {
+                                const creature = creaturesList.find(c => c.id === l.creatureId);
+                                const fee = Math.floor(l.price * 0.1);
+                                const sellerGets = l.price - fee;
+                                const date = new Date(l.createdAt).toLocaleString();
+                                return `<tr>
+                                    <td><code>${escapeHtml(l.sellerName || l.sellerTgId)}</code></td>
+                                    <td>${creature ? escapeHtml(creature.name) : l.creatureId}</td>
+                                    <td class="rarity-${creature?.rarity || 'common'}">${creature?.rarity || '?'}</td>
+                                    <td>${l.price.toLocaleString()} MMO</td>
+                                    <td style="color:#ef4444">-${fee.toLocaleString()} MMO</td>
+                                    <td style="color:#22c55e">${sellerGets.toLocaleString()} MMO</td>
+                                    <td><small>${date}</small></td>
+                                </tr>`;
+                            }).join('') : '<tr><td colspan="7" style="text-align:center">Нет активных лотов</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="user-card">
+                <h3><i class="fas fa-history"></i> История продаж (последние 50)</h3>
+                <div style="font-size: 11px; color: #94a3b8; margin-bottom: 12px;">Успешно завершённые сделки</div>
+                ${history.length > 0 ? history.map(sale => {
+                    const creature = sale.creature || { name: sale.creatureId, rarity: 'common' };
+                    const date = new Date(sale.soldAt).toLocaleString();
+                    return `<div class="sale-history-item">
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                            <div><div style="font-weight:600;">${escapeHtml(creature.name)}</div><div style="font-size:10px;color:#94a3b8;">${creature.rarity}</div></div>
+                            <div style="text-align:right;"><div style="color:#f59e0b;font-weight:600;">${sale.price.toLocaleString()} MMO</div><div style="font-size:10px;">${date}</div></div>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:11px;flex-wrap:wrap;gap:8px;">
+                            <div>👤 Продавец: <span style="color:#a855f7;">${escapeHtml(sale.sellerName || sale.sellerTgId)}</span></div>
+                            <div>💰 Получил: <span style="color:#22c55e;">${sale.sellerEarns.toLocaleString()} MMO</span> (комиссия ${sale.fee.toLocaleString()})</div>
+                            <div>🛒 Покупатель: ${escapeHtml(sale.buyerName || sale.buyerTgId)}</div>
+                        </div>
+                    </div>`;
+                }).join('') : '<div style="text-align:center;padding:20px;">История продаж пуста</div>'}
+            </div>
+        `;
+        main.innerHTML = html;
     }
-    el.innerHTML = reqs.map(r => `
-      <div class="req-item">
-        <div class="req-header">
-          <span class="req-type">${r.type==='deposit'?'💰 Пополнение':'📤 Вывод'}</span>
-          <span class="req-status ${r.status}">${reqStatusLabel(r.status)}</span>
-        </div>
-        <div class="req-amount">${(r.amount||0).toFixed(2)} TON</div>
-        <div class="req-user">${r.userName||''} · ${fmtDate(r.createdAt)}</div>
-        ${r.toAddress ? `<div class="req-user" style="margin-top:2px;word-break:break-all">📍 ${r.toAddress}</div>` : ''}
-        ${r.status === 'pending' ? `
-        <div class="req-actions">
-          <button class="req-btn approve" onclick="handleReq('${r._id}', 'approve')">✅ Принять</button>
-          <button class="req-btn reject" onclick="handleReq('${r._id}', 'reject')">❌ Отклонить</button>
-        </div>` : ''}
-      </div>
-    `).join('');
-  } catch(e) {
-    el.innerHTML = `<div class="card"><div style="color:var(--muted);font-size:13px">Ошибка загрузки заявок.<br>Нужен /api/admin/requests на сервере.</div></div>`;
-    addLog('ERR', 'Load requests: ' + e.message);
-  }
-}
 
-function setReqFilter(f) { reqFilter = f; renderRequests(document.getElementById('mainContent')); }
+    // ============================================================
+    // РЕКЛАМА
+    // ============================================================
 
-async function handleReq(id, action) {
-  try {
-    await api(`/api/admin/requests/${id}/${action}`, { method: 'POST' });
-    showToast(action === 'approve' ? '✅ Заявка принята' : '❌ Заявка отклонена', action === 'approve' ? 'success' : 'error');
-    addLog('INFO', `Request ${id} ${action}d`);
-    await loadRequests();
-  } catch(e) {
-    showToast('Ошибка: ' + e.message, 'error');
-    addLog('ERR', `Request action failed: ${e.message}`);
-  }
-}
-
-// ═══════════════════════════════════════════
-//  BROADCAST
-// ═══════════════════════════════════════════
-function renderBroadcast(el) {
-  broadcastTarget = 'all';
-  el.innerHTML = `
-    <div class="card">
-      <div class="card-title">Получатели</div>
-      <div class="pill-tabs" style="margin-bottom:0">
-        <div class="pill active" onclick="setBroadcastTarget('all', this)">Все пользователи</div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-title">Сообщение (HTML)</div>
-      <textarea class="modal-input" id="bcText" placeholder="<b>Текст</b> сообщения…" oninput="updateBcPreview()" style="width:100%;background:var(--bg2)"></textarea>
-      <div class="card-title" style="margin-top:8px">Предпросмотр</div>
-      <div class="preview-box" id="bcPreview">Здесь появится предпросмотр…</div>
-      <button class="action-btn primary" onclick="confirmBroadcast()">📢 Отправить всем</button>
-    </div>
-    <div class="card">
-      <div class="card-title">История рассылок</div>
-      <div id="bcHistory" style="font-size:13px;color:var(--muted)">Нет данных</div>
-    </div>
-  `;
-}
-
-function setBroadcastTarget(t, el) {
-  broadcastTarget = t;
-  document.querySelectorAll('.pill-tabs .pill').forEach(p => p.classList.remove('active'));
-  el.classList.add('active');
-}
-
-function updateBcPreview() {
-  const text = document.getElementById('bcText').value;
-  const preview = document.getElementById('bcPreview');
-  preview.innerHTML = text || '<span style="color:var(--muted)">Здесь появится предпросмотр…</span>';
-}
-
-function confirmBroadcast() {
-  const text = document.getElementById('bcText').value.trim();
-  if (!text) { showToast('Введите текст', 'error'); return; }
-  showConfirm('📢', 'Отправить рассылку?', `Сообщение будет отправлено ${broadcastTarget === 'all' ? 'всем пользователям' : 'выбранным пользователям'}.`, sendBroadcast);
-}
-
-async function sendBroadcast() {
-  const text = document.getElementById('bcText')?.value?.trim();
-  if (!text) return;
-  try {
-    const data = await api('/api/admin/broadcast', {
-      method: 'POST',
-      body: JSON.stringify({ text, target: broadcastTarget }),
-    });
-    showToast(`Отправлено: ${data.sent||'?'} пользователей`, 'success');
-    addLog('INFO', `Broadcast sent to ${data.sent||'?'} users`);
-    document.getElementById('bcText').value = '';
-    document.getElementById('bcPreview').innerHTML = 'Здесь появится предпросмотр…';
-    const hist = document.getElementById('bcHistory');
-    if (hist) hist.innerHTML = `<div class="info-row"><span class="info-key">Только что</span><span class="info-val">${data.sent||'?'} получателей</span></div>`;
-  } catch(e) {
-    showToast('Ошибка: ' + e.message, 'error');
-    addLog('ERR', 'Broadcast failed: ' + e.message);
-  }
-}
-
-function openBroadcastToUser() {
-  if (!currentUser) return;
-  broadcastTarget = currentUser._id;
-  switchPage('broadcast');
-  setTimeout(() => {
-    const ta = document.getElementById('bcText');
-    if (ta) ta.focus();
-    showToast(`Получатель: ${currentUser.firstName||'пользователь'}`, 'success');
-  }, 100);
-}
-
-// ═══════════════════════════════════════════
-//  LOGS
-// ═══════════════════════════════════════════
-let logFilter = 'all';
-function renderLogs(el) {
-  // Also show 5xx errors prominently
-  el.innerHTML = `
-    <div class="pill-tabs">
-      <div class="pill ${logFilter==='all'?'active':''}" onclick="setLogFilter('all')">Все</div>
-      <div class="pill ${logFilter==='ERR'?'active':''}" onclick="setLogFilter('ERR')">Ошибки</div>
-      <div class="pill ${logFilter==='5xx'?'active':''}" onclick="setLogFilter('5xx')">5xx HTTP</div>
-      <div class="pill ${logFilter==='WARN'?'active':''}" onclick="setLogFilter('WARN')">Предупреждения</div>
-    </div>
-
-    ${logFilter === '5xx' || logFilter === 'ERR' ? `
-    ${errors5xx.length > 0 ? errors5xx.map(e => `
-      <div class="error-item">
-        <div class="error-code">HTTP ${e.code} — ${e.path}</div>
-        <div class="error-msg">${e.msg || '—'}</div>
-        <div class="error-time">${fmtTime(e.time)}</div>
-      </div>
-    `).join('') : '<div class="empty-state"><div class="empty-icon">✅</div><p>5xx ошибок нет</p></div>'}
-    ` : ''}
-
-    ${logFilter !== '5xx' ? `
-    <div class="card">
-      <div class="card-title">Системные логи</div>
-      ${filterLogs().length > 0
-        ? filterLogs().map(l => `
-          <div class="log-item">
-            <span class="log-level ${l.level}">${l.level}</span>
-            <span class="log-text">${l.text}</span>
-            <span class="log-time">${fmtTime(l.time)}</span>
-          </div>`).join('')
-        : '<div class="empty-state" style="padding:20px 0"><p>Нет записей</p></div>'
-      }
-    </div>` : ''}
-
-    <button class="action-btn secondary" style="margin-top:4px" onclick="clearLogs()">🗑 Очистить логи</button>
-  `;
-}
-
-function filterLogs() {
-  if (logFilter === 'all') return serverLogs;
-  if (logFilter === '5xx') return [];
-  return serverLogs.filter(l => l.level === logFilter);
-}
-
-function setLogFilter(f) { logFilter = f; renderLogs(document.getElementById('mainContent')); }
-function clearLogs() { serverLogs = []; errors5xx = []; showToast('Логи очищены', 'success'); renderPage(); }
-
-// ═══════════════════════════════════════════
-//  CONFIRM DIALOG
-// ═══════════════════════════════════════════
-let confirmCallback = null;
-function showConfirm(icon, title, text, cb) {
-  document.getElementById('confirmIcon').textContent = icon;
-  document.getElementById('confirmTitle').textContent = title;
-  document.getElementById('confirmText').textContent = text;
-  confirmCallback = cb;
-  document.getElementById('confirmOk').onclick = () => { closeConfirm(); cb(); };
-  document.getElementById('confirmOverlay').classList.add('open');
-}
-function closeConfirm() { document.getElementById('confirmOverlay').classList.remove('open'); confirmCallback = null; }
-
-// ═══════════════════════════════════════════
-//  TOAST
-// ═══════════════════════════════════════════
-let toastTimer;
-function showToast(msg, type = '') {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'toast ' + type;
-  requestAnimationFrame(() => t.classList.add('show'));
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
-}
-
-// ═══════════════════════════════════════════
-//  HELPERS
-// ═══════════════════════════════════════════
-function fmtDate(d) {
-  if (!d) return '—';
-  const dt = new Date(d);
-  return dt.toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
-}
-function fmtTime(d) {
-  if (!d) return '—';
-  const dt = new Date(d);
-  return dt.toLocaleTimeString('ru-RU', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
-}
-function timeAgo(d) {
-  if (!d) return '—';
-  const s = Math.floor((Date.now() - new Date(d)) / 1000);
-  if (s < 60) return 'только что';
-  if (s < 3600) return Math.floor(s/60) + ' мин. назад';
-  if (s < 86400) return Math.floor(s/3600) + ' ч. назад';
-  return Math.floor(s/86400) + ' дн. назад';
-}
-function txIcon(type) {
-  return { deposit:'💰', withdraw:'📤', bot_start:'🤖', bot_claim:'✅', referral:'👥' }[type] || '•';
-}
-function txLabel(type) {
-  return { deposit:'Пополнение', withdraw:'Вывод', bot_start:'Запуск бота', bot_claim:'Получение дохода', referral:'Реферальный бонус' }[type] || type;
-}
-function reqStatusLabel(s) {
-  return { pending:'Ожидает', approved:'Принято', rejected:'Отклонено' }[s] || s;
-}
-
-async function renderPromos(el) {
-  el.innerHTML = `
-    <div class="card">
-      <div class="card-title">➕ Создать промокод</div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        <input class="modal-input" id="promoCode" placeholder="Код (например: WELCOME100)" style="background:var(--bg2)">
-        <input class="modal-input" type="number" id="promoReward" placeholder="Награда в TON" step="0.1" style="background:var(--bg2)">
-        <input class="modal-input" type="number" id="promoMaxUses" placeholder="Макс. использований (1 = одноразовый)" value="1" style="background:var(--bg2)">
-        <input class="modal-input" type="number" id="promoExpireDays" placeholder="Срок действия (дней, 0 = без срока)" value="0" style="background:var(--bg2)">
-        <button class="action-btn primary" onclick="createPromo()">🎁 Создать промокод</button>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="card-title">📋 Список промокодов</div>
-      <div id="promosList"><div class="spinner"></div></div>
-    </div>
-  `;
-  await loadPromos();
-}
-
-async function loadPromos() {
-  const el = document.getElementById('promosList');
-  try {
-    const data = await api('/api/admin/promos');
-    const promos = data.promos || [];
-    
-    if (!promos.length) {
-      el.innerHTML = '<div class="empty-state"><div class="empty-icon">🎁</div><p>Промокодов пока нет</p></div>';
-      return;
+    async function loadAdsPanel() {
+        const main = document.getElementById('mainContent');
+        main.innerHTML = '<div class="spinner">Загрузка...</div>';
+        
+        try {
+            const statsRes = await apiRequest('/api/admin/ads-stats?limit=50');
+            const configRes = await apiRequest('/api/admin/config');
+            const config = configRes?.config || {};
+            
+            const AD_REWARD = config.adReward || 50;
+            const AD_COOLDOWN = config.adCooldown || 60;
+            const maxAds = 10;
+            
+            if (!statsRes || !statsRes.success) {
+                main.innerHTML = `
+                    <div class="user-card">
+                        <h3><i class="fas fa-exclamation-triangle"></i> Ошибка загрузки статистики рекламы</h3>
+                        <div style="color:#ef4444; margin-top:10px;">
+                            ${statsRes?.message || 'Сервер не отвечает или эндпоинт не найден'}
+                        </div>
+                        <div style="margin-top:16px;">
+                            <button onclick="loadAdsPanel()" class="secondary"><i class="fas fa-sync"></i> Повторить</button>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            const html = `
+                <div class="stats-grid">
+                    <div class="stat-card"><h3><i class="fas fa-eye"></i> Всего просмотров</h3><div class="value">${formatNum(statsRes.total?.totalAdsWatched || 0)}</div></div>
+                    <div class="stat-card"><h3><i class="fas fa-chart-line"></i> В среднем на игрока</h3><div class="value">${(statsRes.total?.avgAdsPerUser || 0).toFixed(1)}</div></div>
+                    <div class="stat-card"><h3><i class="fas fa-tv"></i> Макс. запас</h3><div class="value">${maxAds}</div></div>
+                    <div class="stat-card"><h3><i class="fas fa-coins"></i> Награда за просмотр</h3><div class="value" style="font-size:20px">${AD_REWARD} MMO</div></div>
+                </div>
+                
+                <div class="user-card">
+                    <h3><i class="fas fa-sliders-h"></i> Управление рекламой</h3>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px;">
+                        <button onclick="giveAdsToAll()" class="success"><i class="fas fa-gift"></i> Выдать +5 рекламы всем</button>
+                        <button onclick="resetAllAdsStats()" class="danger"><i class="fas fa-trash-alt"></i> Сбросить СТАТИСТИКУ (всем)</button>
+                        <button onclick="showAdsConfigModal()" class="warning"><i class="fas fa-cog"></i> Настройки рекламы</button>
+                        <button onclick="refreshCache()" class="secondary"><i class="fas fa-sync"></i> Обновить кэш</button>
+                    </div>
+                    <div style="background:#0d1120;border-radius:12px;padding:12px;margin-top:12px;">
+                        <div style="font-size:11px;color:#94a3b8;"><i class="fas fa-info-circle"></i> <strong>Механика:</strong> +1 просмотр каждый час (макс. ${maxAds}). Кулдаун между просмотрами: ${AD_COOLDOWN} сек. Награда: ${AD_REWARD} MMO</div>
+                    </div>
+                </div>
+                
+                <div class="user-card">
+                    <h3><i class="fas fa-ranking-star"></i> Топ пользователей по просмотрам рекламы</h3>
+                    <div class="data-table">
+                        <table style="width:100%">
+                            <thead><tr><th>#</th><th>Пользователь</th><th>Просмотров</th><th>Уровень</th><th>Доступно сейчас</th><th></th></tr></thead>
+                            <tbody>
+                                ${statsRes.stats && statsRes.stats.length > 0 ? statsRes.stats.map((u, idx) => `
+                                    <tr>
+                                        <td><b>${idx + 1}</b></td>
+                                        <td>${escapeHtml(u.username || u.firstName || u.telegramId)}</td>
+                                        <td><span style="color:#f59e0b;font-weight:700">${u.adsWatched || 0}</span></td>
+                                        <td>УР ${u.level}</td>
+                                        <td>${u.adsAvailable || 0}/${maxAds}</td>
+                                        <td><button onclick="resetUserAdsStats('${u._id}', '${escapeHtml(u.username || u.firstName)}')" class="danger" style="padding:4px 8px;font-size:10px"><i class="fas fa-undo"></i> Сброс</button></td>
+                                    </tr>
+                                `).join('') : '<tr><td colspan="6" style="text-align:center">Нет данных</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            main.innerHTML = html;
+        } catch (e) {
+            console.error('loadAdsPanel error:', e);
+            main.innerHTML = `<div class="user-card"><h3>❌ Ошибка загрузки</h3><div>${e.message}</div><button onclick="loadAdsPanel()" class="secondary" style="margin-top:10px">Повторить</button></div>`;
+        }
     }
-    
-    el.innerHTML = promos.map(p => `
-      <div class="user-list-item" style="margin-bottom:8px">
-        <div class="user-list-top">
-          <div class="user-avatar" style="background:${p.isActive ? 'var(--green)' : 'var(--muted)'}">🎁</div>
-          <div class="user-info">
-            <div class="user-name">${p.code}</div>
-            <div class="user-id">Награда: ${p.reward} TON · Использован: ${p.usedCount}/${p.maxUses === 0 ? '∞' : p.maxUses}</div>
-            <div class="user-id">Активировали: ${p.activatedCount || 0} чел. · ${p.expiresAt ? `До: ${fmtDate(p.expiresAt)}` : 'Без срока'}</div>
-          </div>
-          <div style="display:flex;gap:6px">
-            <button class="req-btn ${p.isActive ? 'approve' : 'reject'}" 
-              style="padding:5px 12px;font-size:11px" 
-              onclick="togglePromo('${p._id}', ${!p.isActive})">
-              ${p.isActive ? '🔴 Выключить' : '🟢 Включить'}
-            </button>
-            <button class="req-btn reject" style="padding:5px 12px;font-size:11px" 
-              onclick="deletePromo('${p._id}', '${p.code}')">
-              🗑 Удалить
-            </button>
-          </div>
-        </div>
-      </div>
-    `).join('');
-  } catch(e) {
-    el.innerHTML = `<div class="error-item">Ошибка загрузки: ${e.message}</div>`;
-  }
-}
 
-async function createPromo() {
-  const code = document.getElementById('promoCode').value.trim().toUpperCase();
-  const reward = parseFloat(document.getElementById('promoReward').value);
-  const maxUses = parseInt(document.getElementById('promoMaxUses').value) || 1;
-  const expiresInDays = parseInt(document.getElementById('promoExpireDays').value) || 0;
-  
-  if (!code) { showToast('Введите код', 'error'); return; }
-  if (isNaN(reward) || reward <= 0) { showToast('Укажите награду', 'error'); return; }
-  
-  try {
-    await api('/api/admin/promos', {
-      method: 'POST',
-      body: JSON.stringify({ code, reward, maxUses, expiresInDays: expiresInDays > 0 ? expiresInDays : null }),
-    });
-    showToast(`Промокод ${code} создан`, 'success');
-    document.getElementById('promoCode').value = '';
-    document.getElementById('promoReward').value = '';
-    document.getElementById('promoMaxUses').value = '1';
-    document.getElementById('promoExpireDays').value = '0';
-    await loadPromos();
-  } catch(e) {
-    showToast('Ошибка: ' + e.message, 'error');
-  }
-}
+    window.resetUserAdsStats = async function(userId, userName) {
+        if (!confirm(`Сбросить статистику рекламы у ${userName}?\n\nВсе записи о просмотрах будут удалены, а доступная реклама восстановлена до максимума.`)) return;
+        
+        const res = await apiRequest(`/api/admin/user/${userId}/reset-ads-stats`, 'POST');
+        if (res?.success) { 
+            showToast(res.message); 
+            loadAdsPanel(); 
+        } else {
+            showToast(res?.message || 'Ошибка', 'error');
+        }
+    };
 
-async function togglePromo(id, newState) {
-  try {
-    await api(`/api/admin/promos/${id}/toggle`, { method: 'POST' });
-    showToast('Статус обновлён', 'success');
-    await loadPromos();
-  } catch(e) {
-    showToast('Ошибка: ' + e.message, 'error');
-  }
-}
+    window.giveAdsToAll = async function() {
+        const amount = prompt('Сколько просмотров рекламы выдать всем? (1-50)', '5');
+        if (!amount) return;
+        
+        const res = await apiRequest('/api/admin/give-ads-to-all', 'POST', { amount: parseInt(amount) });
+        if (res?.success) { 
+            showToast(res.message); 
+            loadAdsPanel(); 
+        } else {
+            showToast(res?.message || 'Ошибка', 'error');
+        }
+    };
 
-async function deletePromo(id, code) {
-  showConfirm('🗑', 'Удалить промокод?', `Промокод "${code}" будет удалён безвозвратно.`, async () => {
-    try {
-      await api(`/api/admin/promos/${id}`, { method: 'DELETE' });
-      showToast('Промокод удалён', 'success');
-      await loadPromos();
-    } catch(e) {
-      showToast('Ошибка: ' + e.message, 'error');
+    window.resetAllAdsStats = async function() {
+        if (!confirm('⚠️ ВНИМАНИЕ! Это удалит ВСЮ историю просмотров рекламы у ВСЕХ игроков!\n\nСтатистика обнулится, но баланс игроков не изменится.\n\nВы уверены?')) return;
+        
+        const res = await apiRequest('/api/admin/reset-all-ads-stats', 'POST');
+        if (res?.success) { 
+            showToast(res.message); 
+            loadAdsPanel(); 
+        } else {
+            showToast(res?.message || 'Ошибка', 'error');
+        }
+    };
+
+    window.showAdsConfigModal = function() {
+        fetch(`${API_URL}/api/admin/config`, {
+            headers: { 'X-Admin-Token': adminToken }
+        })
+        .then(res => res.json())
+        .then(data => {
+            const config = data.config || {};
+            const adReward = config.adReward || 50;
+            const adCooldown = config.adCooldown || 60;
+            
+            const modalHtml = `
+                <div class="modal" id="adsConfigModal">
+                    <div class="modal-content">
+                        <h3><i class="fas fa-tv"></i> Настройки рекламы</h3>
+                        <div style="font-size:12px;color:#94a3b8;margin-bottom:16px;">Изменения применяются сразу для всех игроков</div>
+                        <div class="form-group"><label>💰 Награда за просмотр (MMO)</label><input type="number" id="cfgAdReward" value="${adReward}" step="5" min="10"></div>
+                        <div class="form-group"><label>⏱ Кулдаун между просмотрами (секунд)</label><input type="number" id="cfgAdCooldown" value="${adCooldown}" step="5" min="10"></div>
+                        <div class="form-group"><label>📺 Максимальный запас рекламы (сейчас: 10)</label><input type="number" id="cfgMaxAds" value="10" step="1" min="5" max="50" disabled>
+                        <div style="font-size:10px;color:#f59e0b;margin-top:4px;">⚠️ Для изменения максимального запаса нужно править константу на сервере</div></div>
+                        <div class="modal-buttons"><button onclick="saveAdsConfig()" class="success">Сохранить</button><button onclick="closeModal()">Отмена</button></div>
+                    </div>
+                </div>`;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        })
+        .catch(err => {
+            showToast('Ошибка загрузки настроек', 'error');
+        });
+    };
+
+    window.saveAdsConfig = async function() {
+        const adReward = parseInt(document.getElementById('cfgAdReward')?.value);
+        const adCooldown = parseInt(document.getElementById('cfgAdCooldown')?.value);
+        
+        if (isNaN(adReward) || adReward < 10) { 
+            showToast('Награда должна быть минимум 10 MMO', 'error'); 
+            return; 
+        }
+        if (isNaN(adCooldown) || adCooldown < 10) { 
+            showToast('Кулдаун должен быть минимум 10 секунд', 'error'); 
+            return; 
+        }
+        
+        const res = await apiRequest('/api/admin/ads-config', 'PUT', { 
+            adReward, 
+            adCooldownSeconds: adCooldown 
+        });
+        
+        if (res?.success) { 
+            showToast('Настройки рекламы сохранены!'); 
+            closeModal(); 
+            loadAdsPanel(); 
+        } else {
+            showToast(res?.message || 'Ошибка сохранения', 'error');
+        }
+    };
+
+    // ============================================================
+    // СУЩЕСТВА
+    // ============================================================
+    async function loadCreatures() {
+        const main = document.getElementById('mainContent');
+        main.innerHTML = '<div class="spinner">Загрузка...</div>';
+        const res = await apiRequest('/api/admin/creatures');
+        if (!res || !res.creatures) { main.innerHTML = '<div class="spinner">Ошибка загрузки существ</div>'; return; }
+        creaturesList = res.creatures;
+        
+        const html = `
+            <div style="margin-bottom:16px;"><button onclick="showAddCreatureModal()"><i class="fas fa-plus"></i> Добавить существо</button></div>
+            <div class="data-table">
+                <table style="width:100%">
+                    <thead><tr><th>Иконка</th><th>ID</th><th>Название</th><th>Редкость</th><th>Доход</th><th>Статус</th><th></th></tr></thead>
+                    <tbody>${res.creatures.map(c => `<tr>
+                        <td><span style="font-size:20px">${c.icon}</span></td>
+                        <td><small>${escapeHtml(c.id)}</small></td>
+                        <td>${escapeHtml(c.name)}</td>
+                        <td class="rarity-${c.rarity}">${c.rarity}</td>
+                        <td>${c.incomeBase}/hr</td>
+                        <td>${c.isActive ? '✅' : '❌'}</td>
+                        <td><button onclick="editCreature('${c.id}')"><i class="fas fa-edit"></i></button>
+                        <button onclick="deleteCreature('${c.id}')" class="danger"><i class="fas fa-trash"></i></button></td>
+                    </tr>`).join('')}</tbody>
+                </table>
+            </div>`;
+        main.innerHTML = html;
     }
-  });
-}
+
+    window.showAddCreatureModal = function() {
+        const modalHtml = `<div class="modal" id="creatureModal"><div class="modal-content"><h3>➕ Добавить существо</h3>
+            <div class="form-group"><label>ID</label><input type="text" id="cId" placeholder="уникальный"></div>
+            <div class="form-group"><label>Название</label><input type="text" id="cName"></div>
+            <div class="form-group"><label>Редкость</label><select id="cRarity"><option value="common">Common</option><option value="uncommon">Uncommon</option><option value="rare">Rare</option><option value="epic">Epic</option><option value="legendary">Legendary</option><option value="mythic">Mythic</option></select></div>
+            <div class="form-group"><label>Иконка (ссылка или эмодзи)</label><input type="text" id="cIcon" value="🧬"></div>
+            <div class="form-group"><label>Доход в час</label><input type="number" id="cIncome" value="10"></div>
+            <div class="form-group"><label>Описание</label><textarea id="cDesc" rows="2"></textarea></div>
+            <div class="modal-buttons"><button onclick="createCreature()">Создать</button><button onclick="closeModal()">Отмена</button></div></div></div>`;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    };
+
+    window.createCreature = async function() {
+        const data = { id: document.getElementById('cId').value, name: document.getElementById('cName').value, rarity: document.getElementById('cRarity').value, icon: document.getElementById('cIcon').value, incomeBase: parseInt(document.getElementById('cIncome').value), desc: document.getElementById('cDesc').value };
+        if (!data.id || !data.name || !data.incomeBase) { showToast('Заполните все поля', 'error'); return; }
+        const res = await apiRequest('/api/admin/creatures', 'POST', data);
+        if (res?.success) { showToast('Существо создано'); closeModal(); loadCreatures(); }
+    };
+
+    window.editCreature = async function(creatureId) {
+        const creature = creaturesList.find(c => c.id === creatureId);
+        if (!creature) return;
+        const modalHtml = `<div class="modal" id="creatureModal"><div class="modal-content"><h3>✏️ Редактировать ${escapeHtml(creature.name)}</h3>
+            <div class="form-group"><label>Название</label><input type="text" id="cName" value="${escapeHtml(creature.name)}"></div>
+            <div class="form-group"><label>Редкость</label><select id="cRarity">${['common','uncommon','rare','epic','legendary','mythic'].map(r => `<option value="${r}" ${creature.rarity === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+            <div class="form-group"><label>Иконка (ссылка или эмодзи)</label><input type="text" id="cIcon" value="${escapeHtml(creature.icon)}"></div>
+            <div class="form-group"><label>Доход в час</label><input type="number" id="cIncome" value="${creature.incomeBase}"></div>
+            <div class="form-group"><label>Описание</label><textarea id="cDesc" rows="2">${escapeHtml(creature.desc || '')}</textarea></div>
+            <div class="form-group"><label><input type="checkbox" id="cActive" ${creature.isActive ? 'checked' : ''}> Активен</label></div>
+            <div class="modal-buttons"><button onclick="updateCreature('${creatureId}')">Сохранить</button><button onclick="closeModal()">Отмена</button></div></div></div>`;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    };
+
+    window.updateCreature = async function(creatureId) {
+        const data = { name: document.getElementById('cName').value, rarity: document.getElementById('cRarity').value, icon: document.getElementById('cIcon').value, incomeBase: parseInt(document.getElementById('cIncome').value), desc: document.getElementById('cDesc').value, isActive: document.getElementById('cActive').checked };
+        const res = await apiRequest(`/api/admin/creatures/${creatureId}`, 'PUT', data);
+        if (res?.success) { showToast('Существо обновлено'); closeModal(); loadCreatures(); }
+    };
+
+    window.deleteCreature = async function(creatureId) {
+        if (!confirm('Удалить существо? (нельзя удалить, если есть у игроков)')) return;
+        const res = await apiRequest(`/api/admin/creatures/${creatureId}`, 'DELETE');
+        if (res?.success) { showToast('Существо удалено'); loadCreatures(); }
+    };
+
+    // ============================================================
+    // КВЕСТЫ
+    // ============================================================
+    async function loadSpecialQuests() {
+        const main = document.getElementById('mainContent');
+        main.innerHTML = '<div class="spinner">Загрузка...</div>';
+        const res = await apiRequest('/api/admin/special-quests');
+        if (!res) return;
+        const quests = res.specialQuests || [];
+        const html = `<div style="margin-bottom:16px;"><button onclick="showAddSpecialQuestModal()" class="success"><i class="fas fa-plus"></i> Добавить спец-квест</button></div>
+            ${quests.length === 0 ? '<div class="user-card" style="text-align:center">Нет спец-квестов</div>' : quests.map(q => `<div class="user-card">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;"><div style="font-size:28px;">${escapeHtml(q.icon || '🎯')}</div>
+                <div style="flex:1;"><div class="value" style="font-size:16px;">${escapeHtml(q.title)}</div><div style="font-size:11px;color:#94a3b8">${escapeHtml(q.description || '')}</div></div>
+                <div class="${q.isActive ? 'badge-active' : 'badge-inactive'}">${q.isActive ? 'Активен' : 'Отключён'}</div></div>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:11px;margin-bottom:12px;"><div><span style="color:#94a3b8">ID:</span> ${escapeHtml(q.id)}</div>
+                <div><span style="color:#94a3b8">Тип:</span> ${escapeHtml(q.type)}</div><div><span style="color:#94a3b8">Награда:</span> ${q.reward} MMO</div></div>
+                <div style="display:flex;gap:8px;"><button onclick="editSpecialQuest('${q.id}')" class="secondary"><i class="fas fa-edit"></i> Редактировать</button>
+                <button onclick="deleteSpecialQuest('${q.id}')" class="danger"><i class="fas fa-trash"></i> Удалить</button></div></div>`).join('')}`;
+        main.innerHTML = html;
+    }
+
+    window.showAddSpecialQuestModal = function() {
+        const modalHtml = `<div class="modal" id="specialQuestModal"><div class="modal-content"><h3>✨ Добавить спец-квест</h3>
+            <div class="form-group"><label>ID</label><input type="text" id="sqId" placeholder="уникальный"></div>
+            <div class="form-group"><label>Название</label><input type="text" id="sqTitle"></div>
+            <div class="form-group"><label>Описание</label><textarea id="sqDesc" rows="2"></textarea></div>
+            <div class="form-group"><label>Иконка</label><input type="text" id="sqIcon" value="📢"></div>
+            <div class="form-group"><label>Награда (MMO)</label><input type="number" id="sqReward" value="100"></div>
+            <div class="form-group"><label>Тип</label><select id="sqType"><option value="telegram_channel">Telegram канал</option><option value="custom_link">Переход по ссылке</option><option value="referral_count">Привести друзей</option></select></div>
+            <div class="form-group"><label>Ссылка</label><input type="text" id="sqLink" placeholder="https://t.me/..."></div>
+            <div class="form-group"><label>Необходимое количество</label><input type="number" id="sqRequiredCount" value="1"></div>
+            <div class="form-group"><label><input type="checkbox" id="sqIsActive" checked> Активен</label></div>
+            <div class="modal-buttons"><button onclick="createSpecialQuest()" class="success">Создать</button><button onclick="closeModal()">Отмена</button></div></div></div>`;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    };
+
+    window.createSpecialQuest = async function() {
+        const data = { id: document.getElementById('sqId').value, title: document.getElementById('sqTitle').value, description: document.getElementById('sqDesc').value, icon: document.getElementById('sqIcon').value, reward: parseInt(document.getElementById('sqReward').value), type: document.getElementById('sqType').value, link: document.getElementById('sqLink').value, required_count: parseInt(document.getElementById('sqRequiredCount').value) || 1, isActive: document.getElementById('sqIsActive').checked };
+        if (!data.id || !data.title || !data.reward) { showToast('Заполните ID, название и награду', 'error'); return; }
+        const res = await apiRequest('/api/admin/special-quests', 'POST', data);
+        if (res?.success) { showToast('Спец-квест создан'); closeModal(); loadSpecialQuests(); }
+    };
+
+    window.editSpecialQuest = async function(questId) {
+        const res = await apiRequest('/api/admin/special-quests');
+        if (!res) return;
+        const quest = res.specialQuests.find(q => q.id === questId);
+        if (!quest) return;
+        const modalHtml = `<div class="modal" id="specialQuestModal"><div class="modal-content"><h3>✏️ Редактировать: ${escapeHtml(quest.title)}</h3>
+            <div class="form-group"><label>Название</label><input type="text" id="sqTitle" value="${escapeHtml(quest.title)}"></div>
+            <div class="form-group"><label>Описание</label><textarea id="sqDesc" rows="2">${escapeHtml(quest.description || '')}</textarea></div>
+            <div class="form-group"><label>Иконка</label><input type="text" id="sqIcon" value="${escapeHtml(quest.icon || '🎯')}"></div>
+            <div class="form-group"><label>Награда (MMO)</label><input type="number" id="sqReward" value="${quest.reward}"></div>
+            <div class="form-group"><label>Тип</label><select id="sqType"><option value="telegram_channel" ${quest.type === 'telegram_channel' ? 'selected' : ''}>Telegram канал</option><option value="custom_link" ${quest.type === 'custom_link' ? 'selected' : ''}>Переход по ссылке</option><option value="referral_count" ${quest.type === 'referral_count' ? 'selected' : ''}>Привести друзей</option></select></div>
+            <div class="form-group"><label>Ссылка</label><input type="text" id="sqLink" value="${escapeHtml(quest.link || '')}"></div>
+            <div class="form-group"><label>Необходимое количество</label><input type="number" id="sqRequiredCount" value="${quest.required_count || 1}"></div>
+            <div class="form-group"><label><input type="checkbox" id="sqIsActive" ${quest.isActive ? 'checked' : ''}> Активен</label></div>
+            <div class="modal-buttons"><button onclick="updateSpecialQuest('${quest.id}')" class="success">Сохранить</button><button onclick="closeModal()">Отмена</button></div></div></div>`;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    };
+
+    window.updateSpecialQuest = async function(questId) {
+        const data = { title: document.getElementById('sqTitle').value, description: document.getElementById('sqDesc').value, icon: document.getElementById('sqIcon').value, reward: parseInt(document.getElementById('sqReward').value), type: document.getElementById('sqType').value, link: document.getElementById('sqLink').value, required_count: parseInt(document.getElementById('sqRequiredCount').value) || 1, isActive: document.getElementById('sqIsActive').checked };
+        const res = await apiRequest(`/api/admin/special-quests/${questId}`, 'PUT', data);
+        if (res?.success) { showToast('Спец-квест обновлён'); closeModal(); loadSpecialQuests(); }
+    };
+
+    window.deleteSpecialQuest = async function(questId) {
+        if (!confirm('Удалить спец-квест?')) return;
+        const res = await apiRequest(`/api/admin/special-quests/${questId}`, 'DELETE');
+        if (res?.success) { showToast('Спец-квест удалён'); loadSpecialQuests(); }
+    };
+
+    // ============================================================
+    // ЗАЯВКИ
+    // ============================================================
+    async function loadTransactions() {
+        const main = document.getElementById('mainContent');
+        main.innerHTML = '<div class="spinner">Загрузка заявок...</div>';
+        const statsRes = await apiRequest('/api/admin/stats');
+        const stats = statsRes?.stats || {};
+        const html = `<div class="user-card"><h3><i class="fas fa-exchange-alt"></i> Заявки на депозит и вывод</h3>
+            <div style="font-size:12px;color:#94a3b8;margin-bottom:16px;">Заявки обрабатываются через Telegram-бота (кнопки ✅/❌ в уведомлениях). Ниже — ручная обработка по ID заявки.</div>
+            <div style="background:#0d1120;border-radius:12px;padding:16px;margin-bottom:16px;"><h4 style="margin-bottom:12px;color:#a855f7;">⚡ Ручная обработка заявки</h4>
+            <div class="form-group"><label>ID заявки (MongoDB ObjectId)</label><input type="text" id="txRequestId" placeholder="Вставьте ID заявки из Telegram..."></div>
+            <div class="form-group"><label>Действие</label><select id="txAction"><option value="approve">✅ Подтвердить</option><option value="reject">❌ Отклонить</option></select></div>
+            <div class="form-group"><label>Примечание (опционально)</label><input type="text" id="txNote" placeholder="Причина отклонения и т.д."></div>
+            <button onclick="processTransaction()" class="success"><i class="fas fa-check"></i> Применить</button></div>
+            <div style="background:#0d1120;border-radius:12px;padding:16px;"><h4 style="margin-bottom:12px;color:#a855f7;">📊 Общая статистика</h4>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;font-size:13px;"><div><span style="color:#94a3b8">Всего игроков:</span> <strong>${stats.totalUsers || 0}</strong></div>
+            <div><span style="color:#94a3b8">Общий баланс:</span> <strong>${formatNum(stats.totalBalance || 0)} MMO</strong></div>
+            <div><span style="color:#94a3b8">Активные сегодня:</span> <strong>${stats.activeToday || 0}</strong></div>
+            <div><span style="color:#94a3b8">Забанено:</span> <strong>${stats.bannedUsers || 0}</strong></div></div></div></div>`;
+        main.innerHTML = html;
+    }
+
+    window.processTransaction = async function() {
+        const id = document.getElementById('txRequestId')?.value?.trim();
+        const action = document.getElementById('txAction')?.value;
+        const note = document.getElementById('txNote')?.value?.trim();
+        if (!id) { showToast('Введите ID заявки', 'error'); return; }
+        if (!confirm(`${action === 'approve' ? 'Подтвердить' : 'Отклонить'} заявку ${id}?`)) return;
+        const res = await apiRequest(`/api/admin/transaction-request/${id}`, 'POST', { action, note });
+        if (res?.success) { showToast(res.message || `Заявка ${action === 'approve' ? 'подтверждена' : 'отклонена'}`); document.getElementById('txRequestId').value = ''; document.getElementById('txNote').value = ''; }
+        else showToast(res?.message || 'Ошибка обработки заявки', 'error');
+    };
+
+    // ============================================================
+    // МАССОВЫЕ ДЕЙСТВИЯ
+    // ============================================================
+    window.showGiveAllCoins = function() {
+        const amount = prompt('Введите количество MMO для выдачи всем игрокам:', '100');
+        if (!amount) return;
+        giveToAll('coins', parseInt(amount));
+    };
+
+    window.showGiveAllCreature = function() {
+        const creatureId = prompt('Введите ID существа (например: duck_c):', 'duck_c');
+        if (!creatureId) return;
+        giveToAll('creature', null, creatureId);
+    };
+
+    async function giveToAll(type, amount, creatureId) {
+        const res = await apiRequest('/api/admin/give-to-all', 'POST', { type, amount, creatureId });
+        if (res?.success) showToast(res.message);
+        else showToast('Ошибка при массовой выдаче', 'error');
+    }
+
+    // ============================================================
+    // РАССЫЛКА - ФУНКЦИИ ДЛЯ КНОПОК (ИСПРАВЛЕНО)
+    // ============================================================
+    let buttonRows = 1;
+
+    window.addButtonRow = function() {
+        if (buttonRows >= 3) {
+            showToast('Максимум 3 кнопки', 'error');
+            return;
+        }
+        
+        const container = document.getElementById('buttonsContainer');
+        if (!container) return;
+        
+        const row = document.createElement('div');
+        row.className = 'button-row';
+        row.innerHTML = `
+            <input type="text" placeholder="Текст кнопки" class="btn-text" style="flex: 1;">
+            <input type="text" placeholder="URL ссылки" class="btn-url" style="flex: 2;">
+            <button onclick="removeButtonRow(this)" class="danger" style="padding: 6px 12px;">✖</button>
+        `;
+        container.appendChild(row);
+        buttonRows++;
+    }
+
+    window.removeButtonRow = function(btn) {
+        const row = btn.closest('.button-row');
+        if (row) {
+            row.remove();
+            buttonRows--;
+        }
+    }
+
+    function getButtons() {
+        const buttons = [];
+        const rows = document.querySelectorAll('#buttonsContainer .button-row');
+        
+        for (const row of rows) {
+            const text = row.querySelector('.btn-text')?.value.trim();
+            const url = row.querySelector('.btn-url')?.value.trim();
+            
+            if (text && url) {
+                buttons.push({ text, url });
+            }
+        }
+        
+        return buttons;
+    }
+
+    window.sendBroadcast = async function(testMode = false) {
+        const message = document.getElementById('broadcastMessage')?.value.trim();
+        const imageUrl = document.getElementById('broadcastImage')?.value.trim();
+        const buttons = getButtons();
+        
+        if (!message) {
+            showToast('Введите текст сообщения', 'error');
+            return;
+        }
+        
+        const confirmMsg = testMode 
+            ? 'Отправить ТЕСТОВУЮ рассылку только АДМИНАМ?' 
+            : `Отправить рассылку ВСЕМ ИГРОКАМ?\n\nЭто действие нельзя отменить!`;
+        
+        if (!confirm(confirmMsg)) return;
+        
+        showToast('Рассылка запущена...', 'info');
+        
+        const res = await apiRequest('/api/admin/broadcast/create', 'POST', {
+            message,
+            imageUrl: imageUrl || null,
+            buttons,
+            parseMode: 'HTML',
+            testMode
+        });
+        
+        if (res?.success) {
+            showToast(res.message, 'success');
+            document.getElementById('broadcastMessage').value = '';
+            document.getElementById('broadcastImage').value = '';
+            const buttonsContainer = document.getElementById('buttonsContainer');
+            if (buttonsContainer) {
+                buttonsContainer.innerHTML = `
+                    <div class="button-row">
+                        <input type="text" placeholder="Текст кнопки" class="btn-text" style="flex: 1;">
+                        <input type="text" placeholder="URL ссылки" class="btn-url" style="flex: 2;">
+                        <button onclick="removeButtonRow(this)" class="danger" style="padding: 6px 12px;">✖</button>
+                    </div>
+                `;
+            }
+            buttonRows = 1;
+            loadBroadcastHistory();
+        } else {
+            showToast(res?.message || 'Ошибка', 'error');
+        }
+    }
+
+    async function loadBroadcastHistory() {
+        const container = document.getElementById('broadcastHistory');
+        if (!container) return;
+        
+        const res = await apiRequest('/api/admin/broadcast/history');
+        if (!res?.success) {
+            container.innerHTML = '<div class="spinner">Ошибка загрузки</div>';
+            return;
+        }
+        
+        const broadcasts = res.broadcasts || [];
+        
+        if (broadcasts.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding: 20px; color: #4a5568;">Нет отправленных рассылок</div>';
+            return;
+        }
+        
+        container.innerHTML = broadcasts.map(b => {
+            const statusColor = b.status === 'completed' ? '#22c55e' : b.status === 'pending' ? '#f59e0b' : '#ef4444';
+            const statusText = b.status === 'completed' ? '✅ Завершена' : b.status === 'pending' ? '⏳ В процессе' : '❌ Отменена';
+            const date = new Date(b.createdAt).toLocaleString();
+            
+            return `
+                <div style="background: #0d1120; border: 1px solid #1e2d4a; border-radius: 12px; padding: 12px; margin-bottom: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <div>
+                            <span style="color: ${statusColor}; font-weight: 700;">${statusText}</span>
+                            <span style="color: #4a5568; font-size: 11px; margin-left: 8px;">#${b._id.slice(-8)}</span>
+                        </div>
+                        <div style="font-size: 11px; color: #4a5568;">${date}</div>
+                    </div>
+                    
+                    <div style="font-size: 12px; color: #94a3b8; margin-bottom: 8px;">
+                        <strong>Отправитель:</strong> ${escapeHtml(b.createdBy || 'admin')}
+                    </div>
+                    
+                    <div style="background: #080b14; border-radius: 8px; padding: 8px; margin: 8px 0; font-size: 12px; max-height: 100px; overflow-y: auto;">
+                        ${escapeHtml(b.message.substring(0, 200))}${b.message.length > 200 ? '...' : ''}
+                    </div>
+                    
+                    <div style="display: flex; gap: 12px; font-size: 11px; margin-top: 8px;">
+                        <div style="color: #22c55e;">✅ Отправлено: ${b.sentCount || 0}</div>
+                        <div style="color: #ef4444;">❌ Ошибок: ${b.failedCount || 0}</div>
+                        <div style="color: #a855f7;">👥 Всего: ${b.totalUsers || 0}</div>
+                    </div>
+                    
+                    ${b.imageUrl ? `<div style="margin-top: 8px; font-size: 10px; color: #06b6d4;">🖼️ С изображением</div>` : ''}
+                    ${b.buttons && b.buttons.length ? `<div style="margin-top: 8px; font-size: 10px; color: #f59e0b;">🔘 Кнопок: ${b.buttons.length}</div>` : ''}
+                    
+                    ${b.status === 'pending' ? `
+                        <button onclick="cancelBroadcast('${b._id}')" class="danger" style="margin-top: 8px; padding: 4px 12px; font-size: 10px;">
+                            <i class="fas fa-ban"></i> Отменить
+                        </button>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
+    }
+
+    window.cancelBroadcast = async function(broadcastId) {
+        if (!confirm('Отменить рассылку? Отправленные сообщения не будут удалены.')) return;
+        
+        const res = await apiRequest(`/api/admin/broadcast/cancel/${broadcastId}`, 'POST');
+        if (res?.success) {
+            showToast('Рассылка отменена', 'success');
+            loadBroadcastHistory();
+        } else {
+            showToast(res?.message || 'Ошибка', 'error');
+        }
+    }
+
+    async function loadBroadcastTab() {
+        const main = document.getElementById('mainContent');
+        main.innerHTML = `
+            <div class="user-card">
+                <h3><i class="fas fa-bullhorn"></i> Создать рассылку</h3>
+                
+                <div class="form-group">
+                    <label>📝 Текст сообщения (HTML поддерживается)</label>
+                    <textarea id="broadcastMessage" rows="6" placeholder="Введите текст сообщения...&#10;&#10;Поддерживается HTML:&#10;&lt;b&gt;жирный&lt;/b&gt; &lt;i&gt;курсив&lt;/i&gt;"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>🖼️ URL изображения (опционально)</label>
+                    <input type="text" id="broadcastImage" placeholder="https://example.com/image.jpg">
+                    <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">
+                        Поддерживается: JPG, PNG, GIF. Максимум 5MB
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>🔘 Кнопки (до 3-х)</label>
+                    <div id="buttonsContainer">
+                        <div class="button-row">
+                            <input type="text" placeholder="Текст кнопки" class="btn-text" style="flex: 1;">
+                            <input type="text" placeholder="URL ссылки" class="btn-url" style="flex: 2;">
+                            <button onclick="removeButtonRow(this)" class="danger" style="padding: 6px 12px;">✖</button>
+                        </div>
+                    </div>
+                    <button onclick="addButtonRow()" class="secondary" style="margin-top: 8px;">
+                        <i class="fas fa-plus"></i> Добавить кнопку
+                    </button>
+                </div>
+                
+                <div style="display: flex; gap: 12px; margin-top: 16px;">
+                    <button onclick="sendBroadcast(false)" class="success" style="flex: 1;">
+                        <i class="fas fa-paper-plane"></i> ОТПРАВИТЬ ВСЕМ
+                    </button>
+                    <button onclick="sendBroadcast(true)" class="warning" style="flex: 1;">
+                        <i class="fas fa-flask"></i> ТЕСТ (только админам)
+                    </button>
+                </div>
+            </div>
+            
+            <div class="user-card">
+                <h3><i class="fas fa-history"></i> История рассылок</h3>
+                <div id="broadcastHistory">
+                    <div class="spinner">Загрузка...</div>
+                </div>
+            </div>
+        `;
+        
+        loadBroadcastHistory();
+    }
+
+    window.refreshCache = async function() {
+        showToast('Обновление кэша...', 'info');
+        const res = await apiRequest('/api/admin/refresh-cache', 'POST');
+        if (res?.success) {
+            showToast('Кэш обновлён!');
+            const activeTab = document.querySelector('.nav-item.active')?.dataset.tab;
+            if (activeTab === 'ads') loadAdsPanel();
+            if (activeTab === 'dashboard') loadDashboard();
+            if (activeTab === 'users') loadUsers(currentPage);
+        } else {
+            showToast('Ошибка обновления кэша', 'error');
+        }
+    };
+
+    // ============================================================
+    // INIT
+    // ============================================================
+    if (!adminToken) {
+        showLoginModal();
+    } else {
+        (async function checkAuth() {
+            try {
+                const res = await apiRequest('/api/admin/stats');
+                if (res && res.success) {
+                    loadDashboard();
+                    startRealMetrics();
+                    const creaturesRes = await apiRequest('/api/admin/creatures');
+                    if (creaturesRes?.creatures) creaturesList = creaturesRes.creatures;
+                } else if (res === null && !adminToken) {
+                    showLoginModal();
+                } else if (res === null) {
+                    loadDashboard();
+                    startRealMetrics();
+                    showToast('Сервер временно недоступен', 'error');
+                }
+            } catch(e) {
+                console.error('checkAuth error:', e);
+                showLoginModal();
+            }
+        })();
+    }
+
+    // ============================================================
+    // ARENA TAB
+    // ============================================================
+
+    window.goToArenaTab = function() {
+        document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+        const arenaBtn = document.getElementById('navArena');
+        if (arenaBtn) arenaBtn.classList.add('active');
+        loadArenaTab();
+    };
+
+    const LEAGUE_NAMES = {
+        bronze:   '🥉 Бронза',
+        silver:   '🥈 Серебро',
+        gold:     '🥇 Золото',
+        platinum: '💎 Платина',
+        diamond:  '🏆 Алмаз'
+    };
+
+    const LEAGUE_ENTRY = { bronze: 200, silver: 500, gold: 1000, platinum: 2000, diamond: 5000 };
+    const LEAGUE_PRIZE = { bronze: 350, silver: 800, gold: 1600, platinum: 3200, diamond: 8000 };
+
+    function leagueBadge(league) {
+        return `<span class="arena-league-badge league-${league}">${LEAGUE_NAMES[league] || league}</span>`;
+    }
+
+    function statusLabel(status) {
+        const map = {
+            waiting:              ['battle-status-waiting',  '🔍 Поиск'],
+            pending_confirmation: ['battle-status-pending',  '⏳ Подтверждение'],
+            active:               ['battle-status-active',   '⚔️ Активный'],
+            finished:             ['battle-status-finished', '✅ Завершён'],
+            expired:              ['battle-status-expired',  '⌛ Истёк'],
+            cancelled:            ['battle-status-cancelled','❌ Отменён'],
+        };
+        const [cls, label] = map[status] || ['', status];
+        return `<span class="${cls}">${label}</span>`;
+    }
+
+    function miniTeam(team) {
+        if (!team || !team.length) return '<span style="color:#4a5568;font-size:10px">—</span>';
+        return '<div class="mini-team">' + team.map(p => {
+            const src = p.icon && p.icon.startsWith('http') ? p.icon : '';
+            const hp = p.maxHp ? Math.round(p.currentHp / p.maxHp * 100) : 0;
+            const dead = !p.isAlive ? 'opacity:0.3;' : '';
+            if (src) {
+                return `<img class="mini-creature" src="${src}" title="${p.name} HP:${hp}%" style="${dead}" onerror="this.style.display='none'">`;
+            }
+            return `<span style="font-size:18px;${dead}" title="${p.name} HP:${hp}%">🧬</span>`;
+        }).join('') + '</div>';
+    }
+
+    function fmtTime(dateStr) {
+        if (!dateStr) return '—';
+        const d = new Date(dateStr);
+        return d.toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit' }) + ' ' +
+               d.toLocaleTimeString('ru-RU', { hour:'2-digit', minute:'2-digit' });
+    }
+
+    function pName(p) {
+        if (!p) return '<span style="color:#4a5568">—</span>';
+        return p.username ? `@${p.username}` : (p.firstName || p.telegramId || '?');
+    }
+
+    async function loadArenaTab() {
+        const main = document.getElementById('mainContent');
+        main.innerHTML = '<div class="spinner">Загрузка арены...</div>';
+
+        const [battlesRes, leaderRes] = await Promise.all([
+            apiRequest('/api/admin/arena/battles'),
+            apiRequest('/api/admin/arena/leaderboard')
+        ]);
+
+        let statsHtml = '';
+        let battlesHtml = '';
+        let leaderHtml = '';
+
+        // ── СТАТИСТИКА ─────────────────────────────────────────
+        if (battlesRes && battlesRes.stats) {
+            const s = battlesRes.stats;
+            statsHtml = `
+            <div class="arena-stats-grid">
+                <div class="stat-card"><h3>Активных боёв</h3><div class="value" style="color:#22c55e">${s.active || 0}</div></div>
+                <div class="stat-card"><h3>В поиске</h3><div class="value" style="color:#f59e0b">${s.waiting || 0}</div></div>
+                <div class="stat-card"><h3>Подтверждение</h3><div class="value" style="color:#38bdf8">${s.pending || 0}</div></div>
+                <div class="stat-card"><h3>Завершено всего</h3><div class="value">${s.finished || 0}</div></div>
+                <div class="stat-card"><h3>Боёв сегодня</h3><div class="value">${s.today || 0}</div></div>
+                <div class="stat-card"><h3>Игроков с рейтингом</h3><div class="value">${s.totalRated || 0}</div></div>
+                <div class="stat-card"><h3>Выплачено MMO</h3><div class="value">${(s.totalPaid || 0).toLocaleString()}</div></div>
+                <div class="stat-card"><h3>Ср. ходов/бой</h3><div class="value">${s.avgTurns || 0}</div></div>
+            </div>`;
+        } else {
+            statsHtml = '<div class="stat-card" style="margin-bottom:16px"><h3>Статистика</h3><div style="color:#4a5568;font-size:12px;margin-top:8px">Нет данных от сервера</div></div>';
+        }
+
+        // ── АКТИВНЫЕ / НЕДАВНИЕ БОИ ────────────────────────────
+        if (battlesRes && battlesRes.battles && battlesRes.battles.length > 0) {
+            const rows = battlesRes.battles.map(b => {
+                const p1 = b.player1 || {};
+                const p2 = b.player2 || {};
+                const winner = b.winnerId ? (b.player1Id && b.winnerId === b.player1Id ? p1 : p2) : null;
+                return `<tr class="battle-row">
+                    <td style="font-size:10px;color:#4a5568;font-family:monospace">${b._id ? b._id.toString().slice(-6) : '?'}</td>
+                    <td>${leagueBadge(b.league)}</td>
+                    <td>${statusLabel(b.status)}</td>
+                    <td style="font-size:11px">
+                        <div>${pName(p1)}</div>
+                        <div style="color:#4a5568">vs</div>
+                        <div>${p2.telegramId ? pName(p2) : '<span style="color:#4a5568">ждёт...</span>'}</div>
+                    </td>
+                    <td>${miniTeam(b.player1Team)}</td>
+                    <td>${miniTeam(b.player2Team)}</td>
+                    <td style="font-size:11px;color:#f59e0b">${(b.prizePool || 0).toLocaleString()} <span style="color:#4a5568">MMO</span></td>
+                    <td style="font-size:11px">${b.turnCount || 0}</td>
+                    <td style="font-size:10px;color:#4a5568">${fmtTime(b.createdAt)}</td>
+                    <td>${winner ? '<span style="color:#22c55e">🏆 ' + pName(winner) + '</span>' : '—'}</td>
+                </tr>`;
+            }).join('');
+
+            battlesHtml = `
+            <div class="data-table">
+                <table>
+                    <thead><tr>
+                        <th>ID</th><th>Лига</th><th>Статус</th><th>Игроки</th>
+                        <th>Команда 1</th><th>Команда 2</th><th>Приз</th><th>Ходы</th><th>Время</th><th>Победитель</th>
+                    </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>`;
+        } else {
+            battlesHtml = '<div style="color:#4a5568;font-size:13px;padding:20px 0;text-align:center">Нет боёв</div>';
+        }
+
+        // ── ТАБЛИЦА РЕЙТИНГА ───────────────────────────────────
+        if (leaderRes && leaderRes.leaderboard && leaderRes.leaderboard.length > 0) {
+            const rows = leaderRes.leaderboard.map((s, i) => {
+                const pct = Math.min(100, Math.round((s.rating - 0) / 25));
+                const rank = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`;
+                return `<tr>
+                    <td style="font-weight:700">${rank}</td>
+                    <td style="font-size:12px">${s.name || '?'} <span style="color:#4a5568;font-size:10px">Lv${s.level||1}</span></td>
+                    <td>${leagueBadge(s.league)}</td>
+                    <td>
+                        <span style="font-weight:700;color:#a855f7">${s.rating}</span>
+                        <span class="rating-bar-wrap"><span class="rating-bar-fill" style="width:${pct}%"></span></span>
+                    </td>
+                    <td style="color:#22c55e">${s.wins}</td>
+                    <td style="color:#ef4444">${s.losses}</td>
+                    <td>${s.streak > 2 ? '🔥' : ''}${s.streak}</td>
+                    <td style="font-size:11px;color:#f59e0b">${(s.totalEarned||0).toLocaleString()}</td>
+                </tr>`;
+            }).join('');
+
+            leaderHtml = `
+            <div class="data-table">
+                <table>
+                    <thead><tr>
+                        <th>#</th><th>Игрок</th><th>Лига</th><th>Рейтинг</th>
+                        <th>🏆 Победы</th><th>💀 Пор.</th><th>🔥 Серия</th><th>Заработано</th>
+                    </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>`;
+        } else {
+            leaderHtml = '<div style="color:#4a5568;font-size:13px;padding:20px 0;text-align:center">Нет данных рейтинга</div>';
+        }
+
+        main.innerHTML = `
+            <div class="user-card" style="margin-bottom:0;border-radius:16px 16px 0 0;border-bottom:none;padding-bottom:8px">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <h3 style="color:#38bdf8">⚔️ Арена — Мониторинг</h3>
+                    <div style="display:flex;gap:8px">
+                        <button class="secondary" onclick="loadArenaTab()" style="font-size:11px"><i class="fas fa-sync"></i> Обновить</button>
+                        <button class="secondary" onclick="goToArenaTab(); setInterval(loadArenaTab, 10000);" style="font-size:11px;background:#0d1120">🔴 Live</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="user-card" style="border-radius:0;border-top:none;border-bottom:none;padding-top:0">
+                ${statsHtml}
+            </div>
+
+            <div class="user-card" style="border-radius:0;border-top:none;border-bottom:none">
+                <div class="arena-section-title">⚔️ Последние бои <span style="font-size:11px;color:#4a5568;font-weight:400">(50 штук)</span></div>
+                ${battlesHtml}
+            </div>
+
+            <div class="user-card" style="border-radius:0 0 16px 16px;border-top:none">
+                <div class="arena-section-title">🏆 Таблица рейтинга</div>
+                ${leaderHtml}
+            </div>
+        `;
+    }
+
 </script>
 </body>
 </html>
