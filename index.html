@@ -1,816 +1,471 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="type" value="app" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="format-detection" content="telephone=no">
-<meta name="msapplication-tap-highlight" content="no">
-<title>DNA MMO — Merge & Evolve</title>
-<meta property="og:title" content="DNA MMO — Merge & Evolve">
-<meta property="og:description" content="Open DNA capsules, collect creatures, merge to evolve and earn MMO tokens.">
-<meta property="og:type" content="website">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-<!-- Font Awesome 6.7.2 (полностью рабочая) -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
-<link rel="stylesheet" href="style.css">
-<!-- Telegram WebApp SDK -->
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script data-project-id="6820">
-  !function(){
-    var s=document.currentScript,p=s.getAttribute('data-project-id')||'default';
-    var d=['https://ad.gigapub.tech','https://ru-ad.gigapub.tech'],i=0,t,sc;
-    function l(){
-      sc=document.createElement('script');
-      sc.async=true;
-      sc.src=d[i]+'/script?id='+p;
-      clearTimeout(t);
-      t=setTimeout(function(){
-        sc.onload=sc.onerror=null;
-        sc.src='';
-        if(++i<d.length)l();
-      },15000);
-      sc.onload=function(){clearTimeout(t)};
-      sc.onerror=function(){clearTimeout(t);if(++i<d.length)l()};
-      document.head.appendChild(sc);
-    }
-    l();
-  }();
-</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>TradeTON</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="style.css">
 </head>
+<body>
 
-<body ondragstart="return false" oncontextmenu="return false" onselectstart="return false">
-<canvas id="particles-canvas"></canvas>
+<div class="lang-welcome" id="langWelcome">
+  <div class="lw-logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="36" height="36"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+  </div>
+  <div class="lw-title" data-i18n="lang_welcome_title">Добро пожаловать!</div>
+  <div class="lw-sub" data-i18n="lang_welcome_sub">Выберите язык приложения</div>
+  <div class="lw-opt" onclick="chooseLang('ru')">
+    <div class="lw-opt-flag">🇷🇺</div>
+    <div><div class="lw-opt-name">Русский</div><div class="lw-opt-sub">Russian</div></div>
+  </div>
+  <div class="lw-opt" onclick="chooseLang('en')">
+    <div class="lw-opt-flag">🇬🇧</div>
+    <div><div class="lw-opt-name">English</div><div class="lw-opt-sub">Английский</div></div>
+  </div>
+</div>
 
-<!-- HEADER -->
+<div class="lang-modal-overlay" id="langModal" onclick="if(event.target===this)closeLangModal()">
+  <div class="lang-modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" data-i18n="lang_select_title">Выберите язык</div>
+    <div class="lang-option" id="lang-opt-ru" onclick="chooseLang('ru')">
+      <div class="lang-option-name">🇷🇺 Русский</div>
+      <div class="lang-check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" width="12" height="12"><polyline points="20 6 9 17 4 12"/></svg></div>
+    </div>
+    <div class="lang-option" id="lang-opt-en" onclick="chooseLang('en')">
+      <div class="lang-option-name">🇬🇧 English</div>
+      <div class="lang-check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" width="12" height="12"><polyline points="20 6 9 17 4 12"/></svg></div>
+    </div>
+  </div>
+</div>
+
+<div class="splash" id="splash">
+  <div class="splash-logo">
+    <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+  </div>
+  <div class="splash-name">Trade<span>TON</span></div>
+  <div class="splash-sub" data-i18n="info_tagline">Умные боты. Реальный доход.</div>
+  <div class="splash-bar-wrap"><div class="splash-bar" id="splashBar"></div></div>
+  <div class="splash-dots">
+    <div class="splash-dot lit" id="sd0"></div>
+    <div class="splash-dot" id="sd1"></div>
+    <div class="splash-dot" id="sd2"></div>
+    <div class="splash-dot" id="sd3"></div>
+  </div>
+</div>
+
 <div class="header">
-    <div class="header-top">
-        <div class="player-info">
-            <div class="avatar" id="playerAvatar">G</div>
-            <div>
-                <div class="player-name">GENOME_X</div>
-                <div class="player-level" id="playerLevelLabel">LVL 1 · Researcher</div>
-                <!-- Компактная полоска опыта -->
-                <div class="player-xp-compact">
-                    <div class="xp-bar-compact">
-                        <div class="xp-fill-compact" id="xpFillCompact" style="width:0%"></div>
-                    </div>
-                    <div class="xp-text-compact" id="xpTextCompact">0/100</div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Блок баланса -->
-        <div class="balance-area stacked">
-            <div class="balance-row main">
-                <i class="fa-solid fa-dna"></i>
-                <span id="balanceDisplay">0</span>
-                <span class="balance-suffix">MMO</span>
-            </div>
-            <div class="balance-row stats">
-                <div class="stats-item dust">
-                    <span><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:16px;height:16px;vertical-align:middle;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))"></span>
-                    <span id="dustDisplay">0</span>
-                </div>
-                <div class="stats-divider"></div>
-                <div class="stats-item income">
-                    <i class="fa-solid fa-bolt"></i>
-                    <span id="incomeInline">0</span>
-                    <span class="income-unit">/ч</span>
-                </div>
-            </div>
-        </div>
+  <div class="logo">
+    <div class="logo-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
     </div>
+    <div class="logo-text">Trade<span>TON</span></div>
+  </div>
+  <div class="header-right">
+    <div class="bal-pill">
+      <div class="balance-label" data-i18n="balance">Баланс</div>
+      <div class="balance-val" id="balanceEl">0.00 TON</div>
+    </div>
+    <div class="avatar" id="avatarEl">А</div>
+  </div>
 </div>
 
-<!-- MAIN CONTENT -->
-<div class="main-content" id="mainContent">
+<div class="pages">
 
-<!-- GAME TAB -->
-<div class="tab-content active" id="tab-game">
-    <div class="section-title"><i class="fa-solid fa-flask" style="color:var(--accent3)"></i> <span data-i18n="game.capsules">DNA Capsules</span></div>
+  <!-- ТОРГИ -->
+  <div class="page active" id="page-trade">
+    <div id="activeSection" style="display:none">
+      <div class="sec-title"><span style="display:inline-flex;align-items:center;gap:5px"><svg viewBox="0 0 24 24" fill="none" stroke="#39D98A" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" ><circle cx="12" cy="12" r="3" fill="#39D98A"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></span> <span data-i18n="active_bots">Активные боты</span></div>
+      <div id="activeBotsList"></div>
+    </div>
+    <div class="sec-title" data-i18n="buy_bot">Купить бота</div>
 
-    <div class="capsule-area">
-        <div class="capsule-card" id="basicCapsuleCard" onclick="showCapsuleModal('basic')">
-            <div class="capsule-icon">
-                <img src="1.png" alt="DNA Capsule" style="object-fit:contain">
-            </div>
-            <div class="capsule-name" data-i18n="game.dnaCapsule">DNA CAPSULE</div>
-            <div class="capsule-cost"><i class="fa-solid fa-dna" style="font-size:10px"></i> 1000 MMO</div>
-            <button class="capsule-btn" onclick="event.stopPropagation();showCapsuleModal('basic')" data-i18n="game.open">OPEN</button>
+    <div class="bot-card" id="bot-basic">
+      <div class="bot-head">
+        <div class="bot-icon basic"><svg viewBox="0 0 24 24" fill="none" stroke="#7B7FF8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M12 2v4"/><circle cx="12" cy="6" r="1"/><path d="M8 15h.01M12 15h.01M16 15h.01"/><path d="M6 11V9a6 6 0 0 1 12 0v2"/></svg></div>
+        <div><div class="bot-name">Scout Bot</div><div class="bot-tier tier-basic">BASIC</div></div>
+        <div class="bot-badge"><div class="yield-val" id="yld-basic">+3.5–5.5%</div><div class="yield-lbl" id="ylbl-basic">за 7 дней</div></div>
+      </div>
+      <div class="bot-body">
+        <div class="bot-pairs" data-bot="basic">
+          <button class="pair-chip sel">EUR/USD</button>
+          <button class="pair-chip">GBP/USD</button>
+          <button class="pair-chip">USD/JPY</button>
+          <button class="pair-chip">USD/CHF</button>
         </div>
-        <div class="capsule-card premium" id="premiumCapsuleCard" onclick="showCapsuleModal('premium')">
-            <div class="capsule-icon">
-                <img src="2.png" alt="Premium DNA Capsule" style="object-fit:contain">
-            </div>
-            <div class="capsule-name" data-i18n="game.premiumCapsule">PREMIUM DNA</div>
-            <div class="capsule-cost gold"><i class="fa-solid fa-gem" style="font-size:10px"></i> 6000 MMO</div>
-            <button class="capsule-btn gold-btn" onclick="event.stopPropagation();showCapsuleModal('premium')" data-i18n="game.open">OPEN</button>
+        <div class="bot-dur" data-bot="basic">
+          <button class="dur-btn sel" data-days="7" data-price="29">7 дней<span class="dur-price">29 TON</span></button>
+          <button class="dur-btn" data-days="14" data-price="49">14 дней<span class="dur-price">49 TON</span></button>
+          <button class="dur-btn" data-days="30" data-price="89">30 дней<span class="dur-price">89 TON</span></button>
         </div>
+        <button class="buy-btn basic-btn" onclick="openModal('Scout Bot','basic')"><span style="display:inline-flex;align-items:center;gap:6px"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" ><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg> <span data-i18n-html="launch_btn_basic">Запустить — 29 TON</span></span></button>
+      </div>
     </div>
 
-    <div style="margin-bottom:16px">
-        <button style="width:100%;background:linear-gradient(135deg,rgba(34,197,94,0.2),rgba(34,197,94,0.05));border:1px solid rgba(34,197,94,0.3);border-radius:14px;padding:12px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:all 0.2s;margin-bottom:12px;font-family:'Orbitron',monospace;font-size:12px;font-weight:700;color:var(--uncommon);text-transform:uppercase;letter-spacing:0.5px" id="adsBtn" onclick="watchAd()">
-            <i class="fa-solid fa-tv" style="font-size:16px"></i>
-            <span style="flex:1;text-align:left" data-i18n="game.watchAd">Watch Ad</span>
-            <span style="color:var(--uncommon);font-size:13px;min-width:50px;text-align:right" id="adsTimer">Ready</span>
-            <span style="color:var(--uncommon);font-weight:700" id="adsReward">+5</span>
-            <span style="color:var(--text3);font-size:9px;margin-left:4px" id="adsRemaining">0/10</span>
-        </button>
-        <div class="encyclopedia-btn" onclick="showEncyclopedia()">
-            <div class="enc-icon"><i class="fa-solid fa-book-open"></i></div>
-            <div class="enc-info">
-                <div class="enc-title" data-i18n="encyclopedia.title">Collection Encyclopedia</div>
-                <div class="enc-sub" data-i18n="encyclopedia.subtitle">Discover all creatures</div>
-            </div>
-            <div class="enc-progress" id="encyclopediaProgress">0/20</div>
+    <div class="bot-card" id="bot-pro">
+      <div class="bot-head">
+        <div class="bot-icon pro"><svg viewBox="0 0 24 24" fill="none" stroke="#39D98A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg></div>
+        <div><div class="bot-name">Alpha Bot</div><div class="bot-tier tier-pro">PRO</div></div>
+        <div class="bot-badge"><div class="yield-val" style="color:var(--green)" id="yld-pro">+4.5–7.5%</div><div class="yield-lbl" id="ylbl-pro">за 7 дней</div></div>
+      </div>
+      <div class="bot-body">
+        <div class="bot-pairs" data-bot="pro">
+          <button class="pair-chip sel">AAPL</button>
+          <button class="pair-chip">TSLA</button>
+          <button class="pair-chip">NVDA</button>
+          <button class="pair-chip">MSFT</button>
+          <button class="pair-chip">AMZN</button>
         </div>
+        <div class="bot-dur" data-bot="pro">
+          <button class="dur-btn sel" data-days="7" data-price="79">7 дней<span class="dur-price">79 TON</span></button>
+          <button class="dur-btn" data-days="14" data-price="139">14 дней<span class="dur-price">139 TON</span></button>
+          <button class="dur-btn" data-days="30" data-price="249">30 дней<span class="dur-price">249 TON</span></button>
+        </div>
+        <button class="buy-btn pro-btn" onclick="openModal('Alpha Bot','pro')"><span style="display:inline-flex;align-items:center;gap:6px"><svg viewBox="0 0 24 24" fill="none" stroke="#052010" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" ><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.46 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.46 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg> <span data-i18n-html="launch_btn_pro">Запустить — 79 TON</span></span></button>
+      </div>
     </div>
 
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-        <div class="section-title" style="margin-bottom:0"><i class="fa-solid fa-cubes" style="color:var(--accent3)"></i> <span data-i18n="inventory.myCreatures">My Creatures</span> <span id="inventorySlots" style="font-size:10px;color:var(--text2);font-weight:400;letter-spacing:0">0/10</span></div>
-<button style="padding:6px 12px;border:none;border-radius:8px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;font-size:10px;font-weight:700;font-family:'Orbitron',monospace;cursor:pointer;transition:all 0.2s;white-space:nowrap" onclick="event.stopPropagation(); upgradeInventory()" id="quickUpgradeBtn">
-    <i class="fa-solid fa-plus"></i> +1 слот (<span id="upgradeSlotCost">300</span> MMO)
-</button>
-    </div>
-    <div class="cards-grid" id="cardsGrid">
-        <div class="empty-grid">
-            <i class="fa-solid fa-dna"></i>
-            <span data-i18n="inventory.empty">Open a capsule to get your first creature!</span>
+    <div class="bot-card premium" id="bot-elite">
+      <div class="bot-head">
+        <div class="bot-icon elite"><svg viewBox="0 0 24 24" fill="none" stroke="#F6465D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
+        <div><div class="bot-name">Quantum Bot</div><div class="bot-tier tier-elite">ELITE</div></div>
+        <div class="bot-badge"><div class="yield-val" style="color:var(--green)" id="yld-elite">+6.0–10.0%</div><div class="yield-lbl" id="ylbl-elite">за 7 дней</div></div>
+      </div>
+      <div class="bot-body">
+        <div class="bot-pairs" data-bot="elite">
+          <button class="pair-chip sel">XAU/USD</button>
+          <button class="pair-chip">XAG/USD</button>
+          <button class="pair-chip">EUR/USD</button>
+          <button class="pair-chip">GBP/JPY</button>
         </div>
+        <div class="bot-dur" data-bot="elite">
+          <button class="dur-btn sel" data-days="7" data-price="199">7 дней<span class="dur-price">199 TON</span></button>
+          <button class="dur-btn" data-days="14" data-price="349">14 дней<span class="dur-price">349 TON</span></button>
+          <button class="dur-btn" data-days="30" data-price="599">30 дней<span class="dur-price">599 TON</span></button>
+        </div>
+        <button class="buy-btn elite-btn" onclick="openModal('Quantum Bot','elite')"><span style="display:inline-flex;align-items:center;gap:6px"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" ><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <span data-i18n-html="launch_btn_elite">Запустить — 199 TON</span></span></button>
+      </div>
     </div>
-</div>
+  </div>
 
-<!-- MARKETPLACE TAB -->
-<div class="tab-content" id="tab-shop">
-    <div class="section-title"><i class="fa-solid fa-store" style="color:var(--accent2)"></i> <span data-i18n="marketplace.title">Marketplace</span></div>
-    <div class="marketplace-tabs">
-        <button class="marketplace-tab-btn active" onclick="switchMarketplaceTab('buy')">
-            <i class="fa-solid fa-bag-shopping"></i> <span data-i18n="marketplace.buy">Buy</span>
-        </button>
-        <button class="marketplace-tab-btn" onclick="switchMarketplaceTab('sell')">
-            <i class="fa-solid fa-tag"></i> <span data-i18n="marketplace.sell">Sell</span>
-        </button>
-        <button class="marketplace-tab-btn" onclick="switchMarketplaceTab('mylistings')">
-            <i class="fa-solid fa-list"></i> <span data-i18n="marketplace.myListings">My</span>
-        </button>
-    </div>
-<div class="marketplace-subtab active" id="marketplace-buy">
-    <!-- Блок фильтров -->
-    <div class="marketplace-filters">
-        <button class="filter-btn active" data-filter="all" onclick="setMarketplaceFilter('all')">📦 Все</button>
-        <button class="filter-btn" data-filter="common" onclick="setMarketplaceFilter('common')">⬜ Common</button>
-        <button class="filter-btn" data-filter="uncommon" onclick="setMarketplaceFilter('uncommon')">🟢 Uncommon</button>
-        <button class="filter-btn" data-filter="rare" onclick="setMarketplaceFilter('rare')">🔵 Rare</button>
-        <button class="filter-btn" data-filter="epic" onclick="setMarketplaceFilter('epic')">🟣 Epic</button>
-        <button class="filter-btn" data-filter="legendary" onclick="setMarketplaceFilter('legendary')">🟠 Legendary</button>
-        <button class="filter-btn" data-filter="dust" onclick="setMarketplaceFilter('dust')">🌫️ Пыль</button>
-    </div>
-    <div id="marketplaceListings" style="display:flex;flex-direction:column;gap:10px"></div>
-</div>
-    <div class="marketplace-subtab" id="marketplace-sell">
-        <div class="section-title" style="margin-bottom:12px"><i class="fa-solid fa-hand-holding-dollar" style="color:var(--uncommon)"></i> <span data-i18n="marketplace.yourCreatures">Your Creatures</span></div>
-        <div id="marketplaceSellCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"></div>
-    </div>
-    <div class="marketplace-subtab" id="marketplace-mylistings">
-        <div class="section-title" style="margin-bottom:12px"><i class="fa-solid fa-list" style="color:var(--accent2)"></i> <span data-i18n="marketplace.yourListings">Your Listings</span></div>
-        <div id="marketplaceMyListings"></div>
-    </div>
-</div>
-
-<!-- LEADERBOARD TAB -->
-<div class="tab-content" id="tab-leaderboard">
-    <div style="position:relative;border-radius:20px;overflow:hidden;margin-bottom:16px;cursor:pointer" onclick="showToast('🏆 Займи #1 и получи Black Pantera Mythic!', '🏆')">
-        <div style="position:absolute;inset:0;z-index:2;pointer-events:none;border-radius:20px;border:1px solid rgba(255,255,255,0.18);background:linear-gradient(135deg,rgba(255,255,255,0.10) 0%,rgba(168,85,247,0.08) 40%,rgba(0,0,0,0) 100%)"></div>
-        <div style="position:absolute;top:0;left:-10%;width:40%;height:100%;z-index:3;pointer-events:none;background:linear-gradient(105deg,rgba(255,255,255,0) 40%,rgba(255,255,255,0.13) 50%,rgba(255,255,255,0) 60%);border-radius:20px"></div>
-        <div style="position:absolute;top:0;left:12%;width:76%;height:1.5px;z-index:4;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.55),transparent);border-radius:2px"></div>
-        <img src="https://storage.yandexcloud.net/timenote/tmp/824f3177814a9035c2d9d37847e9c169caa97f4123274f5630877aefe899602c.jpg"
-             alt="Season 1 — Black Pantera Mythic"
-             style="width:100%;display:block;border-radius:20px;object-fit:cover;max-height:160px;object-position:center top">
-    </div>
-    <div class="section-title"><i class="fa-solid fa-trophy" style="color:var(--legendary)"></i> <span data-i18n="leaderboard.title">Global Leaderboard</span></div>
-    <div class="leaderboard-list" id="leaderboardList"></div>
-</div>
-
-<!-- FRIENDS TAB -->
-<div class="tab-content" id="tab-friends">
-    <div class="friends-hero">
-        <div class="friends-hero-icon">👥</div>
-        <div class="friends-hero-title" data-i18n="friends.inviteTitle">INVITE FRIENDS</div>
-        <div class="friends-hero-sub" id="friendCountDisplay">0 friends invited</div>
-        <button class="invite-btn" onclick="inviteFriend()">
-            <i class="fa-solid fa-user-plus"></i>
-            <span data-i18n="friends.inviteBtn">INVITE FRIEND</span>
-        </button>
-    </div>
-    
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px">
-        <div class="friends-reward-card" id="reward-10" data-reward="10">
-            <div class="reward-icon">
-                <img src="https://ndammo.github.io/Mmodna/wr.png" alt="Rare Wolf" style="width:48px;height:48px;object-fit:contain">
-            </div>
-            <div class="reward-name rare">RARE WOLF</div>
-            <div class="reward-friends"><i class="fa-solid fa-users"></i> 10</div>
-            <div class="reward-income"><i class="fa-solid fa-bolt"></i> 25/hr</div>
-            <button class="reward-btn" id="reward-10-btn">🔒</button>
-        </div>
-        <div class="friends-reward-card" id="reward-50" data-reward="50">
-            <div class="reward-icon">
-                <img src="https://ndammo.github.io/Mmodna/we.png" alt="Epic Wolf" style="width:48px;height:48px;object-fit:contain">
-            </div>
-            <div class="reward-name epic">EPIC WOLF</div>
-            <div class="reward-friends"><i class="fa-solid fa-users"></i> 50</div>
-            <div class="reward-income"><i class="fa-solid fa-bolt"></i> 80/hr</div>
-            <button class="reward-btn" id="reward-50-btn">🔒</button>
-        </div>
-        <div class="friends-reward-card" id="reward-150" data-reward="150">
-            <div class="reward-icon">
-                <img src="https://ndammo.github.io/Mmodna/wl.png" alt="Legendary Wolf" style="width:48px;height:48px;object-fit:contain">
-            </div>
-            <div class="reward-name legendary">LEGENDARY WOLF</div>
-            <div class="reward-friends"><i class="fa-solid fa-users"></i> 150</div>
-            <div class="reward-income"><i class="fa-solid fa-bolt"></i> 250/hr</div>
-            <button class="reward-btn" id="reward-150-btn">🔒</button>
-        </div>
-    </div>
-    
-    <div class="section-title"><i class="fa-solid fa-heart" style="color:#f472b6"></i> <span data-i18n="friends.myFriends">My Friends</span></div>
-    <div class="leaderboard-list" id="friendsList"></div>
-</div>
-
-<!-- SPECIAL QUESTS TAB -->
-<div class="tab-content" id="tab-special">
-    <div class="section-title"><i class="fa-solid fa-star" style="color:var(--legendary)"></i> <span data-i18n="specialQuests.title">Special Quests</span></div>
-    <div id="specialQuestsList"></div>
-</div>
-
-<!-- ARENA TAB -->
-<div class="tab-content" id="tab-arena">
-    <div class="arena-tabs">
-        <button class="arena-tab-btn active" data-arena-tab="team" onclick="switchArenaTab('team')">
-            <i class="fa-solid fa-users"></i> <span>Команда</span>
-        </button>
-        <button class="arena-tab-btn" data-arena-tab="fight" onclick="switchArenaTab('fight')">
-            <i class="fa-solid fa-shield-halved"></i> <span>Бой</span>
-        </button>
-        <button class="arena-tab-btn" data-arena-tab="ranks" onclick="switchArenaTab('ranks')">
-            <i class="fa-solid fa-chart-simple"></i> <span>Ранги</span>
-        </button>
-        <button class="arena-tab-btn" data-arena-tab="history" onclick="switchArenaTab('history')">
-            <i class="fa-solid fa-clock-rotate-left"></i> <span>История</span>
-        </button>
-    </div>
-    
-<!-- Вкладка Команда -->
-    <div class="arena-subtab active" id="arena-team-tab">
-        <div id="arenaTeamInventory"></div>
-        <div style="padding: 12px 16px 24px; display:flex; gap:10px; align-items:center;">
-            <button class="arena-save-btn" onclick="saveArenaTeam()" id="saveTeamBtn" style="flex:1;">
-                <i class="fa-solid fa-save"></i> <span>Сохранить</span>
-            </button>
-            <button onclick="resetArenaTeam()" id="resetTeamBtn" style="width:44px;height:44px;flex-shrink:0;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:12px;color:#ef4444;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
-                <i class="fa-solid fa-trash"></i>
-            </button>
-        </div>
-    </div>
-    
-    <!-- Вкладка Бой -->
-    <div class="arena-subtab" id="arena-fight-tab">
-        <div id="arenaFightStatus" class="arena-fight-status">
-            <div class="arena-stats-preview">
-                <div class="arena-stat-item" id="arenaEntryFeeRow" style="display:none;">
-                    <span class="arena-stat-label"><i class="fa-solid fa-coins"></i> Вход:</span>
-                    <span class="arena-stat-value" id="arenaEntryFee">0</span>
-                </div>
-                <div class="arena-stat-item">
-                    <span class="arena-stat-label"><i class="fa-solid fa-gift"></i> Приз:</span>
-                    <span class="arena-stat-value" id="arenaPrizePool">10</span>
-                </div>
-                <div class="arena-stat-item">
-                    <span class="arena-stat-label"><i class="fa-solid fa-chart-line"></i> Лига:</span>
-                    <span class="arena-stat-value" id="arenaLeague">Бронзовая</span>
-                </div>
-            </div>
-            
-            <div id="arenaCurrentTeam" class="arena-current-team"></div>
-            
-            <button class="arena-find-btn" onclick="findMatch()" id="findMatchBtn">
-                <i class="fa-solid fa-magnifying-glass"></i> Найти бой
-            </button>
-            
-            <div id="arenaSearchStatus" class="arena-search-status"></div>
-        </div>
-        
-        <div id="arenaBattleContainer" style="display: none;"></div>
-    </div>
-    
-    <!-- Вкладка Ранги -->
-    <div class="arena-subtab" id="arena-ranks-tab">
-        <div class="arena-ranks-header">
-            <div class="arena-ranks-title">
-                <i class="fa-solid fa-crown"></i> Система рангов
-            </div>
-            <div class="arena-ranks-subtitle">Поднимайся в лигах и получай больше наград!</div>
-        </div>
-        
-        <div class="arena-current-rank-card">
-            <div class="current-rank-icon" id="arenaCurrentRankIcon">🥉</div>
-            <div class="current-rank-info">
-                <div class="current-rank-label">Ваш текущий ранг</div>
-                <div class="current-rank-name" id="arenaCurrentRankName">Бронзовая лига</div>
-                <div class="current-rank-rating">Рейтинг: <span id="arenaCurrentRankRating">1000</span></div>
-            </div>
-            <div class="current-rank-stats">
-                <div class="rank-stat-mini">
-                    <span class="stat-value" id="arenaRankWins">0</span>
-                    <span class="stat-label">Побед</span>
-                </div>
-                <div class="rank-stat-mini">
-                    <span class="stat-value" id="arenaRankLosses">0</span>
-                    <span class="stat-label">Пораж.</span>
-                </div>
-                <div class="rank-stat-mini">
-                    <span class="stat-value" id="arenaRankStreak">0</span>
-                    <span class="stat-label">Стрик</span>
-                </div>
-            </div>
-        </div>
-        
-        <div class="arena-rank-progress">
-            <div class="progress-header">
-                <span>До следующего ранга:</span>
-                <span class="next-rank-name" id="arenaNextRankName">Серебряная лига</span>
-            </div>
-            <div class="progress-bar-container">
-                <div class="progress-bar-fill" id="arenaRankProgressFill" style="width: 0%;"></div>
-            </div>
-            <div class="progress-values">
-                <span id="arenaCurrentRankValue">1000</span>
-                <span id="arenaNextRankValue">1300</span>
-            </div>
-        </div>
-        
-        <div class="ranks-list-compact">
-            <div class="rank-item-compact rank-bronze" onclick="toggleRankDetailsCompact('bronze')">
-                <div class="rank-compact-header">
-                    <div class="rank-compact-icon">🥉</div>
-                    <div class="rank-compact-info">
-                        <div class="rank-compact-name">Бронзовая лига</div>
-                        <div class="rank-compact-range">0 - 1299 рейтинга</div>
-                    </div>
-                    <div class="rank-compact-expand"><i class="fa-solid fa-chevron-down"></i></div>
-                </div>
-                <div class="rank-compact-details" id="rankCompactDetails-bronze" style="display: none;">
-                    <div class="compact-rewards">
-                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 10 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 15 MMO</div>
-                        <div class="reward-chip"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:12px;height:12px;vertical-align:middle;margin-right:2px" onerror="this.replaceWith(document.createTextNode('🌫️'))"> Пыль: +1 за победу</div>
-                        <div class="reward-chip"><i class="fa-solid fa-arrow-up"></i> До 1300</div>
-                    </div>
-                    <div class="compact-players">
-                        <div class="compact-players-title"><i class="fa-solid fa-users"></i> Топ игроки</div>
-                        <div class="compact-players-list" id="bronzeCompactList">Загрузка...</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="rank-item-compact rank-silver" onclick="toggleRankDetailsCompact('silver')">
-                <div class="rank-compact-header">
-                    <div class="rank-compact-icon">🥈</div>
-                    <div class="rank-compact-info">
-                        <div class="rank-compact-name">Серебряная лига</div>
-                        <div class="rank-compact-range">1300 - 1599 рейтинга</div>
-                    </div>
-                    <div class="rank-compact-expand"><i class="fa-solid fa-chevron-down"></i></div>
-                </div>
-                <div class="rank-compact-details" id="rankCompactDetails-silver" style="display: none;">
-                    <div class="compact-rewards">
-                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 50 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 80 MMO</div>
-                        <div class="reward-chip"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:12px;height:12px;vertical-align:middle;margin-right:2px" onerror="this.replaceWith(document.createTextNode('🌫️'))"> Пыль: +5 за победу</div>
-                        <div class="reward-chip"><i class="fa-solid fa-arrow-up"></i> До 1600</div>
-                    </div>
-                    <div class="compact-players">
-                        <div class="compact-players-title"><i class="fa-solid fa-users"></i> Топ игроки</div>
-                        <div class="compact-players-list" id="silverCompactList">Загрузка...</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="rank-item-compact rank-gold" onclick="toggleRankDetailsCompact('gold')">
-                <div class="rank-compact-header">
-                    <div class="rank-compact-icon">🥇</div>
-                    <div class="rank-compact-info">
-                        <div class="rank-compact-name">Золотая лига</div>
-                        <div class="rank-compact-range">1600 - 1899 рейтинга</div>
-                    </div>
-                    <div class="rank-compact-expand"><i class="fa-solid fa-chevron-down"></i></div>
-                </div>
-                <div class="rank-compact-details" id="rankCompactDetails-gold" style="display: none;">
-                    <div class="compact-rewards">
-                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 500 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 800 MMO</div>
-                        <div class="reward-chip"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:12px;height:12px;vertical-align:middle;margin-right:2px" onerror="this.replaceWith(document.createTextNode('🌫️'))"> Пыль: +50 за победу</div>
-                        <div class="reward-chip"><i class="fa-solid fa-arrow-up"></i> До 1900</div>
-                    </div>
-                    <div class="compact-players">
-                        <div class="compact-players-title"><i class="fa-solid fa-users"></i> Топ игроки</div>
-                        <div class="compact-players-list" id="goldCompactList">Загрузка...</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="rank-item-compact rank-platinum" onclick="toggleRankDetailsCompact('platinum')">
-                <div class="rank-compact-header">
-                    <div class="rank-compact-icon">💎</div>
-                    <div class="rank-compact-info">
-                        <div class="rank-compact-name">Платиновая лига</div>
-                        <div class="rank-compact-range">1900 - 2199 рейтинга</div>
-                    </div>
-                    <div class="rank-compact-expand"><i class="fa-solid fa-chevron-down"></i></div>
-                </div>
-                <div class="rank-compact-details" id="rankCompactDetails-platinum" style="display: none;">
-                    <div class="compact-rewards">
-                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 2000 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 3200 MMO</div>
-                        <div class="reward-chip"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:12px;height:12px;vertical-align:middle;margin-right:2px" onerror="this.replaceWith(document.createTextNode('🌫️'))"> Пыль: +100 за победу</div>
-                        <div class="reward-chip"><i class="fa-solid fa-arrow-up"></i> До 2200</div>
-                    </div>
-                    <div class="compact-players">
-                        <div class="compact-players-title"><i class="fa-solid fa-users"></i> Топ игроки</div>
-                        <div class="compact-players-list" id="platinumCompactList">Загрузка...</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="rank-item-compact rank-diamond" onclick="toggleRankDetailsCompact('diamond')">
-                <div class="rank-compact-header">
-                    <div class="rank-compact-icon">🏆</div>
-                    <div class="rank-compact-info">
-                        <div class="rank-compact-name">Алмазная лига</div>
-                        <div class="rank-compact-range">2200+ рейтинга</div>
-                    </div>
-                    <div class="rank-compact-expand"><i class="fa-solid fa-chevron-down"></i></div>
-                </div>
-                <div class="rank-compact-details" id="rankCompactDetails-diamond" style="display: none;">
-                    <div class="compact-rewards">
-                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 5000 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 8000 MMO</div>
-                        <div class="reward-chip"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:12px;height:12px;vertical-align:middle;margin-right:2px" onerror="this.replaceWith(document.createTextNode('🌫️'))"> Пыль: +200 за победу</div>
-                        <div class="reward-chip"><i class="fa-solid fa-crown"></i> Элита!</div>
-                    </div>
-                    <div class="compact-players">
-                        <div class="compact-players-title"><i class="fa-solid fa-users"></i> Топ игроки</div>
-                        <div class="compact-players-list" id="diamondCompactList">Загрузка...</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="arena-rank-tip">
-            <i class="fa-solid fa-lightbulb"></i>
-            <span>Победа над сильным соперником даёт больше рейтинга! После повышения вы получаете защиту от падения на 1 бой.</span>
-        </div>
-    </div>
-    
-    <!-- Вкладка История -->
-    <div class="arena-subtab" id="arena-history-tab">
-        <div class="section-title"><i class="fa-solid fa-clock-rotate-left"></i> История боёв</div>
-        <div id="arenaHistoryList" class="arena-history-list"></div>
-    </div>
-</div>
-
-<!-- Вкладка Рейд -->
-<div class="tab-content" id="tab-raid">
-    <div class="section-title"><i class="fa-solid fa-dragon"></i> Ежедневный Рейд</div>
-
-    <!-- КАРТОЧКА РЕЙДА (лобби) -->
-    <div id="raidBossCard" class="raid-boss-card">
-        <div class="raid-boss-header">
-            <div class="raid-boss-icon" id="raidBossIcon">🐉</div>
-            <div class="raid-boss-name" id="raidBossName">Ежедневный Рейд</div>
-        </div>
-        <div class="raid-boss-stats">
-            <div class="raid-stat">
-                <span class="stat-icon">👥</span>
-                <span id="raidParticipantsCount">0</span>
-                <span class="stat-label">участников</span>
-            </div>
-            <div class="raid-stat">
-                <span class="stat-icon">💰</span>
-                <span id="raidPrizePool">0</span>
-                <span class="stat-label">призовой пул</span>
-            </div>
-            <div class="raid-stat">
-                <span class="stat-icon">⚔️</span>
-                <span id="raidCurrentTurn">0</span>
-                <span class="stat-label">ход</span>
-            </div>
-        </div>
-        <div class="raid-timer" id="raidTimerBlock">
-            <div class="raid-timer-label" id="raidTimerLabel">До начала рейда</div>
-            <div class="raid-timer-value" id="raidTimerValue">--:--:--</div>
-        </div>
-
-        <!-- НЕ ЗАПИСАН -->
-        <div id="raidNotJoined">
-            <div style="font-size: 12px; color: var(--text2); margin-bottom: 8px;">
-                <i class="fa-solid fa-paw"></i> Выберите питомца для участия:
-            </div>
-            <div id="raidPetSelector" class="pet-selector-grid"></div>
-            <button class="raid-join-btn" onclick="joinRaid()">
-                <i class="fa-solid fa-ticket"></i> Записаться (100 MMO)
-            </button>
-        </div>
-
-        <!-- ЗАПИСАН (ожидание) -->
-        <div id="raidJoined" style="display:none;">
-            <div class="raid-waiting-info">
-                <i class="fa-solid fa-paw"></i> Ваш питомец: <span id="raidMyPetName"></span>
-            </div>
-            <button class="raid-attack-btn" id="raidOpenBattleBtn" onclick="openRaidBattle()" style="margin-top:12px;">
-                <i class="fa-solid fa-swords"></i> Открыть бой
-            </button>
-        </div>
+  <!-- ЗАДАНИЯ -->
+  <div class="page" id="page-tasks">
+    <div style="background:linear-gradient(160deg,#1A1A35,#12122A,#0F0F17);border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:12px;position:relative;overflow:hidden;">
+      <div style="position:absolute;top:-50px;right:-50px;width:160px;height:160px;background:radial-gradient(circle,rgba(91,95,238,.18),transparent 70%)"></div>
+      <div style="font-size:20px;font-weight:900;letter-spacing:-.4px;margin-bottom:4px" data-i18n="tasks_title">Задания</div>
+      <div style="font-size:12px;color:var(--text2)" data-i18n="tasks_sub">Выполняй задания — получай TON</div>
     </div>
 
-    <div class="section-title"><i class="fa-solid fa-trophy"></i> Топ уронщики</div>
-    <div id="raidTopList" class="raid-top-list"></div>
+    <div class="sec-title" data-i18n="tasks_referrals_title">Приглашения</div>
+    <div id="tasksRefList"></div>
 
-    <div class="section-title"><i class="fa-solid fa-history"></i> История рейдов</div>
-    <div id="raidHistoryList" class="raid-history-list"></div>
-</div>
+    <div class="sec-title" data-i18n="tasks_bots_title">Боты</div>
+    <div id="tasksBotsSection"></div>
 
-<!-- ===== RAID BATTLE SCREEN (fullscreen overlay) ===== -->
-<div id="raidBattleScreen" class="raid-battle-screen" style="display:none;">
+    <div class="sec-title" data-i18n="tasks_earn_title">Заработок</div>
+    <div id="tasksEarnSection"></div>
+  </div>
 
-    <!-- Шапка -->
-    <div class="rbs-header">
-        <button class="rbs-close-btn" onclick="closeRaidBattle()">
-            <i class="fa-solid fa-arrow-left"></i>
-        </button>
-        <div class="rbs-title">⚔️ Ежедневный Рейд</div>
-        <div class="rbs-turn-info">
-            Ход <span id="rbsTurn">1</span>/15
-            <span id="rbsTurnTimer" class="rbs-turn-timer-val"></span>
+  <!-- РЕФЕРАЛЫ -->
+  <div class="page" id="page-ref">
+    <div class="ref-hero">
+      <div class="wh-lbl" data-i18n="ref_team">Ваша команда</div>
+      <div class="ref-count" id="refCount">0 <span style="font-size:15px;color:var(--text2)" data-i18n="ref_referrals">рефералов</span></div>
+      <div class="ref-earn"><span data-i18n="ref_earned_lbl">Заработано:</span> <span style="color:var(--green);font-weight:700" id="refEarned">0.0000 TON</span></div>
+    </div>
+
+    <div class="card" style="margin-bottom:10px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px" data-i18n="ref_how_title">Как работает программа</div>
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
+        <div style="min-width:28px;height:28px;border-radius:50%;background:var(--accent-dim);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:var(--accent2);flex-shrink:0">1</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.5" data-i18n="ref_step1">Поделись своей реферальной ссылкой с другом</div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
+        <div style="min-width:28px;height:28px;border-radius:50%;background:var(--accent-dim);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:var(--accent2);flex-shrink:0">2</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.5" data-i18n="ref_step2">Друг запускает торгового бота и зарабатывает</div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="min-width:28px;height:28px;border-radius:50%;background:var(--green-dim);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:var(--green);flex-shrink:0">3</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.5" data-i18n="ref_step3_full">Ты получаешь 5% от его дохода автоматически на баланс — каждый раз когда он забирает доход с бота</div>
+      </div>
+    </div>
+
+    <div class="ref-link-box">
+      <div class="ref-link" id="refLink">Загрузка...</div>
+      <button class="copy-btn" onclick="copyRef()" data-i18n="ref_copy">Копировать</button>
+    </div>
+    <button class="share-btn" onclick="shareRef()"><span style="display:inline-flex;align-items:center;gap:7px"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> <span data-i18n="ref_share">Поделиться</span></span></button>
+    <div class="sec-title" data-i18n="ref_list_title">Рефералы</div>
+    <div class="card" id="refList">
+      <div style="padding:16px;text-align:center;color:var(--text3);font-size:13px" data-i18n="ref_empty">Пока никого нет</div>
+    </div>
+  </div>
+
+  <!-- ИНФО -->
+  <div class="page" id="page-guide">
+    <div class="info-hero">
+      <div class="info-logo-wrap">
+        <div class="info-logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
         </div>
+        <div class="info-logo-text">Trade<span>TON</span></div>
+      </div>
+      <div class="info-tagline" data-i18n="info_tagline">Умные боты. Реальный доход.</div>
+      <div class="info-version" data-i18n="info_version">Версия 1.0 · TON Blockchain</div>
     </div>
 
-    <!-- Карточки: сверху босс, снизу питомец -->
-    <div class="rbs-battle-area">
+    <div class="sec-title" data-i18n="info_how_title">Как это работает</div>
 
-        <!-- Карточка босса -->
-        <div class="rbs-card rbs-boss-card" id="rbsBossCard">
-            <div class="rbs-card-badge rbs-badge-boss">БОСС</div>
-            <div class="rbs-card-body">
-                <div class="rbs-big-icon" id="rbsBossIcon">🐉</div>
-                <div class="rbs-card-info">
-                    <div class="rbs-card-name">Дракон Апокалипсиса</div>
-                    <div class="rbs-hp-bar-wrap">
-                        <div class="rbs-hp-bar" id="rbsBossHp" style="width:100%"></div>
-                    </div>
-                    <div class="rbs-card-stats">
-                        <span>👥 <span id="rbsParticipants">0</span> участников</span>
-                        <span>💰 <span id="rbsPrizePool">0</span> MMO</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="rbs-vs-row"><span class="rbs-vs">⚔️ VS ⚔️</span></div>
-
-        <!-- Карточка питомца -->
-        <div class="rbs-card rbs-pet-card" id="rbsPetCard">
-            <div class="rbs-card-badge rbs-badge-pet">ВАШ ПИТОМЕЦ</div>
-            <div class="rbs-card-body">
-                <div class="rbs-big-icon" id="rbsPetIcon">🧬</div>
-                <div class="rbs-card-info">
-                    <div class="rbs-card-name" id="rbsPetName">—</div>
-                    <div class="rbs-card-stats">
-                        <span>⚡ <span id="rbsMyDamage">0</span> урон</span>
-                        <span>👊 <span id="rbsMyAttacks">0</span> атак</span>
-                    </div>
-                    <!-- Таймер хода -->
-                    <div class="rbs-turn-bar-wrap" id="rbsTurnBarWrap" style="display:none;">
-                        <div class="rbs-turn-bar" id="rbsTurnBar" style="width:100%"></div>
-                        <div class="rbs-turn-seconds"><span id="raidTurnSeconds">20</span>с до конца хода</div>
-                    </div>
-                </div>
-            </div>
-            <!-- КНОПКА АТАКИ -->
-            <button class="rbs-attack-btn" id="raidAttackBtn" onclick="attackRaidBoss()">
-                <i class="fa-solid fa-sword"></i> Атаковать!
-            </button>
-        </div>
+    <div class="info-step">
+      <div class="info-step-icon" style="background:linear-gradient(135deg,#5B5FEE,#7B7FF8)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M12 2v4"/><circle cx="12" cy="6" r="1"/><path d="M8 15h.01M12 15h.01M16 15h.01"/></svg>
+      </div>
+      <div class="info-step-body">
+        <div class="info-step-title" data-i18n="info_step1_title">Выбери бота</div>
+        <div class="info-step-text" data-i18n="info_step1_text">Scout Bot, Alpha Bot или Quantum Bot — выбери бота, торговую пару и срок. Запусти за TON и следи за сделками в реальном времени.</div>
+      </div>
     </div>
 
-    <!-- Лог урона -->
-    <div class="rbs-log-wrap">
-        <div class="rbs-log-title">📜 Лог боя</div>
-        <div class="rbs-log" id="rbsLog"></div>
+    <div class="info-step">
+      <div class="info-step-icon" style="background:linear-gradient(135deg,#0E7C5A,#39D98A)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+      </div>
+      <div class="info-step-body">
+        <div class="info-step-title" data-i18n="info_step2_title">Бот торгует</div>
+        <div class="info-step-text" data-i18n="info_step2_text">Алгоритм открывает и закрывает позиции по BUY и SELL. Иногда фиксирует небольшой минус — чтобы зайти ниже и заработать больше.</div>
+      </div>
     </div>
-</div>
 
-<!-- ===== RAID RESULTS MODAL ===== -->
-<div id="raidResultsModal" class="raid-results-modal" style="display:none;">
-    <div class="raid-results-box">
-        <div class="raid-results-title">🏆 Рейд завершён!</div>
-        <div class="raid-results-subtitle" id="raidResultsSubtitle"></div>
-        <div class="raid-results-list" id="raidResultsList"></div>
-        <div class="raid-results-my-reward" id="raidResultsMyReward"></div>
-        <button class="raid-results-close" onclick="closeRaidResults()">
-            <i class="fa-solid fa-check"></i> Забрать награды
-        </button>
+    <div class="info-step">
+      <div class="info-step-icon" style="background:linear-gradient(135deg,#7C3AED,#A78BFA)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div class="info-step-body">
+        <div class="info-step-title" data-i18n="info_step3_title">Забери доход в конце</div>
+        <div class="info-step-text" data-i18n="info_step3_text">По окончании периода появится кнопка «Забрать». Нажми — и весь депозит + заработанное вернётся на твой баланс.</div>
+      </div>
     </div>
-</div>
-    
-<!-- Вкладка Wallet -->
-<div class="tab-content" id="tab-wallet">
+
+    <div class="info-step">
+      <div class="info-step-icon" style="background:linear-gradient(135deg,#C2185B,#F06292)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </div>
+      <div class="info-step-body">
+        <div class="info-step-title" data-i18n="info_step4_title">Приглашай друзей</div>
+        <div class="info-step-text" data-i18n="info_step4_text">Делись реферальной ссылкой — получай % от дохода каждого приглашённого. Пассивный заработок без вложений.</div>
+      </div>
+    </div>
+
+    <div class="info-step">
+      <div class="info-step-icon" style="background:linear-gradient(135deg,#E65100,#FF9800)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>
+      </div>
+      <div class="info-step-body">
+        <div class="info-step-title" data-i18n="info_step5_title">Вывод в TON</div>
+        <div class="info-step-text" data-i18n="info_step5_text">Все средства хранятся на TON-кошельке. Вывод доступен в любой момент через раздел Кошелёк.</div>
+      </div>
+    </div>
+
+    <div class="sec-title" data-i18n="faq_title">Частые вопросы</div>
+    <div class="faq-item" onclick="toggleFaq(this)">
+      <div class="faq-q"><span data-i18n="faq1_q">Могу ли я потерять вложенное?</span><span class="faq-arr">›</span></div>
+      <div class="faq-a" data-i18n="faq1_a">Нет. Депозит за бота возвращается полностью в конце периода вместе с доходом. Бот несёт убыток только по отдельным сделкам внутри цикла — итоговый результат всегда плюсовой.</div>
+    </div>
+    <div class="faq-item" onclick="toggleFaq(this)">
+      <div class="faq-q"><span data-i18n="faq2_q">Сколько ботов можно запустить?</span><span class="faq-arr">›</span></div>
+      <div class="faq-a" data-i18n="faq2_a">Столько, сколько позволяет баланс. Каждый бот работает независимо — запускай несколько, чтобы суммировать доход по разным инструментам.</div>
+    </div>
+    <div class="faq-item" onclick="toggleFaq(this)">
+      <div class="faq-q"><span data-i18n="faq3_q">Когда зачисляется доход?</span><span class="faq-arr">›</span></div>
+      <div class="faq-a" data-i18n="faq3_a">По окончании срока работы бота. В карточке появится кнопка «Забрать» — нажми, и сумма сразу придёт на баланс.</div>
+    </div>
+    <div class="faq-item" onclick="toggleFaq(this)">
+      <div class="faq-q"><span data-i18n="faq4_q">Почему бот иногда продаёт в минус?</span><span class="faq-arr">›</span></div>
+      <div class="faq-a" data-i18n="faq4_a">Это часть стратегии: зафиксировать небольшой убыток, чтобы войти по более выгодной цене ниже. Это позволяет заработать больше в рамках всего периода.</div>
+    </div>
+    <div class="faq-item" onclick="toggleFaq(this)">
+      <div class="faq-q"><span data-i18n="faq5_q">Как работает реферальная программа?</span><span class="faq-arr">›</span></div>
+      <div class="faq-a" data-i18n="faq5_a">Поделись своей ссылкой. Когда приглашённый запустит бота и получит доход — ты автоматически получишь % от этой суммы на свой баланс.</div>
+    </div>
+    <div style="height:12px"></div>
+  </div>
+
+  <!-- КОШЕЛЁК -->
+  <div class="page" id="page-wallet">
     <div class="wallet-hero">
-        <div class="wallet-label" data-i18n="wallet.totalBalance">Total Balance</div>
-        <div class="wallet-balance"><span id="walletBalance">0</span> <span style="font-size:16px;color:var(--text2)">MMO</span></div>
-        <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:10px">
-            <span style="font-size:13px;color:#7c3aed"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:16px;height:16px;vertical-align:middle;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))"></span>
-            <span style="font-family:'Orbitron',monospace;font-size:20px;font-weight:700;color:#a78bfa" id="walletDust">0</span>
-            <span style="font-size:13px;color:#7c3aed">ПЫЛЬ</span>
-        </div>
-        <div class="wallet-hero-stats">
-            <div class="wallet-hero-stat"><span class="whs-icon">🧬</span><span class="whs-val" id="walletCards">0</span><span class="whs-label">Creatures</span></div>
-            <div class="wallet-hero-stat"><span class="whs-icon">🔀</span><span class="whs-val" id="walletMerges">0</span><span class="whs-label">Merges</span></div>
-            <div class="wallet-hero-stat"><span class="whs-icon">📺</span><span class="whs-val" id="walletAdsWatched">0</span><span class="whs-label">Ads</span></div>
-            <div class="wallet-hero-stat"><span class="whs-icon">👥</span><span class="whs-val" id="walletReferralEarned">0</span><span class="whs-label">Refs</span></div>
-        </div>
-    </div>
-    <div class="lang-switcher">
-        <button class="lang-btn" data-lang="ru" onclick="setLanguage('ru')">RU</button>
-        <button class="lang-btn" data-lang="en" onclick="setLanguage('en')">EN</button>
-    </div>
-    <div class="wallet-actions">
-        <button class="wallet-action-btn deposit" onclick="showDepositModal()">
-            <i class="fa-solid fa-arrow-down"></i> <span data-i18n="wallet.deposit">DEPOSIT</span>
+      <div class="wh-lbl" data-i18n="wallet_balance">Баланс кошелька</div>
+      <div class="wh-bal" id="walletBal">0.00 TON</div>
+      <div class="wallet-act-row">
+        <button class="wact-btn wact-in" onclick="openWalletModal('deposit')">
+          <div class="wact-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12l10 10 10-10"/></svg></div>
+          <span data-i18n="wallet_deposit">Пополнить</span>
         </button>
-        <button class="wallet-action-btn withdraw" onclick="showWithdrawModal()">
-            <i class="fa-solid fa-arrow-up"></i> <span data-i18n="wallet.withdraw">WITHDRAW</span>
+        <button class="wact-btn wact-out" onclick="openWalletModal('withdraw')">
+          <div class="wact-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22V2M2 12l10-10 10 10"/></svg></div>
+          <span data-i18n="wallet_withdraw">Вывести</span>
         </button>
+      </div>
     </div>
 
-    <!-- STAKING -->
-<!-- STAKING -->
-<div class="staking-section">
-    <div class="staking-title"><i class="fa-solid fa-lock"></i> Стейкинг</div>
-    <div class="staking-subtitle">Заблокируй MMO и получи доход</div>
-    <div class="staking-plans">
-        <!-- старые -->
-        <div class="staking-plan" id="stakingPlan30" onclick="selectStakingPlan(30)">
-            <div class="staking-plan-days">30 дней</div>
-            <div class="staking-plan-rate">+20%</div>
-            <div class="staking-plan-min">мин. 50 000 MMO</div>
-        </div>
-        <div class="staking-plan" id="stakingPlan10" onclick="selectStakingPlan(10)">
-            <div class="staking-plan-days">10 дней</div>
-            <div class="staking-plan-rate">+10%</div>
-            <div class="staking-plan-bonus">+ 🦫 Capybara Rare</div>
-            <div class="staking-plan-min">мин. 300 000 MMO</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px;">
+      <div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:600;margin-bottom:3px" data-i18n="lang_label">Язык</div>
+        <div style="font-size:14px;font-weight:700" id="langCurrentLabel">Русский</div>
+      </div>
+      <button onclick="openLangModal()" style="background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent2);border-radius:var(--r2);padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit" data-i18n="lang_change">Изменить</button>
+    </div>
+
+    <div class="wallet-summary">
+      <div class="ws-item">
+        <div class="ws-lbl" data-i18n="wallet_available">Доступно</div>
+        <div class="ws-val green" id="wAvail">0.00 TON</div>
+      </div>
+      <div class="ws-div"></div>
+      <div class="ws-item">
+        <div class="ws-lbl" data-i18n="wallet_in_bots">В ботах</div>
+        <div class="ws-val" id="wInBots">0 TON</div>
+      </div>
+      <div class="ws-div"></div>
+      <div class="ws-item">
+        <div class="ws-lbl" data-i18n="wallet_monthly">Доход за месяц</div>
+        <div class="ws-val green" id="wMonthly">+0 TON</div>
+      </div>
+    </div>
+
+    <!-- БЛОК ПРОМОКОДА -->
+    <div class="card" style="margin-bottom:10px;padding:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:18px">🎁</span>
+        <span style="font-size:14px;font-weight:700" data-i18n="promo_title">Промокод</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <input type="text" id="promoInput" placeholder="XXXX-XXXX" 
+          style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:var(--r2);padding:12px;font-size:14px;color:var(--text);outline:none;font-family:inherit">
+        <button onclick="activatePromo()" 
+          style="width:100%;background:linear-gradient(135deg,#5B5FEE,#7B7FF8);border:none;border-radius:var(--r2);padding:12px;font-size:13px;font-weight:700;color:#fff;cursor:pointer">
+          <span data-i18n="promo_activate">Активировать</span>
+        </button>
+      </div>
+      <div id="promoMessage" style="font-size:11px;color:var(--text3);margin-top:8px"></div>
+    </div>
+
+    <div class="sec-title" data-i18n="wallet_history">История</div>
+    <div class="wallet-tx-wrap" id="txList">
+      <div style="padding:24px;text-align:center;color:var(--text3);font-size:13px" data-i18n="wallet_no_tx">Транзакций пока нет</div>
+    </div>
+
+    <!-- MODAL: Deposit/Withdraw -->
+    <div class="modal-overlay" id="walletModal">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <button class="modal-close" onclick="closeWalletModal()">✕</button>
+        <div class="modal-title" id="wModalTitle">Пополнить</div>
+
+        <div id="wDepositView">
+          <div class="wm-address-box">
+            <div class="wm-addr-lbl" data-i18n="deposit_addr_lbl">TON-адрес</div>
+            <div class="wm-addr-val" id="wDepositAddr">UQA-5HlUPcwNOpJ5kjKCq4FZclYn4ns8nY27Izi_V9uXT0gF</div>
+            <button class="wm-copy-btn" onclick="copyWalletAddr()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span data-i18n="deposit_copy_addr">Копировать</span>
+            </button>
+          </div>
+          
+          <div style="margin-bottom: 14px;">
+            <div class="wm-addr-lbl" data-i18n="deposit_memo_lbl">Ваш MEMO (Telegram ID)</div>
+            <div class="wm-address-box" style="border-color:var(--accent);background:var(--accent-dim);">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                <div style="font-size:20px;font-weight:800;color:var(--accent2);letter-spacing:.5px;" id="userTelegramId">—</div>
+                <button class="wm-copy-btn" onclick="copyMemoId()" id="copyMemoBtn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  <span data-i18n="deposit_copy_memo">Копировать</span>
+                </button>
+              </div>
+            </div>
+            <div class="wm-hint" style="margin-top:6px;background:rgba(246,70,93,.08);border-color:rgba(246,70,93,.3);" data-i18n="deposit_memo_hint">
+              ⚠️ ОБЯЗАТЕЛЬНО укажите этот MEMO в комментарии к переводу! Без MEMO средства не будут зачислены.
+            </div>
+          </div>
+          
+          <div class="wm-hint" data-i18n="deposit_hint">Отправь TON на этот адрес — средства зачислятся после подтверждения администратором.</div>
+          <div class="wm-amount-row">
+            <div class="wm-lbl" data-i18n="deposit_amount_lbl">Сумма пополнения</div>
+            <div class="wm-input-wrap">
+              <input class="wm-input" type="number" id="depositAmt" placeholder="0.00" min="10" step="1">
+              <span class="wm-currency">TON</span>
+            </div>
+          </div>
+          <button class="confirm-btn" onclick="doDeposit()"><span style="display:inline-flex;align-items:center;gap:7px"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" ><path d="M12 2v20M2 12l10 10 10-10"/></svg> <span data-i18n="deposit_btn">Пополнить</span></span></button>
         </div>
 
-        <!-- НОВЫЕ 14-дневные стейкинги -->
-        <div class="staking-plan" id="stakingPlan14" onclick="selectStakingPlan(14)">
-            <div class="staking-plan-days">14 дней</div>
-            <div class="staking-plan-rate">+10%</div>
-            <div class="staking-plan-bonus">+ 👕 Кросс (1 месяц)</div>
-            <div class="staking-plan-min">мин. 200 000 MMO</div>
+        <div id="wWithdrawView" style="display:none">
+          <div class="wm-balance-hint"><span data-i18n="withdraw_avail_lbl">Доступно:</span> <span id="wDrawAvail" style="color:var(--green);font-weight:700">—</span></div>
+          <div class="wm-lbl" style="margin-bottom:6px" data-i18n="withdraw_amount">Сумма вывода</div>
+          <div class="wm-input-wrap" style="margin-bottom:10px">
+            <input class="wm-input" type="number" id="withdrawAmt" placeholder="0.00" min="10" step="1">
+            <span class="wm-currency">TON</span>
+          </div>
+          <div class="wm-lbl" style="margin-bottom:6px" data-i18n="withdraw_addr">TON-адрес получателя</div>
+          <input class="wm-input" id="withdrawAddr" placeholder="UQ..." style="width:100%;margin-bottom:10px;background:var(--card2);border:1px solid var(--border);border-radius:var(--r2);padding:13px 14px;font-size:14px;color:var(--text);font-family:inherit;outline:none">
+          <div class="row" style="border:none;padding:4px 0 10px">
+            <div class="row-lbl" data-i18n="withdraw_fee">Комиссия сети</div>
+            <div class="row-val" style="color:var(--text2)">~0.05 TON</div>
+          </div>
+          <div class="row" style="border:none;padding:0">
+            <div class="row-lbl" data-i18n="withdraw_receive">Получите</div>
+            <div class="row-val" id="wDrawGet" style="color:var(--green)">—</div>
+          </div>
+          <button class="confirm-btn" onclick="doWithdraw()" style="background:linear-gradient(135deg,#F6465D,#FF6B6B)"><span style="display:inline-flex;align-items:center;gap:7px"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" ><path d="M12 22V2M2 12l10-10 10 10"/></svg> <span data-i18n="withdraw_btn">Вывести</span></span></button>
         </div>
-        <div class="staking-plan" id="stakingPlan28" onclick="selectStakingPlan(28)">
-            <div class="staking-plan-days">14 дней</div>
-            <div class="staking-plan-rate">+10%</div>
-            <div class="staking-plan-bonus">+ 🥷 Ниндзя (3 месяца)</div>
-            <div class="staking-plan-min">мин. 500 000 MMO</div>
-        </div>
-        <div class="staking-plan" id="stakingPlan56" onclick="selectStakingPlan(56)">
-            <div class="staking-plan-days">14 дней</div>
-            <div class="staking-plan-rate">+10%</div>
-            <div class="staking-plan-bonus">+ 👘 Любой скин (12 месяцев)</div>
-            <div class="staking-plan-min">мин. 1 000 000 MMO</div>
-        </div>
+      </div>
     </div>
-    
-    <div id="activeStakingBlock" style="display:none;">
-        <div class="staking-active-title">⏳ Активные стейкинги</div>
-        <div class="staking-active-card" id="activeStakingsList">
-            <!-- Сюда будут добавляться все активные стейкинги -->
-        </div>
-    </div>
-</div>
+  </div> <!-- закрытие page-wallet -->
 
-    <div id="pendingRequests"></div>
-</div>
-</div>
+</div> <!-- закрытие pages -->
 
-<!-- Staking Modal (fixed, вне таба) -->
-<div id="stakingModal" class="staking-modal-overlay" style="display:none;" onclick="closeStakingModal(event)">
-    <div class="staking-modal-box">
-        <div class="staking-modal-title">🔒 Стейкинг <span id="stakingModalDays"></span> дней</div>
-        <div class="staking-modal-rate" id="stakingModalRate"></div>
-        <div class="staking-modal-min" id="stakingModalMin"></div>
-        <input type="number" id="stakingAmountInput" class="staking-modal-input" placeholder="Введите сумму MMO">
-        <div class="staking-modal-preview" id="stakingModalPreview"></div>
-        <div style="display:flex;gap:10px;margin-top:16px;">
-            <button class="staking-cancel-btn" onclick="closeStakingModal()">Отмена</button>
-            <button class="staking-confirm-btn" onclick="confirmStaking()">Застейкать</button>
-        </div>
-    </div>
-</div>
+<nav class="nav">
+  <button class="nav-btn active" onclick="switchPage('trade')" id="nav-trade">
+    <div class="nav-ico"><svg viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg></div>
+    <div class="nav-lbl" data-i18n="nav_trade">Торги</div>
+  </button>
+  <button class="nav-btn" onclick="switchPage('tasks')" id="nav-tasks">
+    <div class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+    <div class="nav-lbl" data-i18n="nav_tasks">Задания</div>
+  </button>
+  <button class="nav-btn" onclick="switchPage('ref')" id="nav-ref">
+    <div class="nav-ico"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+    <div class="nav-lbl" data-i18n="nav_ref">Рефералы</div>
+  </button>
+  <button class="nav-btn" onclick="switchPage('guide')" id="nav-guide">
+    <div class="nav-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></div>
+    <div class="nav-lbl" data-i18n="nav_guide">Инфо</div>
+  </button>
+  <button class="nav-btn" onclick="switchPage('wallet')" id="nav-wallet">
+    <div class="nav-ico"><svg viewBox="0 0 24 24"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg></div>
+    <div class="nav-lbl" data-i18n="nav_wallet">Кошелёк</div>
+  </button>
+</nav>
 
-<!-- BOTTOM NAV -->
-<div class="bottom-nav">
-    <div class="nav-item active" onclick="switchTab('game')" id="nav-game">
-        <i class="fa-solid fa-dna"></i>
-        <span data-i18n="nav.game">Game</span>
-    </div>
-    <div class="nav-item" onclick="switchTab('shop')" id="nav-shop">
-        <i class="fa-solid fa-store"></i>
-        <span data-i18n="nav.market">Market</span>
-    </div>
-    <div class="nav-item" onclick="switchTab('leaderboard')" id="nav-leaderboard">
-        <i class="fa-solid fa-trophy"></i>
-        <span data-i18n="nav.rank">Rank</span>
-    </div>
-    <div class="nav-item" onclick="switchTab('friends')" id="nav-friends">
-        <i class="fa-solid fa-users"></i>
-        <span data-i18n="nav.friends">Friends</span>
-    </div>
-    <div class="nav-item" onclick="switchTab('special')" id="nav-special">
-        <i class="fa-solid fa-star"></i>
-        <span data-i18n="nav.special">Special</span>
-    </div>
-    <div class="nav-item" onclick="switchTab('arena')" id="nav-arena">
-        <i class="fa-solid fa-shield-halved"></i>
-        <span>Арена</span>
-    </div>
-    <div class="nav-item" onclick="switchTab('wallet')" id="nav-wallet">
-        <i class="fa-solid fa-wallet"></i>
-        <span data-i18n="nav.wallet">Wallet</span>
-    </div>
-    
-    <div class="nav-item" onclick="switchTab('raid')" id="nav-raid">
-    <i class="fa-solid fa-dragon"></i>
-    <span>Рейд</span>
-</div>
-    
-</div>
-
-<!-- OVERLAYS -->
-<div class="overlay" id="overlay" onclick="closeOverlay(event)">
-    <div class="popup" id="popup"></div>
+<div class="modal-overlay" id="botModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div class="modal-title" id="mTitle">Запустить бота</div>
+    <div class="row"><div class="row-lbl" data-i18n="modal_bot">Бот</div><div class="row-val" id="mName">—</div></div>
+    <div class="row"><div class="row-lbl" data-i18n="modal_pair">Инструмент</div><div class="row-val" id="mPair">—</div></div>
+    <div class="row"><div class="row-lbl" data-i18n="modal_period">Период</div><div class="row-val" id="mDays">—</div></div>
+    <div class="row"><div class="row-lbl" data-i18n="modal_yield">Доход за период</div><div class="row-val" style="color:var(--green)" id="mYield">—</div></div>
+    <div class="row"><div class="row-lbl" data-i18n="modal_price">Стоимость</div><div class="row-val" id="mPrice">—</div></div>
+    <div style="height:1px;background:var(--border);margin:8px 0"></div>
+    <div class="row"><div class="row-lbl" data-i18n="modal_after">Баланс после</div><div class="row-val" style="color:var(--text2)" id="mAfter">—</div></div>
+    <button class="confirm-btn" onclick="buyBot()"><span style="display:inline-flex;align-items:center;gap:7px"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" ><polyline points="20 6 9 17 4 12"/></svg> <span data-i18n="modal_confirm">Подтвердить</span></span></button>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
 
-<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="arena-client.js"></script>
-<script src="arena-skills.js"></script>
-<script src="script.js"></script>
 <script src="localization.js"></script>
-<script>
-// Скиллы для отображения в UI (клиентская копия)
-window.ARENA_SKILLS_MAP = {
-    duck_c: { name: '🍀 Lucky Quack', chance: 0.20, description: 'Враг промахивается — 0 урона' },
-    duck_u: { name: '💧 Puddle Dodge', chance: 0.25, description: 'Щит — следующая атака по нему отменяется' },
-    duck_r: { name: '🦅 Ancient Wings', chance: 0.20, description: 'Урон ×1.8' },
-    duck_e: { name: '🌊 Eternal Splash', chance: 0.25, description: 'Урон всем живым врагам' },
-    duck_l: { name: '🌀 Divine Flood', chance: 0.30, description: 'Урон ×1.5 всем живым врагам' },
-    owl_c: { name: '🌙 Night Sight', chance: 0.20, description: 'Игнорирует 30% защиты' },
-    owl_u: { name: '🦅 Sharp Talons', chance: 0.25, description: 'Урон ×1.5' },
-    owl_r: { name: '✨ Guardian Aura', chance: 0.20, description: 'Лечит союзника с наименьшим HP на 20%' },
-    owl_e: { name: '🧠 Mind Break', chance: 0.25, description: 'Снижает атаку врага на 30% в этом ударе' },
-    owl_l: { name: '👁️ Divine Sight', chance: 0.30, description: 'Урон ×2 + игнорирует всю защиту' },
-    shark_c: { name: '🦷 Bite', chance: 0.25, description: 'Урон +50%' },
-    shark_u: { name: '🩸 Frenzy', chance: 0.25, description: 'Восстанавливает 30% урона как HP' },
-    shark_r: { name: '🌊 Ocean Terror', chance: 0.20, description: 'Враг оглушён — пропускает следующий ход' },
-    shark_e: { name: '🦈 Apex Predator', chance: 0.30, description: 'Урон ×2 если у врага < 50% HP' },
-    shark_l: { name: '🐙 Kraken Call', chance: 0.35, description: 'Урон всем врагам + 20% HP себе' },
-    wolf_c: { name: '🐺 Pack Call', chance: 0.20, description: 'Урон +40%' },
-    wolf_u: { name: '🎯 Hunter Instinct', chance: 0.25, description: 'Игнорирует всю защиту' },
-    wolf_r: { name: '🌕 Howl', chance: 0.25, description: 'Урон ×1.5 + 10% HP себе' },
-    wolf_e: { name: '⚡ Alpha Strike', chance: 0.30, description: 'Урон ×2.5' },
-    wolf_l: { name: '🔥 Legendary Fury', chance: 0.35, description: 'Урон ×2 всем живым врагам' },
-    dragon_c: { name: '🔥 Flame', chance: 0.25, description: 'Урон +60%' },
-    dragon_u: { name: '🐉 Fire Breath', chance: 0.25, description: 'Урон всем живым врагам' },
-    dragon_r: { name: '🌋 Ancient Fire', chance: 0.20, description: 'Урон ×2' },
-    dragon_e: { name: '♾️ Eternal Flame', chance: 0.30, description: 'Урон ×1.5 всем + игнорирует защиту' },
-    dragon_l: { name: '☄️ Divine Inferno', chance: 0.35, description: 'Урон ×2 всем живым врагам' },
-    unicorn_c: { name: '🦄 Magic Touch', chance: 0.20, description: 'Восстанавливает 15% HP себе' },
-    unicorn_u: { name: '✨ Fairy Dust', chance: 0.25, description: 'Враг оглушён — пропускает ход' },
-    unicorn_r: { name: '💫 Rare Magic', chance: 0.20, description: 'Лечит всех союзников на 15% HP' },
-    unicorn_e: { name: '🌟 Eternal Magic', chance: 0.25, description: 'Урон ×2 + 20% HP себе' },
-    unicorn_l: { name: '🙏 Divine Blessing', chance: 0.30, description: 'Лечит всех союзников на 30% HP' },
-    monkey_r: { name: '🪓 Twin Axes', chance: 0.30, description: 'Наносит ×3 урона!' },
-    lion_mythic: { name: '👑 King Roar', chance: 0.40, description: 'Урон ×2.5 + враг оглушён' },
-    panther_mythic: { name: '🐆 Shadow Strike', chance: 0.45, description: 'Игнорирует защиту + 40% урона как HP' }
-};
-</script>
+<script src="script.js"></script>
 </body>
 </html>
