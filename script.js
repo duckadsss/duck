@@ -4571,7 +4571,7 @@ function updateHomeBossStatus() {
         if (diff > 0) {
             const m = Math.floor(diff / 60000);
             const s = Math.floor((diff % 60000) / 1000);
-            el.textContent = `Старт через ${m > 0 ? m + 'м ' : ''}${s}с`;
+            el.textContent = m > 0 ? `Старт через ~${m}м` : 'Скоро начнётся';
         } else {
             el.textContent = 'Скоро начнётся';
         }
@@ -4647,6 +4647,7 @@ function initRaid() {
     loadRaidData();
     initRaidWebSocket();
     setInterval(updateRaidTimer, 1000);
+    setInterval(updateHomeBossStatus, 10000);
     setInterval(() => {
         if (raidBattleOpen) updateRaidTurnBar();
     }, 500);
