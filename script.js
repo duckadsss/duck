@@ -4316,16 +4316,16 @@ async function joinRaid() {
     
     try {
         const res = await apiRequest('POST', '/api/raid/join', { petId: selectedPetId });
-        if (!res) return;
+        if (!res) { showToast('Нет ответа от сервера', 'error'); return; }
         if (res.success) {
             showToast(res.message, 'success');
             loadRaidData();
             updateUserBalance();
         } else {
-            showToast(res.message || 'Ошибка', 'error');
+            showToast(res.message || JSON.stringify(res), 'error');
         }
     } catch (e) {
-        showToast('Ошибка при записи', 'error');
+        showToast('catch: ' + e.message, 'error');
     } finally {
         joinRaid._pending = false;
     }
