@@ -625,7 +625,7 @@ function renderCards() {
             <div class="card-icon">${getIconHtml(c)}</div>
             <div class="card-name">${escapeHtml(c.name)}</div>
             <div class="card-rarity-badge badge-${c.rarity}">${c.rarity}</div>
-            <div class="card-income"><i class="fa-solid fa-bolt"></i>${c.incomeBase}/hr</div>
+            ${c.incomeBase > 0 ? `<div class="card-income"><i class="fa-solid fa-bolt"></i>${c.incomeBase}/hr</div>` : '<div class="card-income" style="color:var(--text3)">—</div>'}
         </div>`;
     }).join('');
 
