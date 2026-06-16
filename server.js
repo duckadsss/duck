@@ -3376,8 +3376,7 @@ const raid = await Raid.findOne({ phase: { $in: ['registration', 'fighting'] } }
         
         // Рассылаем обновление всем через WebSocket
         io.emit('raid_attack', {
-            raidId: String(raid._id),
-            telegramId: String(user.telegramId),
+            raidId: raid._id,
             attackerName: user.username || user.firstName || 'Игрок',
             damage: finalDamage,
             isCrit,

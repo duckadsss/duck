@@ -4290,8 +4290,14 @@ function openRaidBattle() {
         return;
     }
     raidBattleOpen = true;
-    document.getElementById('raidBattleScreen').style.display = 'flex';
-    document.getElementById('raidBattleScreen').style.flexDirection = 'column';
+    const screen = document.getElementById('raidBattleScreen');
+    screen.style.display = 'flex';
+    screen.style.flexDirection = 'column';
+    // Динамически берём высоту хедера приложения
+    const appHeader = document.querySelector('.header');
+    const topOffset = appHeader ? appHeader.getBoundingClientRect().bottom : 60;
+    screen.style.top = topOffset + 'px';
+    screen.style.paddingTop = '0';
     updateRaidBattleScreen();
     addRaidLogEntry('⚔️ Вы вошли в бой!', 'system');
 }
@@ -4436,7 +4442,13 @@ async function attackRaidBoss() {
                 bossCard.classList.add('rbs-boss-shake');
                 setTimeout(() => bossCard.classList.remove('rbs-boss-shake'), 300);
             }
-            // Лог придёт через socket raid_attack — не дублируем
+            // Log entry
+            const isCrit = res.isCrit;
+            const skillTriggered = res.skillTriggered;
+            let logText = `⚔️ Вы нанесли ${res.damage} урона!`;
+            if (isCrit) logText += ' 💥 КРИТ!';
+            if (skillTriggered) logText += ` ✨ ${res.skillName}!`;
+            addRaidLogEntry(logText, isCrit ? 'crit' : skillTriggered ? 'skill' : 'mine');
             loadRaidData();
         } else {
             showToast(res.message, 'error');
@@ -4516,27 +4528,9 @@ function closeRaidResults() {
     updateHeader();
 }
 
-function getRaidSocket() {
-    // Используем сокет арены (он уже подключён)
-    return arenaClient?.state?.socket || window.socket || null;
-}
-
 function initRaidWebSocket() {
-    // Ждём пока сокет арены будет готов
-    const tryInit = () => {
-        const socket = getRaidSocket();
-        if (!socket) {
-            setTimeout(tryInit, 1000);
-            return;
-        }
-
-        // Убираем старые обработчики если были
-        socket.off('raid_phase_update');
-        socket.off('raid_turn_start');
-        socket.off('raid_attack');
-        socket.off('raid_end');
-
-        socket.on('raid_phase_update', (data) => {
+    if (window.io && window.socket) {
+        window.socket.on('raid_phase_update', (data) => {
             if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
                 loadRaidData();
                 if (data.message) showToast(data.message, '⚔️');
@@ -4546,7 +4540,7 @@ function initRaidWebSocket() {
             }
         });
 
-        socket.on('raid_turn_start', (data) => {
+        window.socket.on('raid_turn_start', (data) => {
             if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
                 currentRaid.currentTurn = data.turn;
                 currentRaid.turnEndsAt = Number(data.turnEndsAt);
@@ -4557,19 +4551,20 @@ function initRaidWebSocket() {
             }
         });
 
-        socket.on('raid_attack', (data) => {
-            if (!currentRaid) return;
-            if (String(data.raidId) !== String(currentRaid._id)) return;
-            const myId = String(state.user?.telegramId || state.user?.id || '');
-            const isMe = data.telegramId && String(data.telegramId) === myId;
-            let logText = `${data.attackerName}: ${data.damage} урона`;
-            if (data.isCrit) logText += ' 💥 КРИТ';
-            if (data.skillTriggered) logText += ` ✨ ${data.skillName}`;
-            addRaidLogEntry(logText, isMe ? 'mine' : data.isCrit ? 'crit' : '');
-            loadRaidData();
+        window.socket.on('raid_attack', (data) => {
+            if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
+                const isMe = data.attackerName === (state.user?.username || state.user?.firstName);
+                if (!isMe) {
+                    let logText = `${data.attackerName}: ${data.damage} урона`;
+                    if (data.isCrit) logText += ' 💥';
+                    if (data.skillTriggered) logText += ` ✨ ${data.skillName}`;
+                    addRaidLogEntry(logText, data.isCrit ? 'crit' : '');
+                    loadRaidData();
+                }
+            }
         });
 
-        socket.on('raid_end', (data) => {
+        window.socket.on('raid_end', (data) => {
             showToast('🏆 Рейд завершён! Награды распределены!', '🏆');
             if (data.results) {
                 showRaidResults(data.results);
@@ -4577,11 +4572,7 @@ function initRaidWebSocket() {
                 loadRaidData();
             }
         });
-
-        console.log('✅ Raid WebSocket handlers registered');
-    };
-
-    tryInit();
+    }
 }
 
 // Переключатель вкладок с поддержкой рейда
