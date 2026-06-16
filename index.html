@@ -53,22 +53,36 @@
             <div>
                 <div class="player-name">GENOME_X</div>
                 <div class="player-level" id="playerLevelLabel">LVL 1 · Researcher</div>
-            </div>
-        </div>
-        
-        <div style="display:flex;align-items:center;gap:10px">
-            <div class="balance-area">
-                <div class="balance-icon"><i class="fa-solid fa-dna"></i></div>
-                <div>
-                    <div class="balance-amount" id="balanceDisplay">0</div>
-                    <div class="income-inline" id="incomeInline" style="font-size:8px; color:var(--uncommon); margin-top:2px;">+0/hr</div>
+                <!-- Компактная полоска опыта -->
+                <div class="player-xp-compact">
+                    <div class="xp-bar-compact">
+                        <div class="xp-fill-compact" id="xpFillCompact" style="width:0%"></div>
+                    </div>
+                    <div class="xp-text-compact" id="xpTextCompact">0/100</div>
                 </div>
             </div>
         </div>
-    </div>
-    <div class="xp-bar-wrap">
-        <div class="xp-label" id="xpLabel">XP 0/100</div>
-        <div class="xp-bar"><div class="xp-fill" id="xpFill" style="width:0%"></div></div>
+        
+        <!-- Блок баланса -->
+        <div class="balance-area stacked">
+            <div class="balance-row main">
+                <i class="fa-solid fa-dna"></i>
+                <span id="balanceDisplay">0</span>
+                <span class="balance-suffix">MMO</span>
+            </div>
+            <div class="balance-row stats">
+                <div class="stats-item dust">
+                    <span><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:16px;height:16px;vertical-align:middle;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))"></span>
+                    <span id="dustDisplay">0</span>
+                </div>
+                <div class="stats-divider"></div>
+                <div class="stats-item income">
+                    <i class="fa-solid fa-bolt"></i>
+                    <span id="incomeInline">0</span>
+                    <span class="income-unit">/ч</span>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -103,7 +117,7 @@
             <i class="fa-solid fa-tv" style="font-size:16px"></i>
             <span style="flex:1;text-align:left" data-i18n="game.watchAd">Watch Ad</span>
             <span style="color:var(--uncommon);font-size:13px;min-width:50px;text-align:right" id="adsTimer">Ready</span>
-            <span style="color:var(--uncommon);font-weight:700" id="adsReward">+20</span>
+            <span style="color:var(--uncommon);font-weight:700" id="adsReward">+5</span>
             <span style="color:var(--text3);font-size:9px;margin-left:4px" id="adsRemaining">0/10</span>
         </button>
         <div class="encyclopedia-btn" onclick="showEncyclopedia()">
@@ -118,9 +132,9 @@
 
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <div class="section-title" style="margin-bottom:0"><i class="fa-solid fa-cubes" style="color:var(--accent3)"></i> <span data-i18n="inventory.myCreatures">My Creatures</span> <span id="inventorySlots" style="font-size:10px;color:var(--text2);font-weight:400;letter-spacing:0">0/10</span></div>
-        <button style="padding:6px 12px;border:none;border-radius:8px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;font-size:10px;font-weight:700;font-family:'Orbitron',monospace;cursor:pointer;transition:all 0.2s;white-space:nowrap" onclick="event.stopPropagation(); upgradeInventory()" id="quickUpgradeBtn">
-            <i class="fa-solid fa-plus"></i> <span id="upgradeSlotCost">100</span> <span data-i18n="game.mmo">MMO</span>
-        </button>
+<button style="padding:6px 12px;border:none;border-radius:8px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;font-size:10px;font-weight:700;font-family:'Orbitron',monospace;cursor:pointer;transition:all 0.2s;white-space:nowrap" onclick="event.stopPropagation(); upgradeInventory()" id="quickUpgradeBtn">
+    <i class="fa-solid fa-plus"></i> +1 слот (<span id="upgradeSlotCost">300</span> MMO)
+</button>
     </div>
     <div class="cards-grid" id="cardsGrid">
         <div class="empty-grid">
@@ -144,9 +158,19 @@
             <i class="fa-solid fa-list"></i> <span data-i18n="marketplace.myListings">My</span>
         </button>
     </div>
-    <div class="marketplace-subtab active" id="marketplace-buy">
-        <div id="marketplaceListings" style="display:flex;flex-direction:column;gap:10px"></div>
+<div class="marketplace-subtab active" id="marketplace-buy">
+    <!-- Блок фильтров -->
+    <div class="marketplace-filters">
+        <button class="filter-btn active" data-filter="all" onclick="setMarketplaceFilter('all')">📦 Все</button>
+        <button class="filter-btn" data-filter="common" onclick="setMarketplaceFilter('common')">⬜ Common</button>
+        <button class="filter-btn" data-filter="uncommon" onclick="setMarketplaceFilter('uncommon')">🟢 Uncommon</button>
+        <button class="filter-btn" data-filter="rare" onclick="setMarketplaceFilter('rare')">🔵 Rare</button>
+        <button class="filter-btn" data-filter="epic" onclick="setMarketplaceFilter('epic')">🟣 Epic</button>
+        <button class="filter-btn" data-filter="legendary" onclick="setMarketplaceFilter('legendary')">🟠 Legendary</button>
+        <button class="filter-btn" data-filter="dust" onclick="setMarketplaceFilter('dust')">🌫️ Пыль</button>
     </div>
+    <div id="marketplaceListings" style="display:flex;flex-direction:column;gap:10px"></div>
+</div>
     <div class="marketplace-subtab" id="marketplace-sell">
         <div class="section-title" style="margin-bottom:12px"><i class="fa-solid fa-hand-holding-dollar" style="color:var(--uncommon)"></i> <span data-i18n="marketplace.yourCreatures">Your Creatures</span></div>
         <div id="marketplaceSellCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"></div>
@@ -341,8 +365,9 @@
                 </div>
                 <div class="rank-compact-details" id="rankCompactDetails-bronze" style="display: none;">
                     <div class="compact-rewards">
-                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 200 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 350 MMO</div>
+                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 10 MMO</div>
+                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 15 MMO</div>
+                        <div class="reward-chip"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:12px;height:12px;vertical-align:middle;margin-right:2px" onerror="this.replaceWith(document.createTextNode('🌫️'))"> Пыль: +1 за победу</div>
                         <div class="reward-chip"><i class="fa-solid fa-arrow-up"></i> До 1300</div>
                     </div>
                     <div class="compact-players">
@@ -363,8 +388,9 @@
                 </div>
                 <div class="rank-compact-details" id="rankCompactDetails-silver" style="display: none;">
                     <div class="compact-rewards">
-                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 500 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 800 MMO</div>
+                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 50 MMO</div>
+                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 80 MMO</div>
+                        <div class="reward-chip"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:12px;height:12px;vertical-align:middle;margin-right:2px" onerror="this.replaceWith(document.createTextNode('🌫️'))"> Пыль: +5 за победу</div>
                         <div class="reward-chip"><i class="fa-solid fa-arrow-up"></i> До 1600</div>
                     </div>
                     <div class="compact-players">
@@ -385,8 +411,9 @@
                 </div>
                 <div class="rank-compact-details" id="rankCompactDetails-gold" style="display: none;">
                     <div class="compact-rewards">
-                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 1000 MMO</div>
-                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 1600 MMO</div>
+                        <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 500 MMO</div>
+                        <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 800 MMO</div>
+                        <div class="reward-chip"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:12px;height:12px;vertical-align:middle;margin-right:2px" onerror="this.replaceWith(document.createTextNode('🌫️'))"> Пыль: +50 за победу</div>
                         <div class="reward-chip"><i class="fa-solid fa-arrow-up"></i> До 1900</div>
                     </div>
                     <div class="compact-players">
@@ -409,6 +436,7 @@
                     <div class="compact-rewards">
                         <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 2000 MMO</div>
                         <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 3200 MMO</div>
+                        <div class="reward-chip"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:12px;height:12px;vertical-align:middle;margin-right:2px" onerror="this.replaceWith(document.createTextNode('🌫️'))"> Пыль: +100 за победу</div>
                         <div class="reward-chip"><i class="fa-solid fa-arrow-up"></i> До 2200</div>
                     </div>
                     <div class="compact-players">
@@ -431,6 +459,7 @@
                     <div class="compact-rewards">
                         <div class="reward-chip"><i class="fa-solid fa-coins"></i> Вход: 5000 MMO</div>
                         <div class="reward-chip"><i class="fa-solid fa-gift"></i> Приз: 8000 MMO</div>
+                        <div class="reward-chip"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:12px;height:12px;vertical-align:middle;margin-right:2px" onerror="this.replaceWith(document.createTextNode('🌫️'))"> Пыль: +200 за победу</div>
                         <div class="reward-chip"><i class="fa-solid fa-crown"></i> Элита!</div>
                     </div>
                     <div class="compact-players">
@@ -454,11 +483,164 @@
     </div>
 </div>
 
+<!-- Вкладка Рейд -->
+<div class="tab-content" id="tab-raid">
+    <div class="section-title"><i class="fa-solid fa-dragon"></i> Ежедневный Рейд</div>
+
+    <!-- КАРТОЧКА РЕЙДА (лобби) -->
+    <div id="raidBossCard" class="raid-boss-card">
+        <div class="raid-boss-header">
+            <div class="raid-boss-icon" id="raidBossIcon">🐉</div>
+            <div class="raid-boss-name" id="raidBossName">Ежедневный Рейд</div>
+        </div>
+        <div class="raid-boss-stats">
+            <div class="raid-stat">
+                <span class="stat-icon">👥</span>
+                <span id="raidParticipantsCount">0</span>
+                <span class="stat-label">участников</span>
+            </div>
+            <div class="raid-stat">
+                <span class="stat-icon">💰</span>
+                <span id="raidPrizePool">0</span>
+                <span class="stat-label">призовой пул</span>
+            </div>
+            <div class="raid-stat">
+                <span class="stat-icon">⚔️</span>
+                <span id="raidCurrentTurn">0</span>
+                <span class="stat-label">ход</span>
+            </div>
+        </div>
+        <div class="raid-timer" id="raidTimerBlock">
+            <div class="raid-timer-label" id="raidTimerLabel">До начала рейда</div>
+            <div class="raid-timer-value" id="raidTimerValue">--:--:--</div>
+        </div>
+
+        <!-- НЕ ЗАПИСАН -->
+        <div id="raidNotJoined">
+            <div style="font-size: 12px; color: var(--text2); margin-bottom: 8px;">
+                <i class="fa-solid fa-paw"></i> Выберите питомца для участия:
+            </div>
+            <div id="raidPetSelector" class="pet-selector-grid"></div>
+            <button class="raid-join-btn" onclick="joinRaid()">
+                <i class="fa-solid fa-ticket"></i> Записаться (100 MMO)
+            </button>
+        </div>
+
+        <!-- ЗАПИСАН (ожидание) -->
+        <div id="raidJoined" style="display:none;">
+            <div class="raid-waiting-info">
+                <i class="fa-solid fa-paw"></i> Ваш питомец: <span id="raidMyPetName"></span>
+            </div>
+            <button class="raid-attack-btn" id="raidOpenBattleBtn" onclick="openRaidBattle()" style="margin-top:12px;">
+                <i class="fa-solid fa-swords"></i> Открыть бой
+            </button>
+        </div>
+    </div>
+
+    <div class="section-title"><i class="fa-solid fa-trophy"></i> Топ уронщики</div>
+    <div id="raidTopList" class="raid-top-list"></div>
+
+    <div class="section-title"><i class="fa-solid fa-history"></i> История рейдов</div>
+    <div id="raidHistoryList" class="raid-history-list"></div>
+</div>
+
+<!-- ===== RAID BATTLE SCREEN (fullscreen overlay) ===== -->
+<div id="raidBattleScreen" class="raid-battle-screen" style="display:none;">
+
+    <!-- Шапка -->
+    <div class="rbs-header">
+        <button class="rbs-close-btn" onclick="closeRaidBattle()">
+            <i class="fa-solid fa-arrow-left"></i>
+        </button>
+        <div class="rbs-header-center">
+            <div class="rbs-title">⚔️ Ежедневный Рейд</div>
+            <div class="rbs-turn-row">
+                <span class="rbs-turn-badge">Ход <span id="rbsTurn">1</span>/15</span>
+                <span class="rbs-turn-timer" id="rbsTurnTimer"></span>
+            </div>
+        </div>
+        <div class="rbs-header-stats">
+            <div class="rbs-hstat">👥 <span id="rbsParticipants">0</span></div>
+            <div class="rbs-hstat">💰 <span id="rbsPrizePool">0</span></div>
+        </div>
+    </div>
+
+    <!-- Карточка босса -->
+    <div class="rbs-boss-card" id="rbsBossCard">
+        <div class="rbs-boss-left">
+            <div class="rbs-boss-icon" id="rbsBossIcon">🐉</div>
+        </div>
+        <div class="rbs-boss-right">
+            <div class="rbs-boss-label">БОСС</div>
+            <div class="rbs-boss-name">Дракон Апокалипсиса</div>
+            <div class="rbs-hp-bar-wrap">
+                <div class="rbs-hp-bar" id="rbsBossHp" style="width:100%"></div>
+            </div>
+            <div class="rbs-boss-hp-label">∞ HP · урон от всех участников</div>
+        </div>
+    </div>
+
+    <!-- Разделитель -->
+    <div class="rbs-divider"><span>⚔️ VS ⚔️</span></div>
+
+    <!-- Карточка питомца -->
+    <div class="rbs-pet-card" id="rbsPetCard">
+        <div class="rbs-pet-left">
+            <div class="rbs-pet-icon" id="rbsPetIcon">🧬</div>
+        </div>
+        <div class="rbs-pet-right">
+            <div class="rbs-pet-label">ВАШ ПИТОМЕЦ</div>
+            <div class="rbs-pet-name" id="rbsPetName">—</div>
+            <div class="rbs-pet-stats">
+                <span>⚡ <b id="rbsMyDamage">0</b> урон</span>
+                <span>👊 <b id="rbsMyAttacks">0</b> атак</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Таймер хода -->
+    <div class="rbs-turn-bar-wrap" id="rbsTurnBarWrap" style="display:none;">
+        <div class="rbs-turn-bar" id="rbsTurnBar" style="width:100%"></div>
+        <div class="rbs-turn-bar-label"><span id="raidTurnSeconds">20</span>с до конца хода</div>
+    </div>
+
+    <!-- Кнопка атаки -->
+    <div class="rbs-attack-wrap">
+        <button class="rbs-attack-btn" id="raidAttackBtn" onclick="attackRaidBoss()">
+            <i class="fa-solid fa-sword"></i> Атаковать!
+        </button>
+    </div>
+
+    <!-- Лог боя -->
+    <div class="rbs-log-wrap">
+        <div class="rbs-log-title">📜 Лог боя</div>
+        <div class="rbs-log" id="rbsLog"></div>
+    </div>
+</div>
+
+<!-- ===== RAID RESULTS MODAL ===== -->
+<div id="raidResultsModal" class="raid-results-modal" style="display:none;">
+    <div class="raid-results-box">
+        <div class="raid-results-title">🏆 Рейд завершён!</div>
+        <div class="raid-results-subtitle" id="raidResultsSubtitle"></div>
+        <div class="raid-results-list" id="raidResultsList"></div>
+        <div class="raid-results-my-reward" id="raidResultsMyReward"></div>
+        <button class="raid-results-close" onclick="closeRaidResults()">
+            <i class="fa-solid fa-check"></i> Забрать награды
+        </button>
+    </div>
+</div>
+    
 <!-- Вкладка Wallet -->
 <div class="tab-content" id="tab-wallet">
     <div class="wallet-hero">
         <div class="wallet-label" data-i18n="wallet.totalBalance">Total Balance</div>
         <div class="wallet-balance"><span id="walletBalance">0</span> <span style="font-size:16px;color:var(--text2)">MMO</span></div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:10px">
+            <span style="font-size:13px;color:#7c3aed"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:16px;height:16px;vertical-align:middle;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))"></span>
+            <span style="font-family:'Orbitron',monospace;font-size:20px;font-weight:700;color:#a78bfa" id="walletDust">0</span>
+            <span style="font-size:13px;color:#7c3aed">ПЫЛЬ</span>
+        </div>
         <div class="wallet-hero-stats">
             <div class="wallet-hero-stat"><span class="whs-icon">🧬</span><span class="whs-val" id="walletCards">0</span><span class="whs-label">Creatures</span></div>
             <div class="wallet-hero-stat"><span class="whs-icon">🔀</span><span class="whs-val" id="walletMerges">0</span><span class="whs-label">Merges</span></div>
@@ -480,51 +662,55 @@
     </div>
 
     <!-- STAKING -->
-    <div class="staking-section">
-        <div class="staking-title"><i class="fa-solid fa-lock"></i> Стейкинг</div>
-        <div class="staking-subtitle">Заблокируй MMO и получи доход</div>
-        <div class="staking-plans">
-            <div class="staking-plan" id="stakingPlan10" onclick="selectStakingPlan(10)">
-                <div class="staking-plan-days">10 дней</div>
-                <div class="staking-plan-rate">+10%</div>
-                <div class="staking-plan-bonus">🦫 + Capybara Rare</div>
-                <div class="staking-plan-min">мин. 300 000 MMO</div>
-            </div>
-            <div class="staking-plan" id="stakingPlan30" onclick="selectStakingPlan(30)">
-                <div class="staking-plan-days">30 дней</div>
-                <div class="staking-plan-rate">+20%</div>
-                <div class="staking-plan-min">мин. 50 000 MMO</div>
-            </div>
+<!-- STAKING -->
+<div class="staking-section">
+    <div class="staking-title"><i class="fa-solid fa-lock"></i> Стейкинг</div>
+    <div class="staking-subtitle">Заблокируй MMO и получи доход</div>
+    <div class="staking-plans">
+        <!-- старые -->
+        <div class="staking-plan" id="stakingPlan30" onclick="selectStakingPlan(30)">
+            <div class="staking-plan-days">30 дней</div>
+            <div class="staking-plan-rate">+20%</div>
+            <div class="staking-plan-min">мин. 50 000 MMO</div>
         </div>
-        <div id="activeStakingBlock" style="display:none;">
-            <div class="staking-active-title">⏳ Активный стейкинг</div>
-            <div class="staking-active-card">
-                <div class="staking-active-row">
-                    <span class="staking-active-label">Сумма</span>
-                    <span class="staking-active-val" id="stakeAmount">—</span>
-                </div>
-                <div class="staking-active-row">
-                    <span class="staking-active-label">Доход</span>
-                    <span class="staking-active-val green" id="stakeReward">—</span>
-                </div>
-                <div class="staking-active-row">
-                    <span class="staking-active-label">Осталось</span>
-                    <span class="staking-active-val" id="stakeTimer">—</span>
-                </div>
-                <button class="staking-claim-btn" id="stakeClaimBtn" onclick="claimStaking()" style="display:none;">
-                    <i class="fa-solid fa-coins"></i> Забрать награду
-                </button>
-            </div>
+        <div class="staking-plan" id="stakingPlan10" onclick="selectStakingPlan(10)">
+            <div class="staking-plan-days">10 дней</div>
+            <div class="staking-plan-rate">+10%</div>
+            <div class="staking-plan-bonus">+ 🦫 Capybara Rare</div>
+            <div class="staking-plan-min">мин. 300 000 MMO</div>
+        </div>
+
+        <!-- НОВЫЕ 14-дневные стейкинги -->
+        <div class="staking-plan" id="stakingPlan14" onclick="selectStakingPlan(14)">
+            <div class="staking-plan-days">14 дней</div>
+            <div class="staking-plan-rate">+10%</div>
+            <div class="staking-plan-bonus">+ 👕 Кросс (1 месяц)</div>
+            <div class="staking-plan-min">мин. 200 000 MMO</div>
+        </div>
+        <div class="staking-plan" id="stakingPlan28" onclick="selectStakingPlan(28)">
+            <div class="staking-plan-days">14 дней</div>
+            <div class="staking-plan-rate">+10%</div>
+            <div class="staking-plan-bonus">+ 🥷 Ниндзя (3 месяца)</div>
+            <div class="staking-plan-min">мин. 500 000 MMO</div>
+        </div>
+        <div class="staking-plan" id="stakingPlan56" onclick="selectStakingPlan(56)">
+            <div class="staking-plan-days">14 дней</div>
+            <div class="staking-plan-rate">+10%</div>
+            <div class="staking-plan-bonus">+ 👘 Любой скин (12 месяцев)</div>
+            <div class="staking-plan-min">мин. 1 000 000 MMO</div>
         </div>
     </div>
+    
+    <div id="activeStakingBlock" style="display:none;">
+        <div class="staking-active-title">⏳ Активные стейкинги</div>
+        <div class="staking-active-card" id="activeStakingsList">
+            <!-- Сюда будут добавляться все активные стейкинги -->
+        </div>
+    </div>
+</div>
 
     <div id="pendingRequests"></div>
 </div>
-</div>
-
-<!-- GUILD TAB -->
-<div class="tab-content" id="tab-guild">
-    <div class="guild-loading">Загрузка...</div>
 </div>
 
 <!-- Staking Modal (fixed, вне таба) -->
@@ -572,10 +758,12 @@
         <i class="fa-solid fa-wallet"></i>
         <span data-i18n="nav.wallet">Wallet</span>
     </div>
-    <div class="nav-item" onclick="switchTab('guild')" id="nav-guild">
-        <i class="fa-solid fa-shield-halved"></i>
-        <span>Гильдия</span>
-    </div>
+    
+    <div class="nav-item" onclick="switchTab('raid')" id="nav-raid">
+    <i class="fa-solid fa-dragon"></i>
+    <span>Рейд</span>
+</div>
+    
 </div>
 
 <!-- OVERLAYS -->
@@ -589,7 +777,6 @@
 <script src="arena-client.js"></script>
 <script src="arena-skills.js"></script>
 <script src="script.js"></script>
-<script src="guild-ui.js"></script>
 <script src="localization.js"></script>
 <script>
 // Скиллы для отображения в UI (клиентская копия)
