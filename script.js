@@ -4154,13 +4154,9 @@ function updateRaidUI() {
             topList.innerHTML = '<div class="empty-listings">Нет участников</div>';
         }
     }
-    // Обновляем лидерборд в экране боя
+    // Обновляем лидерборд в экране боя (из API при открытии)
     if (raidBattleOpen && currentRaid.topParticipants?.length) {
-        renderRaidLeaderboard(currentRaid.topParticipants.map(p => ({
-            username: p.username,
-            damage: p.damage,
-            telegramId: p.telegramId || ''
-        })));
+        renderRaidLeaderboard(currentRaid.topParticipants);
     }
 
     loadRaidHistory();
@@ -4185,7 +4181,12 @@ function updateRaidTimer() {
         targetTime = new Date(currentRaid.raidStartTime);
         label = '⏳ До начала рейда';
     } else if (currentRaid.phase === 'fighting') {
-        targetTime = new Date(currentRaid.raidEndTime);
+        // Считаем от первого хода если есть, иначе от raidEndTime
+        if (currentRaid.firstTurnAt) {
+            targetTime = new Date(new Date(currentRaid.firstTurnAt).getTime() + 15 * 20 * 1000 + 5000);
+        } else {
+            targetTime = new Date(currentRaid.raidEndTime);
+        }
         label = '⚔️ До завершения';
     } else if (currentRaid.phase === 'finished') {
         timerValue.textContent = '✅ Рейд завершён';
@@ -4599,7 +4600,9 @@ window.switchTab = function(tab) {
     if (tab === 'raid') {
         loadRaidData();
         if (raidUpdateInterval) clearInterval(raidUpdateInterval);
-        raidUpdateInterval = setInterval(loadRaidData, 3000);
+        // Во время боя данные идут через сокет — поллим редко
+        const pollInterval = (currentRaid?.phase === 'fighting') ? 15000 : 5000;
+        raidUpdateInterval = setInterval(loadRaidData, pollInterval);
     } else if (raidUpdateInterval) {
         clearInterval(raidUpdateInterval);
         raidUpdateInterval = null;

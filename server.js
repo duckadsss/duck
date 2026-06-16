@@ -435,7 +435,8 @@ const RaidSchema = new mongoose.Schema({
     commission: { type: Number, default: 0 },
     playersPrizePool: { type: Number, default: 0 },
     createdAt: { type: Date, default: Date.now },
-    scheduledAt: { type: Date, default: null }
+    scheduledAt: { type: Date, default: null },
+    firstTurnAt: { type: Date, default: null }
 });
 
 const RaidParticipantSchema = new mongoose.Schema({
@@ -808,6 +809,10 @@ function addXP(user, amount) {
 // ============================================
 let creaturesCache = null;
 let cachedConfig = null;
+// In-memory raid cache — обновляется при смене фазы/хода
+let activeRaidCache = null;
+// In-memory leaderboard cache — Map<telegramId, {username, damage}>
+let raidLbCache = new Map();
 let configCacheTime = 0;
 const CONFIG_CACHE_TTL = 60 * 1000;
 const inventoryCache = new Map();
@@ -3133,24 +3138,24 @@ app.get('/api/arena/history', authMiddleware, async (req, res) => {
 // Получить текущий рейд
 app.get('/api/raid/current', authMiddleware, async (req, res) => {
     try {
-        const raid = await ensureRaidForToday();
-        
-        const participantsCount = await RaidParticipant.countDocuments({ raidId: raid._id });
+        const raid = activeRaidCache || await ensureRaidForToday();
+        if (!activeRaidCache) activeRaidCache = raid;
+
+        // Только свои данные — один легкий запрос
         const myParticipant = await RaidParticipant.findOne({
             raidId: raid._id,
             telegramId: req.user.telegramId
-        });
-        
-        const participants = await RaidParticipant.find({ raidId: raid._id })
-            .sort({ totalDamage: -1 })
-            .limit(10)
-            .populate('userId', 'username firstName');
-        
+        }).select('totalDamage attacksCount petId');
+
         const raidTime = raid.scheduledAt || getRaidTime();
-        // fightEndTime считаем от реального старта боя, не от времени регистрации
-        const fightStartTime = (raid.phase === 'fighting' && raid.startTime) ? raid.startTime : raidTime;
-        const fightEndTime = new Date(fightStartTime.getTime() + 15 * 20 * 1000); // 15 ходов * 20 сек
-        
+        const fightStartTime = raid.firstTurnAt || raid.startTime || raidTime;
+        const fightEndTime = new Date(fightStartTime.getTime() + 15 * 20 * 1000 + 5000);
+
+        // Лидерборд из памяти
+        const lb = Array.from(raidLbCache.values())
+            .sort((a, b) => b.damage - a.damage)
+            .slice(0, 20);
+
         res.json({
             success: true,
             raid: {
@@ -3163,17 +3168,15 @@ app.get('/api/raid/current', authMiddleware, async (req, res) => {
                 turnEndsAt: raid.turnEndsAt ? new Date(raid.turnEndsAt).getTime() : null,
                 startTime: raid.startTime,
                 endTime: raid.endTime,
-                participantsCount,
+                participantsCount: raidLbCache.size || 0,
                 myDamage: myParticipant?.totalDamage || 0,
                 myAttacks: myParticipant?.attacksCount || 0,
                 myPetId: myParticipant?.petId || null,
                 isRegistered: !!myParticipant,
                 raidStartTime: raidTime,
                 raidEndTime: fightEndTime,
-                topParticipants: participants.map(p => ({
-                    username: p.userId?.username || p.username || 'Anonymous',
-                    damage: p.totalDamage
-                }))
+                firstTurnAt: raid.firstTurnAt || null,
+                topParticipants: lb
             }
         });
     } catch (e) {
@@ -3280,7 +3283,7 @@ app.post('/api/raid/attack', authMiddleware, async (req, res) => {
     try {
         const user = req.user;
 
-const raid = await Raid.findOne({ phase: { $in: ['registration', 'fighting'] } }).sort({ scheduledAt: 1 });
+        const raid = activeRaidCache || await Raid.findOne({ phase: 'fighting' }).sort({ scheduledAt: 1 });
         if (!raid || raid.phase !== 'fighting') {
             return res.status(400).json({ success: false, message: 'Рейд не активен' });
         }
@@ -3365,6 +3368,7 @@ const raid = await Raid.findOne({ phase: { $in: ['registration', 'fighting'] } }
         finalDamage = Math.max(1, finalDamage);
         
         // Обновляем статистику участника
+        // Атомарный update без лишнего findById
         await RaidParticipant.updateOne(
             { _id: participant._id },
             {
@@ -3372,32 +3376,40 @@ const raid = await Raid.findOne({ phase: { $in: ['registration', 'fighting'] } }
                 $set: { attackedInCurrentTurn: true }
             }
         );
-        
-        // Получаем обновлённого участника для ответа
-        const updatedParticipant = await RaidParticipant.findById(participant._id);
-        
-        // Рассылаем обновление всем через WebSocket
+
+        // Обновляем лидерборд в памяти
+        const myTelegramId = String(user.telegramId);
+        const existing = raidLbCache.get(myTelegramId) || { username: user.username || user.firstName || 'Игрок', damage: 0, telegramId: myTelegramId };
+        existing.damage += finalDamage;
+        raidLbCache.set(myTelegramId, existing);
+
+        // Лидерборд из памяти — без запроса в БД
+        const lb = Array.from(raidLbCache.values()).sort((a, b) => b.damage - a.damage);
+        const newTotalDamage = existing.damage;
+
         io.emit('raid_attack', {
-            raidId: raid._id,
+            raidId: String(raid._id),
+            telegramId: myTelegramId,
             attackerName: user.username || user.firstName || 'Игрок',
             damage: finalDamage,
             isCrit,
             skillTriggered,
             skillName,
-            totalDamage: updatedParticipant.totalDamage,
-            currentTurn: raid.currentTurn
+            totalDamage: newTotalDamage,
+            currentTurn: raid.currentTurn,
+            leaderboard: lb
         });
-        
+
         res.json({
             success: true,
             damage: finalDamage,
             isCrit,
             skillTriggered,
             skillName,
-            totalDamage: updatedParticipant.totalDamage,
-            attacksCount: updatedParticipant.attacksCount,
+            totalDamage: newTotalDamage,
+            attacksCount: (participant.attacksCount || 0) + 1,
             currentTurn: raid.currentTurn,
-            turnEndsAt: raid.turnEndsAt,
+            turnEndsAt: raid.turnEndsAt ? new Date(raid.turnEndsAt).getTime() : null,
             message: `Вы нанесли ${finalDamage} урона!${isCrit ? ' КРИТ!' : ''}${skillTriggered ? ` Сработал навык: ${skillName}!` : ''}`
         });
         
@@ -3827,17 +3839,11 @@ app.get('/api/wallet/history', authMiddleware, async (req, res) => {
 // ============================================
 
 function getRaidTime() {
+    // Рейд каждый час — в начале следующего часа
     const now = new Date();
     const next = new Date(now);
-    next.setSeconds(0, 0);
-    const minutes = next.getMinutes();
-    const nextSlot = Math.ceil((minutes + 1) / 1) * 1;
-    if (nextSlot >= 60) {
-        next.setHours(next.getHours() + 1);
-        next.setMinutes(0);
-    } else {
-        next.setMinutes(nextSlot);
-    }
+    next.setMinutes(0, 0, 0); // начало часа
+    next.setHours(next.getHours() + 1); // следующий час
     return next;
 }
 
@@ -3865,6 +3871,8 @@ async function ensureRaidForToday() {
             scheduledAt: raidTime
         });
         console.log(`🎮 Создан рейд на ${raidId}`);
+        activeRaidCache = raid;
+        raidLbCache.clear();
     }
     return raid;
 }
@@ -3874,13 +3882,21 @@ async function startRaidFight(raidId) {
         $set: { phase: 'fighting', startTime: new Date() }
     }, { new: true });
     if (!raid) return;
-    
-    console.log(`⚔️ Рейд ${raid.raidId} начал бой!`);
-    
-    // Рассылаем уведомление всем онлайн
+
+    // Обновляем кэш
+    activeRaidCache = raid;
+
+    // Инициализируем лидерборд из БД
+    raidLbCache.clear();
+    const parts = await RaidParticipant.find({ raidId: raid._id }).select('telegramId username totalDamage');
+    for (const p of parts) {
+        raidLbCache.set(String(p.telegramId), { username: p.username, damage: p.totalDamage, telegramId: String(p.telegramId) });
+    }
+
+    console.log(`⚔️ Рейд ${raid.raidId} начал бой! Участников: ${parts.length}`);
     io.emit('raid_phase_update', {
         phase: 'fighting',
-        raidId: raid._id,
+        raidId: String(raid._id),
         message: '⚔️ БИТВА НАЧАЛАСЬ! Атакуйте босса!'
     });
 }
@@ -3888,23 +3904,27 @@ async function startRaidFight(raidId) {
 async function startRaidTurns(raidId) {
     const raid = await Raid.findById(raidId);
     if (!raid || raid.phase !== 'fighting') return;
-    
-    // Сбрасываем флаги атаки у всех участников
+
     await RaidParticipant.updateMany(
         { raidId: raid._id },
         { $set: { attackedInCurrentTurn: false } }
     );
-    
-    const turnEndsAt = new Date(Date.now() + 20 * 1000);
-    await Raid.findByIdAndUpdate(raidId, {
-        $set: { currentTurn: 1, turnEndsAt, endTime: null }
-    });
-    
+
+    const now = new Date();
+    const turnEndsAt = new Date(now.getTime() + 20 * 1000);
+    const updated = await Raid.findByIdAndUpdate(raidId, {
+        $set: { currentTurn: 1, turnEndsAt, endTime: null, firstTurnAt: now }
+    }, { new: true });
+    if (activeRaidCache) { activeRaidCache = updated; }
+
+    const lb = Array.from(raidLbCache.values()).sort((a, b) => b.damage - a.damage);
     io.emit('raid_turn_start', {
         raidId: String(raid._id),
         turn: 1,
-        turnEndsAt: turnEndsAt.getTime()
+        turnEndsAt: turnEndsAt.getTime(),
+        leaderboard: lb
     });
+    console.log(`🎯 Ход 1 начался. Конец через ${15*20}с`);
 }
 
 async function nextRaidTurn(raidId) {
@@ -3925,20 +3945,26 @@ async function nextRaidTurn(raidId) {
     );
     
     const turnEndsAt = new Date(Date.now() + 20 * 1000);
-    await Raid.findByIdAndUpdate(raidId, {
-        $set: { currentTurn: nextTurn, turnEndsAt }
-    });
-    
+    const updated2 = await Raid.findByIdAndUpdate(raidId, { $set: { currentTurn: nextTurn, turnEndsAt } }, { new: true });
+    if (activeRaidCache) activeRaidCache = updated2;
+
+    const lb = Array.from(raidLbCache.values()).sort((a, b) => b.damage - a.damage);
     io.emit('raid_turn_start', {
         raidId: String(raid._id),
         turn: nextTurn,
-        turnEndsAt: turnEndsAt.getTime()
+        turnEndsAt: turnEndsAt.getTime(),
+        leaderboard: lb
     });
+    console.log(`🎯 Ход ${nextTurn}/15`);
 }
 
 async function finishRaid(raidId) {
     const raid = await Raid.findById(raidId);
     if (!raid || raid.phase !== 'fighting') return;
+
+    // Очищаем кэши — следующий цикл создаст новый рейд
+    activeRaidCache = null;
+    raidLbCache.clear();
     
     const participants = await RaidParticipant.find({ raidId: raid._id })
         .sort({ totalDamage: -1 })
@@ -4045,8 +4071,9 @@ async function processRaidScheduler() {
         await Raid.findByIdAndUpdate(raid._id, { $set: { scheduledAt: raidTime } });
     }
 
-    const fightStartTime = (raid.phase === 'fighting' && raid.startTime) ? raid.startTime : raidTime;
-    const fightEndTime = new Date(fightStartTime.getTime() + 15 * 20 * 1000); // 15 ходов * 20 сек
+    // fightEndTime считаем от первого хода (точнее чем от startTime)
+    const fightStartTime = raid.firstTurnAt || raid.startTime || raidTime;
+    const fightEndTime = new Date(fightStartTime.getTime() + 15 * 20 * 1000 + 5000); // 15*20с + 5с буфер
 
     console.log(`🕐 ${raid.raidId} | ${raid.phase} | diff: ${Math.round((raidTime-now)/1000)}с`);
 
@@ -5372,7 +5399,7 @@ mongoose.connection.once('open', async () => {
     // Планировщик рейда (каждые 10 секунд)
 setInterval(async () => {
     await processRaidScheduler();
-}, 10000);
+}, 3000);
 
 // Создаём рейд на сегодня при старте
 await ensureRaidForToday();
