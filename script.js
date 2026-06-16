@@ -4290,14 +4290,8 @@ function openRaidBattle() {
         return;
     }
     raidBattleOpen = true;
-    const screen = document.getElementById('raidBattleScreen');
-    screen.style.display = 'flex';
-    screen.style.flexDirection = 'column';
-    // Динамически берём высоту хедера приложения
-    const appHeader = document.querySelector('.header');
-    const topOffset = appHeader ? appHeader.getBoundingClientRect().bottom : 60;
-    screen.style.top = topOffset + 'px';
-    screen.style.paddingTop = '0';
+    document.getElementById('raidBattleScreen').style.display = 'flex';
+    document.getElementById('raidBattleScreen').style.flexDirection = 'column';
     updateRaidBattleScreen();
     addRaidLogEntry('⚔️ Вы вошли в бой!', 'system');
 }
@@ -4442,13 +4436,7 @@ async function attackRaidBoss() {
                 bossCard.classList.add('rbs-boss-shake');
                 setTimeout(() => bossCard.classList.remove('rbs-boss-shake'), 300);
             }
-            // Log entry
-            const isCrit = res.isCrit;
-            const skillTriggered = res.skillTriggered;
-            let logText = `⚔️ Вы нанесли ${res.damage} урона!`;
-            if (isCrit) logText += ' 💥 КРИТ!';
-            if (skillTriggered) logText += ` ✨ ${res.skillName}!`;
-            addRaidLogEntry(logText, isCrit ? 'crit' : skillTriggered ? 'skill' : 'mine');
+            // Лог придёт через socket raid_attack — не дублируем
             loadRaidData();
         } else {
             showToast(res.message, 'error');
@@ -4553,14 +4541,12 @@ function initRaidWebSocket() {
 
         window.socket.on('raid_attack', (data) => {
             if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
-                const isMe = data.attackerName === (state.user?.username || state.user?.firstName);
-                if (!isMe) {
-                    let logText = `${data.attackerName}: ${data.damage} урона`;
-                    if (data.isCrit) logText += ' 💥';
-                    if (data.skillTriggered) logText += ` ✨ ${data.skillName}`;
-                    addRaidLogEntry(logText, data.isCrit ? 'crit' : '');
-                    loadRaidData();
-                }
+                const isMe = data.telegramId && String(data.telegramId) === String(state.user?.telegramId || state.user?.id);
+                let logText = `${data.attackerName}: ${data.damage} урона`;
+                if (data.isCrit) logText += ' 💥 КРИТ';
+                if (data.skillTriggered) logText += ` ✨ ${data.skillName}`;
+                addRaidLogEntry(logText, isMe ? 'mine' : data.isCrit ? 'crit' : '');
+                if (!isMe) loadRaidData();
             }
         });
 
