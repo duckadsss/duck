@@ -4275,14 +4275,16 @@ function renderPetSelector() {
         const c = getCreature(item.creatureId);
         const isSelected = currentSelected === c.id;
         const skill = window.ARENA_SKILLS_MAP?.[c.id];
-        const raidAttack = (c.incomeBase * 2) || 20;
+        const upgradeLevel = item.upgradeLevel || 0;
+        const raidAttack = (c.incomeBase + upgradeLevel) * 2;
+        const upgradeBadge = upgradeLevel > 0 ? ` <span style="color:#f59e0b;font-size:10px">LVL ${upgradeLevel}</span>` : '';
         return `
             <div class="pet-option-card ${isSelected ? 'selected' : ''}" onclick="selectRaidPet('${c.id}')">
                 <div class="pet-option-icon">${getIconHtml(c)}</div>
                 <div class="pet-option-info">
-                    <div class="pet-option-name">${escapeHtml(c.name)}</div>
+                    <div class="pet-option-name">${escapeHtml(c.name)}${upgradeBadge}</div>
                     <div class="pet-option-stats">
-                        <span class="pet-stat">⚔️ ${raidAttack} урона</span>
+                        <span class="pet-stat">⚔️ ${raidAttack} атк</span>
                         <span class="pet-stat rarity-${c.rarity}">${c.rarity}</span>
                     </div>
                     ${skill ? `<div class="pet-option-skill">✨ ${skill.name} (${Math.round(skill.chance * 100)}%)</div>` : ''}
