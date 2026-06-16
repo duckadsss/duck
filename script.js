@@ -7,31 +7,6 @@
 // ============================================================
 const API_URL = 'https://serv-production-765e.up.railway.app';
 
-// STAKING PLANS (вверху файла — доступен сразу при любом onclick)
-// script.js
-var STAKING_PLANS_CLIENT = {
-    // старые
-    10: { days: 10, rate: 0.10, minAmount: 300000, label: '+10%', rewardText: '+10% MMO + 🦫 Capybara Rare' },
-    30: { days: 30, rate: 0.20, minAmount: 50000,  label: '+20%', rewardText: '+20% MMO' },
-    
-    // НОВЫЕ (14 дней, 10%)
-    14: { 
-        days: 14, rate: 0.10, minAmount: 200000, label: '+10%',
-        rewardText: '+10% MMO + 👕 Кросс (1 месяц)'
-    },
-    28: { 
-        days: 14, rate: 0.10, minAmount: 500000, label: '+10%',
-        rewardText: '+10% MMO + 🥷 Ниндзя (3 месяца)'
-    },
-    56: { 
-        days: 14, rate: 0.10, minAmount: 1000000, label: '+10%',
-        rewardText: '+10% MMO + 👘 Любой (12 месяцев)'
-    }
-};
-window.STAKING_PLANS_CLIENT = STAKING_PLANS_CLIENT;
-var stakingTimerInterval = null;
-var currentStakingPlan = null;
-
 // ============================================================
 // ЗАПРЕТ КОНТЕКСТНОГО МЕНЮ И ВЫДЕЛЕНИЯ
 // ============================================================
@@ -75,7 +50,7 @@ let RARITY_WEIGHTS = {
     basic: { common: 100, uncommon: 0, rare: 0, epic: 0, legendary: 0 },
     premium: { common: 70, uncommon: 20, rare: 10, epic: 0, legendary: 0 }
 };
-let AD_REWARD = 5;
+let AD_REWARD = 50;
 let AD_COOLDOWN = 60;
 let UPGRADE_BASE_COST = 300;
 let UPGRADE_MULTIPLIER = 1.4;
@@ -102,14 +77,6 @@ let currentPaymentMemo = null;
 let currentPaymentAmount = null;
 const MIN_TRANSACTION_AMOUNT = 10000;
 const MAX_ACTIVE_REQUESTS = 2;
-
-let currentMarketplaceFilter = 'all';
-let allMarketplaceListings = [];
-
-// Raid Boss
-let currentRaid = null;
-let raidUpdateInterval = null;
-let raidTurnTimerInterval = null;
 
 // ============================================================
 // HELPER FUNCTIONS
@@ -149,7 +116,7 @@ function getIconHtml(creature, addShadow = false, shadowColor = null) {
     const icon = creature.icon;
     if (icon && (icon.startsWith('http') || icon.startsWith('/') || icon.startsWith('Images/'))) {
         const shadowStyle = addShadow && shadowColor ? `filter:drop-shadow(0 0 16px ${shadowColor});` : '';
-        return `<img src="${icon}" alt="${escapeHtml(creature.name)}" loading="lazy" style="object-fit:contain;${shadowStyle}" class="card-icon-img" onerror="this.style.display=\'none\'">`;
+        return `<img src="${icon}" alt="${escapeHtml(creature.name)}" loading="lazy" style="object-fit:contain;${shadowStyle}" class="card-icon-img" onerror="this.style.display='none'">`;
     }
     return icon || '🧬';
 }
@@ -251,7 +218,7 @@ async function loadGameConfig() {
         const cfg = res.config;
         CAPSULE_COSTS = cfg.capsuleCosts || { basic: 1000, premium: 6000 };
         RARITY_WEIGHTS = cfg.capsuleRarities || RARITY_WEIGHTS;
-        AD_REWARD = cfg.adReward || 5;
+        AD_REWARD = cfg.adReward || 50;
         AD_COOLDOWN = cfg.adCooldown || 60;
         UPGRADE_BASE_COST = cfg.upgradeBaseCost || 300;
         UPGRADE_MULTIPLIER = cfg.upgradeMultiplier || 1.4;
@@ -515,10 +482,10 @@ function updateArenaLock() {
     const lock = document.getElementById('arenaNavLock');
     if (!lock) return;
     const level = state.user?.level || 1;
-    if (level < 3) {
+    if (level < 5) {
         lock.style.display = 'inline';
         lock.textContent = '🔒';
-        lock.title = `Доступно с 3 уровня (ваш: ${level})`;
+        lock.title = `Доступно с 5 уровня (ваш: ${level})`;
     } else if (!isArenaOpenClient()) {
         lock.style.display = 'inline';
         lock.textContent = '⏰';
@@ -534,55 +501,30 @@ function updateHeader() {
 
     if (!state.incomePerHour) {
         let income = 0;
-        state.inventory.forEach(item => { 
-            const c = getCreature(item.creatureId); 
-            if (c) income += c.incomeBase * item.count; 
-        });
+        state.inventory.forEach(item => { const c = getCreature(item.creatureId); if (c) income += c.incomeBase * item.count; });
         state.incomePerHour = income;
     }
 
     const visualBalance = getVisualBalance();
+    document.getElementById('balanceDisplay').textContent = formatBalance(visualBalance);
     
-    // Обновляем MMO баланс
-    const balanceEl = document.getElementById('balanceDisplay');
-    if (balanceEl) balanceEl.textContent = formatBalance(visualBalance);
-    
-    // Обновляем пыль
-    const dustEl = document.getElementById('dustDisplay');
-    if (dustEl) dustEl.textContent = formatNum(u.dust || 0);
-    
-    // Обновляем инлайн доход
     const incomeInline = document.getElementById('incomeInline');
-    if (incomeInline) incomeInline.textContent = formatNum(state.incomePerHour);
-    
-    // Обновляем компактный XP индикатор
+    if (incomeInline) incomeInline.textContent = `+${formatNum(state.incomePerHour)}/hr`;
+
     const needed = u.level * 100;
-    const xpPercent = Math.min(100, (u.xp / needed) * 100);
-    const xpFill = document.getElementById('xpFillCompact');
-    const xpText = document.getElementById('xpTextCompact');
-    
-    if (xpFill) xpFill.style.width = `${xpPercent}%`;
-    if (xpText) xpText.textContent = `${u.xp}/${needed}`;
-    
-    // Обновляем уровень
-    const levelLabel = document.getElementById('playerLevelLabel');
-    if (levelLabel) levelLabel.textContent = `LVL ${u.level} · ${getLevelTitle(u.level)}`;
-    
-    // Остальные обновления...
-    const walletBalanceEl = document.getElementById('walletBalance');
-    if (walletBalanceEl) walletBalanceEl.textContent = formatBalance(visualBalance);
-    
-    const walletDustEl = document.getElementById('walletDust');
-    if (walletDustEl) walletDustEl.textContent = formatNum(u.dust || 0);
-    
-    const inventorySlots = document.getElementById('inventorySlots');
-    if (inventorySlots) inventorySlots.textContent = `${getUsedSlots()}/${u.inventorySlots || 10}`;
-    
-    const upgradeCostEl = document.getElementById('upgradeSlotCost');
-    if (upgradeCostEl) upgradeCostEl.textContent = getUpgradeCost();
-    
+    document.getElementById('xpLabel').textContent = `XP ${u.xp}/${needed}`;
+    document.getElementById('xpFill').style.width = `${Math.min(100, (u.xp / needed) * 100)}%`;
+    document.getElementById('playerLevelLabel').textContent = `LVL ${u.level} · ${getLevelTitle(u.level)}`;
+
+    document.getElementById('walletCards').textContent = state.inventory.reduce((s, i) => s + i.count, 0);
+    document.getElementById('walletMerges').textContent = u.mergeCount || 0;
+
+    updateUpgradeButton();
+    renderTransactions();
+    updateArenaLock();
+
     const friendCountDisplay = document.getElementById('friendCountDisplay');
-    if (friendCountDisplay) friendCountDisplay.textContent = `${u.referralCount || 0} друзей 5+ уровня`;
+    if (friendCountDisplay && state.user) friendCountDisplay.textContent = `${state.user.referralCount || 0} друзей 5+ уровня`;
 }
 
 function updateUpgradeButton() {
@@ -788,7 +730,7 @@ function onCardClick(creatureId) {
         </div>
         ${skillBlock}
         ${canMerge(creatureId)
-            ? `<button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e)" onclick="showMergePreview('${creatureId}')">
+            ? `<button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e)" onclick="closeOverlay();showMergePreview('${creatureId}')">
                 <i class="fa-solid fa-code-merge"></i> MERGE x3
             </button>`
             : `<button class="popup-btn" onclick="closeOverlay()">CLOSE</button>`
@@ -796,13 +738,6 @@ function onCardClick(creatureId) {
     `;
     document.getElementById('overlay').classList.add('show');
 }
-
-// Таблица стоимости пыли — синхронизирована с сервером
-const MERGE_DUST_TABLE = {
-    common:   { 10: 600,  20: 950,   30: 1200,  40: 1350,  50: 1500,  60: 1600,  70: 3200  },
-    uncommon: { 10: 3000, 20: 5200,  30: 6600,  40: 7500,  50: 8000,  60: 8400,  70: 16800 },
-    rare:     { 10: 132000, 20: 180000, 30: 205000, 40: 223000, 50: 237000, 60: 248000, 70: 257000, 80: 266000 }
-};
 
 function showMergePreview(creatureId) {
     const creature = getCreature(creatureId);
@@ -812,139 +747,37 @@ function showMergePreview(creatureId) {
     const currentRarityIdx = RARITY_ORDER.indexOf(creature.rarity);
     const nextRarity = currentRarityIdx < RARITY_ORDER.length - 2 ? RARITY_ORDER[currentRarityIdx + 1] : creature.rarity;
     const nextCreature = CREATURES.find(c => c.name === creature.name && c.rarity === nextRarity) || creature;
-
-    const BASE_CHANCE = { common: 30, uncommon: 30, rare: 10, epic: 10, legendary: 5 };
-    const baseChance = BASE_CHANCE[creature.rarity] || 30;
-    const userDust = state.user?.dust || 0;
-    const rarityTable = MERGE_DUST_TABLE[creature.rarity];
-    const hasDustBoost = !!rarityTable;
-    const steps = rarityTable ? Object.keys(rarityTable).map(Number).sort((a,b)=>a-b) : [];
+    const color = RARITY_COLORS[creature.rarity];
 
     document.getElementById('popup').innerHTML = `
         <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
-        <div class="popup-title" style="margin-bottom:4px">Слияние</div>
+        <div class="popup-title" style="margin-bottom:4px">Предпросмотр Слияния</div>
         <div class="popup-subtitle">3x ${escapeHtml(creature.name)} → ?</div>
-
-        <div style="background:#0d1120;border:1px solid #1e2d4a;border-radius:14px;padding:14px;margin-bottom:12px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-                <div style="text-align:center;flex:1">
-                    <div style="font-size:28px;margin-bottom:4px">${getIconHtml(creature)}</div>
-                    <div style="font-size:10px;color:#94a3b8">3x ${escapeHtml(creature.name)}</div>
-                </div>
-                <div style="color:#4a5568;font-size:22px;padding:0 8px">→</div>
-                <div style="text-align:center;flex:1">
-                    <div style="font-size:28px;margin-bottom:4px">?</div>
-                    <div style="font-size:10px;color:#94a3b8">${escapeHtml(nextCreature.name)} (${nextRarity})</div>
-                </div>
+        <div style="background:#0d1120;border:1px solid #1e2d4a;border-radius:14px;padding:16px;margin-bottom:16px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+                <div style="text-align:center;flex:1"><div style="font-size:24px;margin-bottom:6px">${getIconHtml(creature)}</div><div style="font-size:10px;color:#94a3b8">Исходные</div><div style="font-size:11px;font-weight:600;color:#e2e8f0;margin-top:2px">3x ${escapeHtml(creature.name)}</div></div>
+                <div style="color:#4a5568;font-size:18px">→</div>
+                <div style="text-align:center;flex:1"><div style="font-size:24px;margin-bottom:6px">?</div><div style="font-size:10px;color:#94a3b8">Результат</div><div style="font-size:11px;font-weight:600;color:#e2e8f0;margin-top:2px">Unknown</div></div>
             </div>
-            <div style="display:flex;gap:8px">
-                <div style="flex:1;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:10px;padding:8px;text-align:center">
-                    <div style="font-size:20px;font-weight:800;color:#22c55e" id="mergeChanceDisplay">${baseChance}%</div>
-                    <div style="font-size:10px;color:#86efac">Шанс успеха</div>
+            <div style="border-top:1px solid #1e2d4a;padding-top:14px">
+                <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Возможные результаты</div>
+                <div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:10px;padding:10px;margin-bottom:8px">
+                    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">${getIconHtml(nextCreature)}</span><div style="flex:1"><div style="font-size:11px;font-weight:600;color:#22c55e">30% Успех</div><div style="font-size:10px;color:#94a3b8">${escapeHtml(nextCreature.name)} (${nextRarity.toUpperCase()})</div></div><div style="font-size:12px;font-weight:700;color:#22c55e">▲ ПОВЫШЕНИЕ</div></div>
                 </div>
-                <div style="flex:1;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:8px;text-align:center">
-                    <div style="font-size:20px;font-weight:800;color:#ef4444" id="mergeFailDisplay">${100-baseChance}%</div>
-                    <div style="font-size:10px;color:#fca5a5">Провал</div>
+                <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:10px">
+                    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">${getIconHtml(creature)}</span><div style="flex:1"><div style="font-size:11px;font-weight:600;color:#ef4444">70% Провал</div><div style="font-size:10px;color:#94a3b8">${escapeHtml(creature.name)} (${creature.rarity.toUpperCase()})</div></div><div style="font-size:12px;font-weight:700;color:#ef4444">= БЕЗ ИЗМЕНЕНИЙ</div></div>
                 </div>
             </div>
         </div>
-
-        ${hasDustBoost ? `
-        <div style="background:#0d1120;border:1px solid #2e1b4a;border-radius:14px;padding:14px;margin-bottom:12px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-                <div style="font-size:12px;font-weight:700;color:#a78bfa;display:flex;align-items:center;gap:5px">
-                    <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain"> Бонус пыли
-                </div>
-                <div style="font-size:11px;color:#7c3aed">У вас: ${userDust.toLocaleString()} 🌫️</div>
-            </div>
-            <input type="range" id="mergeDustSlider" min="0" max="${steps.length}" value="0"
-                style="width:100%;accent-color:#7c3aed;cursor:pointer;height:6px;margin-bottom:10px"
-                oninput="updateMergeSlider('${creatureId}', ${baseChance})">
-            <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-                <div style="font-size:11px;color:#c4b5fd">Бонус: <span id="mergeBonusLabel" style="font-weight:700;color:#a78bfa">Без пыли</span></div>
-                <div style="font-size:11px;color:#c4b5fd">Стоимость: <span id="mergeCostLabel" style="font-weight:700">0 🌫️</span></div>
-            </div>
-            <div id="mergeDustAffordability" style="font-size:10px;color:#64748b;text-align:center">Двигайте ползунок для выбора бонуса</div>
-        </div>
-        <button class="popup-btn" id="mergeDustBtn" style="background:linear-gradient(135deg,#5b21b6,#7c3aed);margin-bottom:8px;opacity:0.4;pointer-events:none" onclick="executeMergeWithDust('${creatureId}')">
-            <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle;object-fit:contain">
-            <span id="mergeDustBtnLabel">Выберите бонус пыли</span>
-        </button>` : ''}
-
-        <button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e);margin-bottom:8px"
-            onclick="closeOverlay();executeMerge('${creatureId}', 0)">
-            <i class="fa-solid fa-code-merge"></i> СЛИТЬ БЕЗ ПЫЛИ — ${baseChance}%
+        <button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e);margin-bottom:8px" onclick="closeOverlay();executeMerge('${creatureId}')">
+            <i class="fa-solid fa-code-merge"></i> СЛИТЬ СЕЙЧАС
         </button>
         <button class="popup-btn" style="background:#1a2540;color:#e2e8f0" onclick="closeOverlay()">ОТМЕНА</button>
     `;
     document.getElementById('overlay').classList.add('show');
 }
 
-function updateMergeSlider(creatureId, baseChance) {
-    const creature = getCreature(creatureId);
-    const rarityTable = MERGE_DUST_TABLE[creature?.rarity];
-    if (!rarityTable) return;
-    const steps = Object.keys(rarityTable).map(Number).sort((a,b)=>a-b);
-    const slider = document.getElementById('mergeDustSlider');
-    const idx = parseInt(slider.value);
-    const userDust = state.user?.dust || 0;
-
-    const bonusLabel = document.getElementById('mergeBonusLabel');
-    const costLabel = document.getElementById('mergeCostLabel');
-    const afford = document.getElementById('mergeDustAffordability');
-    const btn = document.getElementById('mergeDustBtn');
-    const btnLabel = document.getElementById('mergeDustBtnLabel');
-    const chanceEl = document.getElementById('mergeChanceDisplay');
-    const failEl = document.getElementById('mergeFailDisplay');
-
-    if (idx === 0) {
-        if (bonusLabel) bonusLabel.textContent = 'Без пыли';
-        if (costLabel) costLabel.innerHTML = '0 🌫️';
-        if (afford) afford.innerHTML = 'Двигайте ползунок для выбора бонуса';
-        if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
-        if (btnLabel) btnLabel.textContent = 'Выберите бонус пыли';
-        if (chanceEl) chanceEl.textContent = baseChance + '%';
-        if (failEl) failEl.textContent = (100 - baseChance) + '%';
-        return;
-    }
-
-    const bonusPct = steps[idx - 1];
-    const cost = rarityTable[bonusPct];
-    const totalChance = Math.min(100, baseChance + bonusPct);
-    const canAfford = userDust >= cost;
-
-    if (bonusLabel) bonusLabel.innerHTML = `<span style="color:#a78bfa">+${bonusPct}%</span>`;
-    if (costLabel) costLabel.innerHTML = `<span style="color:${canAfford ? '#a78bfa' : '#ef4444'}">${cost.toLocaleString()} 🌫️</span>`;
-    if (chanceEl) chanceEl.textContent = totalChance + '%';
-    if (failEl) failEl.textContent = (100 - totalChance) + '%';
-
-    if (canAfford) {
-        if (afford) afford.innerHTML = `<span style="color:#22c55e">✓ Достаточно пыли</span>`;
-        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
-        if (btnLabel) btnLabel.innerHTML = `Слить +${bonusPct}% за ${cost.toLocaleString()} 🌫️ — <b>${totalChance}%</b>`;
-    } else {
-        const need = cost - userDust;
-        if (afford) afford.innerHTML = `<span style="color:#ef4444">✗ Не хватает ${need.toLocaleString()} 🌫️</span>`;
-        if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
-        if (btnLabel) btnLabel.textContent = 'Не хватает пыли';
-    }
-}
-
-function executeMergeWithDust(creatureId) {
-    const creature = getCreature(creatureId);
-    const rarityTable = MERGE_DUST_TABLE[creature?.rarity];
-    if (!rarityTable) return;
-    const steps = Object.keys(rarityTable).map(Number).sort((a,b)=>a-b);
-    const slider = document.getElementById('mergeDustSlider');
-    const idx = parseInt(slider?.value || '0');
-    if (idx === 0) return;
-    const bonusPct = steps[idx - 1];
-    closeOverlay();
-    executeMerge(creatureId, bonusPct);
-}
-
-
-async function executeMerge(creatureId, dustBonusPercent = 0) {
+async function executeMerge(creatureId) {
     if (state.isLoading) return;
     if (!canMerge(creatureId)) return;
     
@@ -955,7 +788,7 @@ async function executeMerge(creatureId, dustBonusPercent = 0) {
     lastMergeTimes.set(state.user?.telegramId, Date.now());
 
     state.isLoading = true;
-    const res = await apiRequest('POST', '/api/game/merge', { creatureId, dustBonusPercent: Number(dustBonusPercent) || 0 });
+    const res = await apiRequest('POST', '/api/game/merge', { creatureId });
     state.isLoading = false;
 
     if (!res.success) { showToast(res.message || 'Merge failed', '❌'); return; }
@@ -963,8 +796,6 @@ async function executeMerge(creatureId, dustBonusPercent = 0) {
     state.user = res.user;
     state.inventory = res.inventory;
     state.incomePerHour = res.incomePerHour;
-    
-    if (res.dustUsed > 0) showToast(`-${res.dustUsed.toLocaleString()} 🌫️ Пыль использована`, '✨');
     
     updateServerSnapshot(state.user.balance, state.incomePerHour, null);
     updateHeader();
@@ -1121,7 +952,7 @@ async function watchAd() {
             setTimeout(() => showToast('🦘 Получен Kangaroo Uncommon за 200 просмотров рекламы!', '🎉'), 1500);
         }
         
-        updateAdsStatus(); 
+        updateAdsStatus();
         
         if (btn && res.adsAvailable > 0 && state.adsCooldown === 0) { btn.style.opacity = '1'; btn.disabled = false; }
         
@@ -1284,58 +1115,16 @@ function renderMarketplaceListings(listings) {
     const container = document.getElementById('marketplaceListings');
     if (!container) return;
     
-    // Сохраняем все листинги для фильтрации
-    allMarketplaceListings = listings;
-    
-    // Применяем фильтр
-    let filteredListings = [...listings];
-    
-    if (currentMarketplaceFilter === 'dust') {
-        filteredListings = listings.filter(l => l.isDust === true);
-    } else if (currentMarketplaceFilter !== 'all') {
-        // Фильтр по редкости (только для существ, не для пыли)
-        filteredListings = listings.filter(l => {
-            if (l.isDust) return false;
-            const c = getCreature(l.creatureId);
-            return c && c.rarity === currentMarketplaceFilter;
-        });
-    }
-    
-    if (filteredListings.length === 0) {
-        container.innerHTML = `<div style="text-align:center;color:#4a5568;padding:30px 20px;font-size:12px">Нет лотов с выбранным фильтром</div>`;
+    if (!listings.length) {
+        container.innerHTML = `<div style="text-align:center;color:#4a5568;padding:30px 20px;font-size:12px">No listings available</div>`;
         return;
     }
 
-    const userLevel = state.user?.level || 1;
-    container.innerHTML = filteredListings.map(l => {
-        const isOwn = l.sellerTgId === state.user?.telegramId;
-        const locked = !isOwn && userLevel < 5;
-
-        if (l.isDust) {
-            return `<div class="marketplace-listing">
-                <div class="marketplace-listing-icon" style="background:#a78bfa11;border-color:#a78bfa44">
-                    <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))">
-                </div>
-                <div class="marketplace-listing-info">
-                    <div class="marketplace-listing-name" style="color:#a78bfa">Пыль ×${l.dustAmount}</div>
-                    <div class="marketplace-listing-seller">by ${escapeHtml(l.sellerName)}${isOwn ? ' (Вы)' : ''}</div>
-                    <div class="marketplace-listing-rarity" style="color:#7c3aed;font-size:9px">${Math.round(l.price/l.dustAmount)} MMO/шт</div>
-                </div>
-                <div class="marketplace-listing-price">
-                    <div class="marketplace-listing-amount">${l.price} MMO</div>
-                    ${isOwn
-                        ? `<button class="marketplace-cancel-btn" onclick="cancelMarketplaceListing('${l._id}')">ОТМЕНИТЬ</button>`
-                        : locked
-                            ? `<button class="marketplace-buy-btn" style="opacity:0.5;cursor:not-allowed" onclick="showToast('Маркет доступен с 5 уровня','🔒')">🔒 LVL 5</button>`
-                            : `<button class="marketplace-buy-btn" style="background:linear-gradient(135deg,#7c3aed,#a855f7)" onclick="buyFromMarketplace('${l._id}', ${l.price}, null)">КУПИТЬ</button>`
-                    }
-                </div>
-            </div>`;
-        }
-
+    container.innerHTML = listings.map(l => {
         const c = getCreature(l.creatureId);
         if (!c) return '';
         const color = RARITY_COLORS[c.rarity];
+        const isOwn = l.sellerTgId === state.user?.telegramId;
 
         return `<div class="marketplace-listing">
             <div class="marketplace-listing-icon" style="background:${color}11;border-color:${color}44">${getIconHtml(c)}</div>
@@ -1346,62 +1135,31 @@ function renderMarketplaceListings(listings) {
             </div>
             <div class="marketplace-listing-price">
                 <div class="marketplace-listing-amount">${l.price}</div>
-                ${isOwn
-                    ? `<button class="marketplace-cancel-btn" onclick="cancelMarketplaceListing('${l._id}')">CANCEL</button>`
-                    : locked
-                        ? `<button class="marketplace-buy-btn" style="opacity:0.5;cursor:not-allowed" onclick="showToast('Маркет доступен с 5 уровня','🔒')">🔒 LVL 5</button>`
-                        : `<button class="marketplace-buy-btn" onclick="buyFromMarketplace('${l._id}', ${l.price}, '${l.creatureId}')">BUY</button>`
-                }
+                ${isOwn ? `<button class="marketplace-cancel-btn" onclick="cancelMarketplaceListing('${l._id}')">CANCEL</button>` : `<button class="marketplace-buy-btn" onclick="buyFromMarketplace('${l._id}', ${l.price}, '${l.creatureId}')">BUY</button>`}
             </div>
         </div>`;
     }).join('');
 }
 
-async function renderMarketplaceSell() {
+function renderMarketplaceSell() {
     const cards = document.getElementById('marketplaceSellCards');
     if (!cards) return;
 
-    const userLevel = state.user?.level || 1;
-    if (userLevel < 5) {
-        cards.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:30px 20px">
-            <div style="font-size:32px;margin-bottom:12px">🔒</div>
-            <div style="color:#e2e8f0;font-weight:700;font-size:15px;margin-bottom:6px">Маркет доступен с 5 уровня</div>
-            <div style="color:#64748b;font-size:12px">Ваш уровень: ${userLevel}</div>
-        </div>`;
+    if (!state.inventory.length) {
+        cards.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#4a5568;padding:30px 20px;font-size:12px">You have no creatures to sell</div>`;
         return;
     }
 
-    const dust = state.user?.dust || 0;
-    const dustCard = `<div class="marketplace-sell-card" style="cursor:pointer;border-color:#a78bfa44;background:#a78bfa11" onclick="openDustSellModal(${dust})">
-        <div class="marketplace-sell-card-icon"><img src="https://ndammo.github.io/Mmodna/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))"></div>
-        <div class="marketplace-sell-card-name" style="color:#a78bfa">Пыль</div>
-        <div style="font-size:9px;color:#7c3aed">x${dust}</div>
-        <div style="font-size:10px;color:#a78bfa;font-weight:600;margin-top:4px">ПРОДАТЬ</div>
-    </div>`;
-
-    const creatureCards = state.inventory.map(item => {
+    cards.innerHTML = state.inventory.map(item => {
         const c = getCreature(item.creatureId);
         if (!c || !item.count) return '';
-        
-        // --- ДОБАВЛЯЕМ ПЕРЕМЕННЫЕ ДЛЯ РЕДКОСТИ ---
-        const rarityText = c.rarity.charAt(0).toUpperCase() + c.rarity.slice(1);
-        const rarityColor = RARITY_COLORS[c.rarity] || '#94a3b8';
-        // ---------------------------------------
-        
         return `<div class="marketplace-sell-card" style="cursor:pointer" onclick="openSellModal('${item.creatureId}', '${c.name}', ${item.count})">
             <div class="marketplace-sell-card-icon">${getIconHtml(c)}</div>
             <div class="marketplace-sell-card-name">${escapeHtml(c.name)}</div>
-            <!-- --- НОВЫЙ БЛОК С РЕДКОСТЬЮ --- -->
-            <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: ${rarityColor}; background: ${rarityColor}22; padding: 2px 6px; border-radius: 10px; margin: 4px 0;">
-                ${rarityText}
-            </div>
-            <!-- ---------------------------- -->
-            <div style="font-size:9px; color:#4a5568">x${item.count}</div>
-            <div style="font-size:10px; color:#06b6d4; font-weight:600; margin-top:4px">SET PRICE</div>
+            <div style="font-size:9px;color:#4a5568">x${item.count}</div>
+            <div style="font-size:10px;color:#06b6d4;font-weight:600;margin-top:4px">SET PRICE</div>
         </div>`;
     }).filter(Boolean).join('');
-
-    cards.innerHTML = dustCard + (creatureCards || `<div style="grid-column:1/-1;text-align:center;color:#4a5568;padding:30px 20px;font-size:12px">Нет существ для продажи</div>`);
 }
 
 function openSellModal(creatureId, creatureName, count) {
@@ -1423,64 +1181,6 @@ function openSellModal(creatureId, creatureName, count) {
     `;
     document.getElementById('overlay').classList.add('show');
     updateFeeCalculator();
-}
-
-function openDustSellModal(maxDust) {
-    if (maxDust < 1) { showToast('У вас нет пыли для продажи', '🌫️'); return; }
-    document.getElementById('popup').innerHTML = `
-        <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
-        <div class="popup-title">Продать пыль</div>
-        <div class="popup-subtitle" style="margin-bottom:16px">Доступно: <b>${maxDust}</b> <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:14px;height:14px;vertical-align:middle" onerror="this.replaceWith(document.createTextNode('🌫️'))"></div>
-        <div class="price-input-modal">
-            <div style="margin-bottom:12px">
-                <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Количество пыли</div>
-                <input type="number" class="price-input-field" id="dustAmountInput" placeholder="Кол-во" min="1" max="${maxDust}" value="1" oninput="updateDustFeeCalculator(${maxDust})">
-            </div>
-            <div>
-                <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Цена за 1 пыль (MMO)</div>
-                <input type="number" class="price-input-field" id="dustPriceInput" placeholder="Цена за 1 шт" min="3" value="3" oninput="updateDustFeeCalculator(${maxDust})">
-            </div>
-            <div class="fee-calculator" style="margin-top:12px">
-                <div class="fee-row"><span class="fee-label">Итого</span><span class="fee-value" id="dustTotalDisplay">15</span></div>
-                <div class="fee-row" style="color:#ef4444"><span class="fee-label">Комиссия (10%)</span><span class="fee-value fee" id="dustFeeDisplay">-2</span></div>
-                <div class="fee-row total"><span>Получите</span><span class="fee-value final" id="dustFinalDisplay">13</span></div>
-            </div>
-        </div>
-        <button class="popup-btn" style="background:linear-gradient(135deg,#7c3aed,#a855f7);margin-top:16px" onclick="confirmDustSellListing()"><i class="fa-solid fa-check"></i> ВЫСТАВИТЬ ПЫЛЬ</button>
-        <button class="popup-btn" style="background:#1a2540;color:#e2e8f0;margin-top:8px" onclick="closeOverlay()">ОТМЕНА</button>
-    `;
-    document.getElementById('overlay').classList.add('show');
-    updateDustFeeCalculator(maxDust);
-}
-
-function updateDustFeeCalculator(maxDust) {
-    const amount = Math.max(1, Math.min(maxDust, parseInt(document.getElementById('dustAmountInput')?.value) || 1));
-    const priceEach = Math.max(3, parseInt(document.getElementById('dustPriceInput')?.value) || 15);
-    const total = amount * priceEach;
-    const fee = Math.floor(total * 0.1);
-    const el = (id) => document.getElementById(id);
-    if (el('dustTotalDisplay')) el('dustTotalDisplay').textContent = total;
-    if (el('dustFeeDisplay')) el('dustFeeDisplay').textContent = `-${fee}`;
-    if (el('dustFinalDisplay')) el('dustFinalDisplay').textContent = total - fee;
-}
-
-async function confirmDustSellListing() {
-    const amount = parseInt(document.getElementById('dustAmountInput')?.value) || 0;
-    const priceEach = parseInt(document.getElementById('dustPriceInput')?.value) || 0;
-    if (amount < 1) { showToast('Укажите количество пыли', '❌'); return; }
-    if (priceEach < 3) { showToast('Минимальная цена 15 MMO за 1 пыль', '❌'); return; }
-    const total = amount * priceEach;
-    state.isLoading = true;
-    const res = await apiRequest('POST', '/api/marketplace/list', { isDust: true, dustAmount: amount, price: total });
-    state.isLoading = false;
-    if (!res?.success) { showToast(res?.message || 'Ошибка', '❌'); return; }
-    if (state.user) state.user.dust = res.dust;
-    closeOverlay();
-    showToast(`Выставлено ${amount} пыли за ${total} MMO`, '✅');
-    updateHeader();
-    renderMarketplaceSell();
-    marketplaceCache.expiresAt = 0;
-    switchMarketplaceTab('mylistings');
 }
 
 function updateFeeCalculator() {
@@ -1528,26 +1228,11 @@ async function renderMarketplaceMyListings() {
     if (!listings.length) { container.innerHTML = `<div class="empty-listings">У вас нет активных лотов</div>`; return; }
 
     container.innerHTML = listings.map(l => {
-        const date = new Date(l.createdAt).toLocaleDateString();
-        if (l.isDust) {
-            return `<div class="marketplace-my-listing">
-                <div class="marketplace-my-listing-icon" style="background:#a78bfa11;border-color:#a78bfa44">
-                    <img src="https://ndammo.github.io/Mmodna/dust.png" style="width:36px;height:36px;object-fit:contain" onerror="this.replaceWith(document.createTextNode('🌫️'))">
-                </div>
-                <div class="marketplace-my-listing-info">
-                    <div class="marketplace-my-listing-name" style="color:#a78bfa">Пыль ×${l.dustAmount}</div>
-                    <div class="marketplace-my-listing-status">Выставлено ${date}</div>
-                    <div style="font-size:9px;color:#7c3aed">${Math.round(l.price/l.dustAmount)} MMO/шт</div>
-                </div>
-                <div class="marketplace-my-listing-price">
-                    <div class="marketplace-my-listing-amount">${l.price} MMO</div>
-                    <button class="marketplace-cancel-btn" onclick="cancelMarketplaceListing('${l._id}')">ОТМЕНИТЬ</button>
-                </div>
-            </div>`;
-        }
         const c = getCreature(l.creatureId);
         if (!c) return '';
         const color = RARITY_COLORS[c.rarity];
+        const date = new Date(l.createdAt).toLocaleDateString();
+        
         return `<div class="marketplace-my-listing">
             <div class="marketplace-my-listing-icon" style="background:${color}11;border-color:${color}44">${getIconHtml(c)}</div>
             <div class="marketplace-my-listing-info">
@@ -1570,17 +1255,11 @@ async function cancelMarketplaceListing(listingId) {
 
     if (!res.success) { showToast(res.message || 'Error', '❌'); return; }
 
-    if (res.dust !== undefined && state.user) {
-        state.user.dust = res.dust;
-        updateHeader();
-        showToast('Лот отменён, пыль возвращена', '✅');
-    } else {
-        state.inventory = res.inventory;
-        renderCards();
-        showToast('Listing cancelled, card returned', '✅');
-    }
+    state.inventory = res.inventory;
+    renderCards();
     marketplaceCache.expiresAt = 0;
     renderMarketplaceMyListings();
+    showToast('Listing cancelled, card returned', '✅');
 }
 
 async function buyFromMarketplace(listingId, price, creatureId) {
@@ -1593,22 +1272,10 @@ async function buyFromMarketplace(listingId, price, creatureId) {
 
     if (!res.success) { showToast(res.message || 'Error buying', '❌'); return; }
 
-    if (res.isDust) {
-        if (state.user) state.user.dust = res.user?.dust ?? (state.user.dust || 0) + res.dustAmount;
-        state.user = res.user;
-        state.inventory = res.inventory || state.inventory;
-        updateHeader();
-        marketplaceCache.expiresAt = 0;
-        renderMarketplaceBuy();
-        showToast(`Куплено ${res.dustAmount} пыли за ${price} MMO!`, '✅');
-        spawnFloatingMMO(-price);
-        return;
-    }
-
     state.user = res.user;
     state.inventory = res.inventory;
     state.incomePerHour = res.incomePerHour;
-
+    
     updateServerSnapshot(state.user.balance, state.incomePerHour, null);
 
     const c = getCreature(creatureId);
@@ -2544,70 +2211,19 @@ async function rejectBattleFromModal(battleId) {
     }
 }
 
-function showNativeBattleResult(isWin, prizePool, dustWin = 0, xpGained = 0, ratingChange = 0, entryFee = 0) {
-    const overlay = document.getElementById('overlay');
-    const popup = document.getElementById('popup');
-    if (!overlay || !popup) return;
-
-    const D = 'https://ndammo.github.io/Mmodna/dust.png';
-    let html = '';
-    html += '<div class="popup-close" onclick="closeOverlay(); renderArenaFightTab();"><i class="fa-solid fa-xmark"></i></div>';
-    html += '<div style="text-align:center;padding:8px 0 4px;">';
-    html += '<div style="font-size:64px;line-height:1;margin-bottom:10px;filter:drop-shadow(0 0 20px ' + (isWin ? '#fbbf24' : '#ef4444') + ');">' + (isWin ? '\uD83C\uDFC6' : '\uD83D\uDC80') + '</div>';
-    html += '<div style="font-size:28px;font-weight:900;letter-spacing:2px;font-family:Orbitron,monospace;background:' + (isWin ? 'linear-gradient(135deg,#fbbf24,#f59e0b,#fde68a)' : 'linear-gradient(135deg,#ef4444,#dc2626,#fca5a5)') + ';-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:6px;">' + (isWin ? '\u041f\u041e\u0411\u0415\u0414\u0410!' : '\u041f\u041e\u0420\u0410\u0416\u0415\u041d\u0418\u0415') + '</div>';
-    html += '<div style="font-size:13px;color:var(--text3);margin-bottom:4px;">' + (isWin ? '\uD83C\uDF89 \u041e\u0442\u043b\u0438\u0447\u043d\u0430\u044f \u0431\u0438\u0442\u0432\u0430!' : '\uD83D\uDCAA \u0412 \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0439 \u0440\u0430\u0437 \u043f\u043e\u0432\u0435\u0437\u0435\u0442!') + '</div>';
-    html += '</div>';
-
-    if (isWin) {
-        html += '<div style="display:flex;flex-direction:column;gap:10px;margin:18px 0;">';
-        html += '<div style="background:linear-gradient(135deg,#1a2e1a,#0d1f0d);border:1px solid #22c55e44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
-        html += '<div style="display:flex;align-items:center;gap:8px;color:#86efac;font-size:13px;"><i class="fa-solid fa-coins" style="color:#fbbf24"></i><span>\u0412\u044b\u0438\u0433\u0440\u044b\u0448</span></div>';
-        html += '<span style="font-size:18px;font-weight:800;color:#4ade80;">+' + (prizePool || 0).toLocaleString() + ' MMO</span>';
-        html += '</div>';
-        if (dustWin > 0) {
-            html += '<div style="background:linear-gradient(135deg,#1e1a2e,#130d1f);border:1px solid #a78bfa44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
-            html += '<div style="display:flex;align-items:center;gap:8px;color:#c4b5fd;font-size:13px;"><img src="' + D + '" style="width:16px;height:16px;vertical-align:middle" onerror="this.style.display=\'none\'"><span>\u041f\u044b\u043b\u044c</span></div>';
-            html += '<span style="font-size:18px;font-weight:800;color:#a78bfa;">+' + dustWin + ' \uD83C\uDF2B\uFE0F</span>';
-            html += '</div>';
-        }
-        if (xpGained > 0) {
-            html += '<div style="background:linear-gradient(135deg,#1a2414,#0d1f18);border:1px solid #fbbf2444;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
-            html += '<div style="display:flex;align-items:center;gap:8px;color:#fde68a;font-size:13px;"><i class="fa-solid fa-star" style="color:#fbbf24"></i><span>\u041e\u043f\u044b\u0442</span></div>';
-            html += '<span style="font-size:18px;font-weight:800;color:#fde68a;">+' + xpGained + ' XP</span>';
-            html += '</div>';
-        }
-        html += '<div style="background:linear-gradient(135deg,#1a1f2e,#0d1220);border:1px solid #60a5fa44;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
-        html += '<div style="display:flex;align-items:center;gap:8px;color:#93c5fd;font-size:13px;"><i class="fa-solid fa-chart-line" style="color:#60a5fa"></i><span>\u0420\u0435\u0439\u0442\u0438\u043d\u0433</span></div>';
-        html += '<span style="font-size:15px;font-weight:700;color:#60a5fa;">\u2191 +' + (ratingChange || 0) + '</span>';
-        html += '</div>';
-        html += '</div>';
-    } else {
-        html += '<div style="display:flex;flex-direction:column;gap:10px;margin:18px 0;">';
-        if (entryFee > 0) {
-            html += '<div style="background:linear-gradient(135deg,#2e1a1a,#1f0d0d);border:1px solid #ef444444;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
-            html += '<div style="display:flex;align-items:center;gap:8px;color:#fca5a5;font-size:13px;"><i class="fa-solid fa-coins" style="color:#ef4444"></i><span>\u041f\u043e\u0442\u0440\u0430\u0447\u0435\u043d\u043e</span></div>';
-            html += '<span style="font-size:18px;font-weight:800;color:#f87171;">-' + (entryFee || 0).toLocaleString() + ' MMO</span>';
-            html += '</div>';
-        }
-        if (xpGained > 0) {
-            html += '<div style="background:linear-gradient(135deg,#1a2414,#0d1f18);border:1px solid #fbbf2444;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
-            html += '<div style="display:flex;align-items:center;gap:8px;color:#fde68a;font-size:13px;"><i class="fa-solid fa-star" style="color:#fbbf24"></i><span>\u041e\u043f\u044b\u0442</span></div>';
-            html += '<span style="font-size:18px;font-weight:800;color:#fde68a;">+' + xpGained + ' XP</span>';
-            html += '</div>';
-        }
-        html += '<div style="background:linear-gradient(135deg,#2e1a1a,#1f0d0d);border:1px solid #ef444444;border-radius:14px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">';
-        html += '<div style="display:flex;align-items:center;gap:8px;color:#fca5a5;font-size:13px;"><i class="fa-solid fa-arrow-trend-down" style="color:#ef4444"></i><span>\u0420\u0435\u0439\u0442\u0438\u043d\u0433</span></div>';
-        html += '<span style="font-size:15px;font-weight:700;color:#f87171;">\u2193 -' + (ratingChange || 0) + '</span>';
-        html += '</div>';
-        html += '</div>';
+function showNativeBattleResult(isWin, prizePool) {
+    if (!window.Telegram?.WebApp) {
+        const overlay = document.getElementById('overlay');
+        const popup = document.getElementById('popup');
+        popup.innerHTML = `<div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div><div class="popup-icon">${isWin ? '🏆' : '💀'}</div><div class="popup-title" style="color:${isWin ? 'var(--legendary)' : 'var(--mythic)'}">${isWin ? 'ПОБЕДА!' : 'ПОРАЖЕНИЕ'}</div><div class="popup-subtitle">${isWin ? `Вы выиграли ${prizePool} MMO!` : 'В следующий раз повезёт!'}</div><button class="popup-btn" onclick="closeOverlay(); renderArenaFightTab();">Закрыть</button></div>`;
+        overlay.classList.add('show');
+        return;
     }
-
-    html += '<button class="popup-btn" style="background:' + (isWin ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'linear-gradient(135deg,#1d4ed8,#1e40af)') + ';margin-top:4px;font-size:15px;font-weight:700;padding:14px;" onclick="closeOverlay(); renderArenaFightTab();">' + (isWin ? '\uD83C\uDFC6 \u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c' : '\uD83D\uDD04 \u041f\u043e\u043f\u0440\u043e\u0431\u043e\u0432\u0430\u0442\u044c \u0441\u043d\u043e\u0432\u0430') + '</button>';
-
-    popup.innerHTML = html;
-    overlay.classList.add('show');
+    const tg = window.Telegram.WebApp;
+    const title = isWin ? '🏆 ПОБЕДА!' : '💀 ПОРАЖЕНИЕ';
+    const message = isWin ? `Вы выиграли ${prizePool} MMO! 🎉\nВаш рейтинг повышается!` : `Вы проиграли бой.\nВ следующий раз повезёт!`;
+    tg.showPopup({ title, message, buttons: [{ id: 'ok', type: 'default', text: 'ОК' }] });
 }
-
 
 // ============================================================
 // ARENA - UI ФУНКЦИИ
@@ -2730,8 +2346,8 @@ async function findMatch() {
         return; 
     }
 
-    if ((state.user?.level || 1) < 3) {
-        showToast('Арена доступна с 3 уровня', '🔒');
+    if ((state.user?.level || 1) < 5) {
+        showToast('Арена доступна с 5 уровня', '🔒');
         return;
     }
 
@@ -2786,7 +2402,7 @@ async function findMatch() {
     }
 }
 
-async function cancelBattleSearch() {
+function cancelBattleSearch() {
     arenaClient?.stopSearch();
     const findBtn = document.getElementById('findMatchBtn');
     const searchStatus = document.getElementById('arenaSearchStatus');
@@ -2795,27 +2411,7 @@ async function cancelBattleSearch() {
         findBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Найти бой'; 
     }
     if (searchStatus) searchStatus.innerHTML = '';
-    try { await apiRequest('POST', '/api/arena/cancel-search'); } catch(e) {}
     showToast('Поиск отменён', '⚠️');
-}
-
-async function surrenderBattle() {
-    const battleId = arenaClient?.getBattleId();
-    if (!battleId) {
-        showToast('Нет активного боя', '⚠️');
-        return;
-    }
-    if (!confirm('Сдаться? Противник получит победу и приз.')) return;
-    try {
-        const res = await apiRequest('POST', '/api/arena/surrender', { battleId });
-        if (res?.success) {
-            showToast('Вы сдались 🏳️', '⚠️');
-        } else {
-            showToast(res?.message || 'Ошибка при сдаче', '❌');
-        }
-    } catch(e) {
-        showToast('Ошибка соединения', '❌');
-    }
 }
 
 async function acceptBattleWebhook() {
@@ -2881,73 +2477,99 @@ async function makeAttack(targetIndex) {
         return; 
     }
 
+    // Глобальный лок — не допускаем двойной атаки пока не пришёл ответ
     if (makeAttack._inProgress) return;
     makeAttack._inProgress = true;
     
-    const attackBtn = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${targetIndex}"] .arena-attack-btn`);
-    
     try {
-        if (attackBtn) {
-            attackBtn.disabled = true;
-            attackBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-        }
-        
-        const res = await apiRequest('POST', '/api/arena/move', { battleId, targetIndex });
-        
-        if (!res?.success) {
-            showToast(res?.message || 'Ошибка атаки', '❌');
-            return;
-        }
-
-        if (res.stunSkipped) {
-            showToast('😵 Питомец оглушён и пропускает ход!', '⚡');
-            const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
-            updateBattleUIFromClient({
-                myTeam: res.myTeam,
-                opponentTeam: res.enemyTeam,
-                currentTurn: res.currentTurn
-            }, isPlayer1);
-            return;
-        }
-
-        if (res.finished) {
-            arenaClient?.endBattle(res.winnerId || null, res.prizePool || 0, res.dustWin || 0, res.xpGained || 0, res.ratingChange || 0, res.entryFee || 0);
-            const isWin = !!res.winnerId && res.winnerId === arenaClient?.getCurrentUserId();
-            showNativeBattleResult(isWin, res.prizePool || 0, res.dustWin || 0, res.xpGained || 0, res.ratingChange || 0, res.entryFee || 0);
-            renderArenaFightTab();
-        } else {
-            const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
-            if (res.skillResult) {
-                showSkillBanner(res.skillResult.skillName, res.skillResult.description);
-                if (res.skillResult.poisoned) showToast('☠️ Противник отравлен на 3 хода!', '☠️');
-            }
-            if (res.poisonLog && res.poisonLog.length > 0) {
-                const totalDmg = res.poisonLog.reduce((s, p) => s + p.dmg, 0);
-                showToast(`☠️ Яд: -${totalDmg} HP у врагов`, '💀');
-            }
-            updateBattleUIFromClient({
-                myTeam: res.myTeam,
-                opponentTeam: res.enemyTeam,
-                lastMove: res.lastMove,
-                currentTurn: res.currentTurn,
-                turnCount: res.turnCount
-            }, isPlayer1);
-            
-            if (res.lastMove && res.lastMove.targetIndex !== undefined) {
-                showDamageAnimation(res.lastMove.targetIndex, res.lastMove.damage, res.lastMove.isCrit, false);
-            }
-        }
-    } catch(e) {
-        showToast('Ошибка соединения', '❌');
-    } finally {
-        makeAttack._inProgress = false;
+    
+    const attackBtn = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${targetIndex}"] .arena-attack-btn`);
+    if (attackBtn) {
+        attackBtn.disabled = true;
+        attackBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    }
+    
+    const res = await apiRequest('POST', '/api/arena/move', { battleId, targetIndex });
+    makeAttack._inProgress = false;
+    
+    if (!res?.success) {
+        showToast(res?.message || 'Ошибка атаки', '❌');
         if (attackBtn) {
             attackBtn.disabled = false;
             attackBtn.innerHTML = '⚔️ Атаковать';
         }
+        return;
+    }
+
+    if (res.stunSkipped) {
+        showToast('😵 Питомец оглушён и пропускает ход!', '⚡');
+        const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
+        updateBattleUIFromClient({
+            myTeam: res.myTeam,
+            opponentTeam: res.enemyTeam,
+            currentTurn: res.currentTurn
+        }, isPlayer1);
+        return;
+    }
+
+    if (res.finished) {
+        // Всегда завершаем бой на клиенте по HTTP-ответу — не ждём WebSocket
+        arenaClient?.endBattle(res.winnerId || null, res.prizePool || 0);
+        const isWin = !!res.winnerId && res.winnerId === arenaClient?.getCurrentUserId();
+        showNativeBattleResult(isWin, res.prizePool || 0);
+        renderArenaFightTab();
+    } else {
+        const isPlayer1 = arenaClient?.state.currentBattleIsPlayer1;
+        if (res.skillResult) {
+            showSkillBanner(res.skillResult.skillName, res.skillResult.description);
+            if (res.skillResult.poisoned) showToast('☠️ Противник отравлен на 3 хода!', '☠️');
+        }
+        if (res.poisonLog && res.poisonLog.length > 0) {
+            const totalDmg = res.poisonLog.reduce((s, p) => s + p.dmg, 0);
+            showToast(`☠️ Яд: -${totalDmg} HP у врагов`, '💀');
+        }
+        updateBattleUIFromClient({
+            myTeam: res.myTeam,
+            opponentTeam: res.enemyTeam,
+            lastMove: res.lastMove,
+            currentTurn: res.currentTurn,
+            turnCount: res.turnCount
+        }, isPlayer1);
+        
+        if (res.lastMove && res.lastMove.targetIndex !== undefined) {
+            showDamageAnimation(res.lastMove.targetIndex, res.lastMove.damage, res.lastMove.isCrit, false);
+        }
+    }
+    } catch(e) {
+        makeAttack._inProgress = false;
+        showToast('Ошибка соединения', '❌');
     }
 }
 makeAttack._inProgress = false;
+
+async function surrenderBattle() {
+    const battleId = arenaClient?.getBattleId();
+    if (!battleId) return;
+    
+    if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.showPopup({
+            title: '⚠️ Сдаться?',
+            message: 'Вы потеряете MMO за вход в бой.',
+            buttons: [
+                { id: 'confirm', type: 'destructive', text: 'Сдаться' },
+                { id: 'cancel', type: 'cancel', text: 'Отмена' }
+            ]
+        }, async (buttonId) => {
+            if (buttonId !== 'confirm') return;
+            const res = await apiRequest('POST', '/api/arena/surrender', { battleId });
+            if (res?.success) { showToast('Вы сдались', '⚠️'); renderArenaFightTab(); }
+        });
+    } else {
+        if (!confirm('Вы уверены, что хотите сдаться? Вы потеряете MMO за вход.')) return;
+        const res = await apiRequest('POST', '/api/arena/surrender', { battleId });
+        if (res?.success) { showToast('Вы сдались', '⚠️'); renderArenaFightTab(); }
+    }
+}
 
 // ============================================================
 // RENDER ARENA FIGHT TAB
@@ -2958,8 +2580,7 @@ async function renderArenaFightTab() {
     
     if (arenaClient && state.token && !arenaClient.isConnected()) {
         arenaClient.connectSocket(state.token, API_URL);
-        // Не ждём подключения — сокет поднимется асинхронно.
-        // Данные для рендера берём через HTTP ниже, сокет нужен только для push-событий.
+        await new Promise(resolve => setTimeout(resolve, 500));
     }
     
     if (arenaClient?.isBattleActive()) {
@@ -2991,15 +2612,9 @@ async function renderArenaFightTab() {
             } else if (battleRes.status === 'active') {
                 const justEnded = arenaClient?.state.battleEndedAt && (Date.now() - arenaClient.state.battleEndedAt < 8000);
                 if (!arenaClient?.isBattleActive() && !justEnded) {
-    arenaClient?.startBattle(
-        battleRes.battleId, 
-        battleRes.isPlayer1, 
-        battleRes.myTeam, 
-        battleRes.opponentTeam,
-        battleRes.timeLeft
-    );
-    renderBattleInterface(battleRes);
-}
+                    arenaClient?.startBattle(battleRes.battleId, battleRes.isPlayer1, battleRes.myTeam, battleRes.opponentTeam);
+                    renderBattleInterface(battleRes);
+                }
             } else if (battleRes.status === 'pending_confirmation') {
                 const myConfirmed = battleRes.isPlayer1 ? battleRes.player1Confirmed : battleRes.player2Confirmed;
                 const modalAlreadyOpen = !!document.getElementById('matchFoundModal');
@@ -3023,12 +2638,12 @@ async function renderArenaFightTab() {
                 if (leaderboardRes?.success && leaderboardRes.myStats) {
                     const myLeague = leaderboardRes.myStats.league || 'bronze';
                     const leagueConfigs = {
-    bronze: { entryFee: 10, prizePool: 15, dustWin: 1, name: '🥉 Бронзовая' },
-    silver: { entryFee: 50, prizePool: 80, dustWin: 5, name: '🥈 Серебряная' },
-    gold: { entryFee: 500, prizePool: 800, dustWin: 50, name: '🥇 Золотая' },
-    platinum: { entryFee: 2000, prizePool: 3200, dustWin: 100, name: '💎 Платиновая' },
-    diamond: { entryFee: 5000, prizePool: 8000, dustWin: 200, name: '🏆 Алмазная' }
-};
+                        bronze: { entryFee: 0, prizePool: 10, name: '🥉 Бронзовая' },
+                        silver: { entryFee: 500, prizePool: 800, name: '🥈 Серебряная' },
+                        gold: { entryFee: 1000, prizePool: 1600, name: '🥇 Золотая' },
+                        platinum: { entryFee: 2000, prizePool: 3200, name: '💎 Платиновая' },
+                        diamond: { entryFee: 5000, prizePool: 8000, name: '🏆 Алмазная' }
+                    };
                     const config = leagueConfigs[myLeague] || leagueConfigs.bronze;
                     
                     const entryFeeEl = document.getElementById('arenaEntryFee');
@@ -3038,10 +2653,7 @@ async function renderArenaFightTab() {
                     const entryRow = document.getElementById('arenaEntryFeeRow');
                     if (entryRow) entryRow.style.display = config.entryFee === 0 ? 'none' : '';
                     if (entryFeeEl) entryFeeEl.textContent = config.entryFee;
-                    if (prizePoolEl) {
-                        const dustImg = '<img src="https://ndammo.github.io/Mmodna/dust.png" style="width:13px;height:13px;vertical-align:middle;margin:0 2px" onerror="this.style.display=\'none\'">';
-                        prizePoolEl.innerHTML = config.prizePool + ' <span style="font-size:11px;color:var(--text3)">+ ' + config.dustWin + dustImg + '</span>';
-                    }
+                    if (prizePoolEl) prizePoolEl.textContent = config.prizePool;
                     if (leagueEl) {
                         leagueEl.innerHTML = `<span class="arena-league-badge league-${myLeague}">${config.name}</span>`;
                     }
@@ -3139,15 +2751,11 @@ function renderBattleInterface(battleData) {
                     `).join('')}
                 </div>
             </div>
-     <div class="arena-battle-log" id="arenaBattleLog">
-    ${battleData.battleLog && battleData.battleLog.length ? 
-        battleData.battleLog.slice(-10).map(log => {
-            const isMyTurn = (log.player === 'player1' && battleData.isPlayer1) || (log.player === 'player2' && !battleData.isPlayer1);
-            const turnLabel = isMyTurn ? '⚔️ Мой ход' : '🛡️ Ход соперника';
-            return `<div class="arena-log-entry ${log.isCrit ? 'crit' : ''}">${turnLabel}: ${log.attackerName || 'Питомец'} → ${log.targetName || 'Враг'}: ${log.damage} урона ${log.isCrit ? '💥 КРИТ!' : ''}</div>`;
-        }).join('') : 
-        '<div class="arena-log-entry">Бой начинается...</div>'}
-</div>
+            <div class="arena-battle-log" id="arenaBattleLog">
+                ${battleData.battleLog && battleData.battleLog.length ? 
+                    battleData.battleLog.slice(-10).map(log => `<div class="arena-log-entry ${log.isCrit ? 'crit' : ''}">Ход ${log.turn}: ${log.attackerName || 'Питомец'} → ${log.targetName || 'Враг'}: ${log.damage} урона ${log.isCrit ? '💥 КРИТ!' : ''}</div>`).join('') : 
+                    '<div class="arena-log-entry">Бой начинается...</div>'}
+            </div>
             <div class="arena-battle-timer" id="arenaBattleTimer">⏱ ${battleData.timeLeft !== undefined ? battleData.timeLeft : 30}</div>
             <button class="arena-surrender-btn" onclick="surrenderBattle()"><i class="fa-solid fa-flag"></i> Сдаться</button>
         </div>
@@ -3174,7 +2782,6 @@ function updateBattleUIFromClient(data, isPlayer1) {
     
     if (!myTeam || !enemyTeam) return;
     
-    // Обновляем ТОЛЬКО свою команду (без анимации урона)
     for (let i = 0; i < myTeam.length; i++) {
         const creature = myTeam[i];
         const creatureEl = document.querySelector(`#arenaMyCreatures .arena-battle-creature[data-creature-index="${i}"]`);
@@ -3190,14 +2797,10 @@ function updateBattleUIFromClient(data, isPlayer1) {
     
     const isMyTurn = data.currentTurn && ((data.currentTurn === 'player1' && isPlayer1) || (data.currentTurn === 'player2' && !isPlayer1));
     
-    // Обновляем команду соперника (обычно без кнопки атаки)
     for (let i = 0; i < enemyTeam.length; i++) {
         const creature = enemyTeam[i];
         const creatureEl = document.querySelector(`#arenaEnemyCreatures .arena-battle-creature[data-enemy-index="${i}"]`);
         if (!creatureEl || !creature) continue;
-        
-        const oldHp = parseInt(creatureEl.querySelector('.creature-hp')?.textContent?.match(/[\d.]+/)?.[0] || creature.currentHp);
-        const newHp = creature.currentHp;
         
         const hpEl = creatureEl.querySelector('.creature-hp');
         const fillEl = creatureEl.querySelector('.arena-hp-fill');
@@ -3208,12 +2811,6 @@ function updateBattleUIFromClient(data, isPlayer1) {
             creatureEl.classList.add('dead');
         } else {
             creatureEl.classList.remove('dead');
-        }
-        
-        // Если у врага уменьшилось HP — показываем анимацию урона
-        if (oldHp > newHp && data.lastMove && data.lastMove.targetIndex === i) {
-            const damage = oldHp - newHp;
-            showDamageAnimation(i, damage, data.lastMove.isCrit || false, false);
         }
         
         const existingBtn = creatureEl.querySelector('.arena-attack-btn');
@@ -3237,21 +2834,18 @@ function updateBattleUIFromClient(data, isPlayer1) {
         }
     }
     
-    // Обновляем лог боя
-if (data.lastMove) {
-    const logContainer = document.getElementById('arenaBattleLog');
-    if (logContainer) {
-        const logEntry = document.createElement('div');
-        logEntry.className = `arena-log-entry ${data.lastMove.isCrit ? 'crit' : ''}`;
-        const isMyTurn = (data.currentTurn === 'player1' && data.isPlayer1) || (data.currentTurn === 'player2' && !data.isPlayer1);
-        const turnLabel = isMyTurn ? '⚔️ Мой ход' : '🛡️ Ход соперника';
-        logEntry.innerHTML = `${turnLabel}: Нанесено ${data.lastMove.damage} урона ${data.lastMove.isCrit ? '💥 КРИТ!' : ''}`;
-        logContainer.insertBefore(logEntry, logContainer.firstChild);
-        if (logContainer.children.length > 10) {
-            logContainer.removeChild(logContainer.lastChild);
+    if (data.lastMove) {
+        const logContainer = document.getElementById('arenaBattleLog');
+        if (logContainer) {
+            const logEntry = document.createElement('div');
+            logEntry.className = `arena-log-entry ${data.lastMove.isCrit ? 'crit' : ''}`;
+            logEntry.innerHTML = `Ход ${data.turnCount || '?'}: Нанесено ${data.lastMove.damage} урона ${data.lastMove.isCrit ? '💥 КРИТ!' : ''}`;
+            logContainer.insertBefore(logEntry, logContainer.firstChild);
+            if (logContainer.children.length > 10) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
         }
     }
-}
 }
 
 // ============================================================
@@ -3541,8 +3135,8 @@ function switchTab(tab) {
     // Проверки ПЕРЕД переключением DOM
     if (tab === 'arena') {
         const userLevel = state.user?.level || 1;
-        if (userLevel < 3) {
-            showToast(`Арена доступна с 3 уровня (ваш: ${userLevel})`, '🔒');
+        if (userLevel < 5) {
+            showToast(`Арена доступна с 5 уровня (ваш: ${userLevel})`, '🔒');
             return;
         }
         if (!isArenaOpenClient()) {
@@ -3560,6 +3154,7 @@ function switchTab(tab) {
     if (tab === 'leaderboard') { leaderboardCache = { data: null, expiresAt: 0 }; renderLeaderboard(); }
     if (tab === 'special') renderSpecialQuests();
     if (tab === 'wallet') { updateHeader(); checkActiveRequests(); loadUserStats(); loadStakingStatus(); }
+    if (tab === 'guild')  { loadGuildTab(); }
     if (tab === 'shop') renderMarketplaceBuy();
     if (tab === 'friends') renderFriendsList();
     if (tab === 'arena') {
@@ -3686,8 +3281,6 @@ await loadCreaturesFromServer();
     if (arenaClient) {
         arenaClient.stopSearch();
         arenaClient.loadTeamFromStorage();
-        // Устанавливаем userId явно, чтобы endBattle корректно определял победителя
-        if (state.user) arenaClient.setCurrentUserId(state.user.id || state.user._id);
         arenaClient.connectSocket(state.token, API_URL);
         arenaClient.on('onMatchFound', (data) => showNativeBattleConfirmation(data));
         arenaClient.on('onBattleStartUI', (data) => {
@@ -3704,9 +3297,12 @@ await loadCreaturesFromServer();
                 showSkillBanner(data.skillResult.skillName, data.skillResult.description);
             }
             updateBattleUIFromClient(data, isPlayer1);
+            if (data.lastMove && data.lastMove.targetIndex !== undefined) {
+                showDamageAnimation(data.lastMove.targetIndex, data.lastMove.damage, data.lastMove.isCrit, true);
+            }
         });
-        arenaClient.on('onBattleEnd', (isWin, prizePool, dustWin = 0, xpGained = 0, ratingChange = 0, entryFee = 0) => { 
-            showNativeBattleResult(isWin, prizePool, dustWin, xpGained, ratingChange, entryFee); 
+        arenaClient.on('onBattleEnd', (isWin, prizePool) => { 
+            showNativeBattleResult(isWin, prizePool); 
             refreshUserProfile();
             setTimeout(() => {
                 renderArenaFightTab();
@@ -3736,12 +3332,7 @@ await loadCreaturesFromServer();
             } 
         });
         arenaClient.on('onConnected', () => console.log('✅ WebSocket соединение установлено'));
-        arenaClient.on('onDisconnected', (reason) => {
-            console.log(`❌ WebSocket отключён: ${reason}`);
-            if (reason === 'reconnect_failed' && (arenaClient?.isBattleActive() || arenaClient?.isSearching())) {
-                showToast('Потеряно соединение с сервером. Обновите страницу.', '⚠️');
-            }
-        });
+        arenaClient.on('onDisconnected', (reason) => console.log(`❌ WebSocket отключён: ${reason}`));
         arenaClient.on('onConfirmationUpdate', (data) => { updateConfirmationModal(data); });
         arenaClient.on('onMatchRejected', (data) => {
             const modal = document.getElementById('matchFoundModal');
@@ -3777,7 +3368,6 @@ await loadCreaturesFromServer();
     });
     window.addEventListener('beforeunload', () => { if (arenaClient) arenaClient.disconnectSocket(); });
     window.addEventListener('online', () => { if ((arenaClient?.isSearching() || arenaClient?.isBattleActive()) && !arenaClient?.isConnected()) arenaClient?.connectSocket(state.token, API_URL); });
-    if (state.user) initRaid();
 }
 
 function renderAll() {
@@ -3815,8 +3405,6 @@ window.openCapsule = openCapsule;
 window.onCardClick = onCardClick;
 window.showMergePreview = showMergePreview;
 window.executeMerge = executeMerge;
-window.updateMergeSlider = updateMergeSlider;
-window.executeMergeWithDust = executeMergeWithDust;
 window.upgradeInventory = upgradeInventory;
 window.watchAd = watchAd;
 window.showEncyclopedia = showEncyclopedia;
@@ -3865,82 +3453,49 @@ window.renderArenaFightTab = renderArenaFightTab;
 // ============================================================
 // STAKING
 // ============================================================
-// ============================================================
-// STAKING
-// ============================================================
+let stakingTimerInterval = null;
+let currentStakingPlan = null;
 
-
+const STAKING_PLANS_CLIENT = {
+    10: { days: 10, rate: 0.10, minAmount: 300000, label: '+10%', capybara: true },
+    30: { days: 30, rate: 0.20, minAmount: 50000,  label: '+20%' }
+};
 
 async function loadStakingStatus() {
     try {
         const data = await apiRequest('GET', '/api/staking/status');
-        if (data && data.success && data.stakings && data.stakings.length > 0) {
-            renderActiveStakings(data.stakings);
+        if (data && data.success && data.staking) {
+            renderActiveStaking(data.staking);
         } else {
             const block = document.getElementById('activeStakingBlock');
             if (block) block.style.display = 'none';
         }
-        // ПЛАНЫ ВСЕГДА ПОКАЗЫВАЕМ, НЕ СКРЫВАЕМ!
-        const plansEl = document.querySelector('.staking-plans');
-        if (plansEl) plansEl.style.display = 'grid';
     } catch (e) {}
 }
 
-function renderActiveStakings(stakings) {
+function renderActiveStaking(s) {
     const block = document.getElementById('activeStakingBlock');
     if (!block) return;
     block.style.display = 'block';
-    
-    // Очищаем и показываем список
-    const container = document.getElementById('activeStakingsList');
-    if (!container) {
-        // Если контейнера нет — создаём
-        const card = document.querySelector('.staking-active-card');
-        if (card) {
-            card.innerHTML = '<div id="activeStakingsList"></div>';
-        }
-    }
-    
-    const listContainer = document.getElementById('activeStakingsList') || block.querySelector('.staking-active-card');
-    if (listContainer) {
-        listContainer.innerHTML = stakings.map(s => `
-            <div class="staking-active-item" data-staking-id="${s._id}" style="border-bottom:1px solid rgba(255,255,255,0.1); padding:12px 0;">
-                <div class="staking-active-row">
-                    <span class="staking-active-label">Сумма</span>
-                    <span class="staking-active-val">${formatNum(s.amount)} MMO</span>
-                </div>
-                <div class="staking-active-row">
-                    <span class="staking-active-label">Доход</span>
-                    <span class="staking-active-val green" id="stakeReward_${s._id}">+${formatNum(s.reward)} MMO${s.days === 10 ? ' + 🦫 Capybara' : (s.days === 14 && s.amount >= 1000000 ? ' + 👘 Любо (12 мес)' : (s.days === 14 && s.amount >= 500000 ? ' + 🥷 Ниндзя (3 мес)' : (s.days === 14 && s.amount >= 200000 ? ' + 👕 CroSS (1 мес)' : '')))}</span>
-                </div>
-                <div class="staking-active-row">
-                    <span class="staking-active-label">Осталось</span>
-                    <span class="staking-active-val" id="stakeTimer_${s._id}">—</span>
-                </div>
-                <button class="staking-claim-btn" id="stakeClaimBtn_${s._id}" onclick="claimStakingById('${s._id}')" style="display:none; margin-top:8px;">
-                    <i class="fa-solid fa-coins"></i> Забрать награду
-                </button>
-            </div>
-        `).join('');
-        
-        // Запускаем таймеры для каждого стейкинга
-        stakings.forEach(s => startStakingTimer(s._id, s.endsAt, s.days, s.amount));
-    }
-}
+    document.getElementById('stakeAmount').textContent = formatNum(s.amount) + ' MMO';
+    document.getElementById('stakeReward').textContent = '+' + formatNum(s.reward) + ' MMO'
+        + (s.days === 10 ? ' + 🦫 Capybara' : '');
 
-function startStakingTimer(stakingId, endsAt, days, amount) {
+    if (stakingTimerInterval) clearInterval(stakingTimerInterval);
+
     function tick() {
-        const diff = new Date(endsAt).getTime() - Date.now();
-        const claimBtn = document.getElementById(`stakeClaimBtn_${stakingId}`);
-        const timerEl = document.getElementById(`stakeTimer_${stakingId}`);
+        const diff = new Date(s.endsAt).getTime() - Date.now();
+        const claimBtn = document.getElementById('stakeClaimBtn');
+        const timerEl  = document.getElementById('stakeTimer');
         if (!timerEl) return;
         if (diff <= 0) {
             timerEl.textContent = 'Готово! ✅';
             if (claimBtn) claimBtn.style.display = 'flex';
+            clearInterval(stakingTimerInterval);
         } else {
-            const d = Math.floor(diff / 86400000);
-            const h = Math.floor((diff % 86400000) / 3600000);
-            const m = Math.floor((diff % 3600000) / 60000);
+            const d   = Math.floor(diff / 86400000);
+            const h   = Math.floor((diff % 86400000) / 3600000);
+            const m   = Math.floor((diff % 3600000) / 60000);
             const sec = Math.floor((diff % 60000) / 1000);
             timerEl.textContent = (d > 0 ? d + 'д ' : '') +
                 String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
@@ -3948,8 +3503,7 @@ function startStakingTimer(stakingId, endsAt, days, amount) {
         }
     }
     tick();
-    const interval = setInterval(tick, 1000);
-    // сохраняем interval для очистки при необходимости
+    stakingTimerInterval = setInterval(tick, 1000);
 }
 
 function selectStakingPlan(days) {
@@ -3963,13 +3517,13 @@ function openStakingModal(days) {
     const plan = STAKING_PLANS_CLIENT[days];
     if (!plan) return;
     currentStakingPlan = plan;
-    document.getElementById('stakingModalDays').textContent = plan.days;  // ← plan.days, а не days!
+    document.getElementById('stakingModalDays').textContent = days;
     document.getElementById('stakingModalRate').textContent = plan.label;
-    document.getElementById('stakingModalMin').textContent = 'Минимум: ' + formatNum(plan.minAmount) + ' MMO';
-    document.getElementById('stakingAmountInput').value = '';
+    document.getElementById('stakingModalMin').textContent  = 'Минимум: ' + formatNum(plan.minAmount) + ' MMO';
+    document.getElementById('stakingAmountInput').value     = '';
     document.getElementById('stakingModalPreview').textContent = '';
-    document.getElementById('stakingModal').style.display = 'flex';
-    
+    document.getElementById('stakingModal').style.display   = 'flex';
+
     document.getElementById('stakingAmountInput').oninput = function() {
         const val     = Math.floor(Number(this.value));
         const preview = document.getElementById('stakingModalPreview');
@@ -4014,588 +3568,23 @@ async function confirmStaking() {
     }
 }
 
-async function claimStakingById(stakingId) {
-    const data = await apiRequest('POST', '/api/staking/claim', { stakingId });
+async function claimStaking() {
+    const data = await apiRequest('POST', '/api/staking/claim');
     if (data && data.success) {
-        showToast('+' + formatNum(data.reward) + ' MMO получено!', '🎉');
-        if (data.capybara) showToast('Получен Capybara Rare!', '🦫');
-        loadStakingStatus(); // обновляем список
-    } else {
-        showToast(data?.message || 'Ошибка', '❌');
-    }
-}
-
-
-// ============================================================
-// ВОССТАНОВЛЕНИЕ WEBSOCKET ПОСЛЕ СВОРАЧИВАНИЯ/РАЗВОРАЧИВАНИЯ
-// ============================================================
-
-document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && arenaClient && state.token) {
-        console.log('👁️ Вкладка активна, проверяем WebSocket...');
-        if (!arenaClient.isConnected()) {
-            console.log('🔄 WebSocket отключён, переподключаемся...');
-            arenaClient.connectSocket(state.token, API_URL);
-        }
-        
-        if (arenaClient.getBattleId()) {
-            setTimeout(() => {
-                arenaClient.checkBattleStatus(arenaClient.getBattleId());
-            }, 500);
-        } else if (arenaClient.isSearching()) {
-            setTimeout(() => {
-                arenaClient.checkBattleStatus();
-            }, 500);
-        }
-    }
-});
-
-window.addEventListener('online', () => {
-    console.log('🌐 Интернет восстановлен');
-    if (arenaClient && state.token && !arenaClient.isConnected()) {
-        arenaClient.connectSocket(state.token, API_URL);
-        if (arenaClient.getBattleId()) {
-            setTimeout(() => {
-                arenaClient.checkBattleStatus(arenaClient.getBattleId());
-            }, 1000);
-        }
-    }
-});
-
-window.addEventListener('offline', () => {
-    console.log('📡 Интернет потерян');
-    if (typeof showToast === 'function') {
-        showToast('Потеряно соединение с интернетом', '⚠️');
-    }
-});
-
-// ============================================================
-// ФИЛЬТРЫ МАРКЕТПЛЕЙСА
-// ============================================================
-function setMarketplaceFilter(filter) {
-    currentMarketplaceFilter = filter;
-    
-    // Обновляем активный класс на кнопках
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-        const btnFilter = btn.getAttribute('data-filter');
-        if (btnFilter === filter) {
-            btn.classList.add('active');
+        if (stakingTimerInterval) clearInterval(stakingTimerInterval);
+        const block = document.getElementById('activeStakingBlock');
+        if (block) block.style.display = 'none';
+        if (data.user) { state.user = data.user; updateHeader(); }
+        if (data.capybara) {
+            showToast('+' + formatNum(data.reward) + ' MMO + 🦫 Capybara Rare!', '🎉');
         } else {
-            btn.classList.remove('active');
-        }
-    });
-    
-    // Перерисовываем листинги с новым фильтром
-    if (allMarketplaceListings.length > 0) {
-        renderMarketplaceListings(allMarketplaceListings);
-    } else {
-        renderMarketplaceBuy();
-    }
-}
-
-// ============================================
-// RAID BOSS FUNCTIONS
-// ============================================
-
-let raidBattleOpen = false;
-
-async function loadRaidData() {
-    try {
-        const res = await apiRequest('GET', '/api/raid/current');
-        if (res?.success) {
-            currentRaid = res.raid;
-            updateRaidUI();
-            if (raidBattleOpen) updateRaidBattleScreen();
-        }
-    } catch (e) {
-        console.error('loadRaidData error:', e);
-    }
-}
-
-function updateRaidUI() {
-    if (!currentRaid) return;
-
-    document.getElementById('raidBossIcon').textContent = '🐉';
-    document.getElementById('raidBossName').textContent = 'Ежедневный Рейд';
-    document.getElementById('raidParticipantsCount').textContent = currentRaid.participantsCount || 0;
-    document.getElementById('raidPrizePool').textContent = (currentRaid.totalPrizePool || 0).toLocaleString();
-    document.getElementById('raidCurrentTurn').textContent = currentRaid.currentTurn || 0;
-
-    const hasJoined = currentRaid.isRegistered;
-    document.getElementById('raidNotJoined').style.display = hasJoined ? 'none' : 'block';
-    document.getElementById('raidJoined').style.display = hasJoined ? 'block' : 'none';
-
-    if (hasJoined) {
-        const petName = getPetDisplayName(currentRaid.myPetId);
-        document.getElementById('raidMyPetName').textContent = petName;
-        // Показываем кнопку "Открыть бой" только во время боя
-        const openBtn = document.getElementById('raidOpenBattleBtn');
-        if (openBtn) {
-            openBtn.style.display = currentRaid.phase === 'fighting' ? 'flex' : 'none';
+            showToast('+' + formatNum(data.reward) + ' MMO получено!', '🎉');
         }
     } else {
-        renderPetSelector();
-    }
-
-    updateRaidTimer();
-
-    // Топ участников
-    const topList = document.getElementById('raidTopList');
-    if (topList) {
-        if (currentRaid.topParticipants?.length) {
-            topList.innerHTML = currentRaid.topParticipants.map((p, i) => `
-                <div class="raid-top-item">
-                    <div class="raid-top-rank">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</div>
-                    <div class="raid-top-name">${escapeHtml(p.username)}</div>
-                    <div class="raid-top-damage">${p.damage.toLocaleString()}</div>
-                </div>
-            `).join('');
-        } else {
-            topList.innerHTML = '<div class="empty-listings">Нет участников</div>';
-        }
-    }
-
-    loadRaidHistory();
-}
-
-function getPetDisplayName(petId) {
-    if (!petId) return '?';
-    const c = getCreature(petId);
-    return c ? c.name : petId;
-}
-
-function updateRaidTimer() {
-    const timerLabel = document.getElementById('raidTimerLabel');
-    const timerValue = document.getElementById('raidTimerValue');
-    if (!timerValue || !currentRaid) return;
-
-    const now = new Date();
-    let targetTime = null;
-    let label = '';
-
-    if (currentRaid.phase === 'registration') {
-        targetTime = new Date(currentRaid.raidStartTime);
-        label = '⏳ До начала рейда';
-    } else if (currentRaid.phase === 'fighting') {
-        targetTime = new Date(currentRaid.raidEndTime);
-        label = '⚔️ До завершения';
-    } else if (currentRaid.phase === 'finished') {
-        timerValue.textContent = '✅ Рейд завершён';
-        if (timerLabel) timerLabel.textContent = '🏆 Итоги';
-        return;
-    } else {
-        timerValue.textContent = '📅 Ожидание';
-        if (timerLabel) timerLabel.textContent = 'Следующий рейд';
-        return;
-    }
-
-    if (timerLabel) timerLabel.textContent = label;
-    const diff = targetTime.getTime() - now.getTime();
-
-    if (diff <= 0) {
-        timerValue.textContent = currentRaid.phase === 'registration' ? '🔥 НАЧИНАЕТСЯ!' : '⚔️ БОЙ ИДЁТ!';
-        return;
-    }
-
-    const h = Math.floor(diff / 3600000);
-    const m = Math.floor((diff % 3600000) / 60000);
-    const s = Math.floor((diff % 60000) / 1000);
-    timerValue.textContent = h > 0 ? `${h}ч ${m}м ${s}с` : m > 0 ? `${m}м ${s}с` : `${s}с`;
-}
-
-function renderPetSelector() {
-    const container = document.getElementById('raidPetSelector');
-    if (!container) return;
-
-    const availablePets = state.inventory.filter(item => {
-        const c = getCreature(item.creatureId);
-        return c && item.count >= 1;
-    });
-
-    if (availablePets.length === 0) {
-        container.innerHTML = `
-            <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:12px;padding:16px;text-align:center;">
-                <i class="fa-solid fa-circle-exclamation" style="font-size:24px;color:#ef4444;margin-bottom:8px;display:block;"></i>
-                <div style="font-size:13px;color:#ef4444;margin-bottom:4px;">Нет существ для участия!</div>
-                <div style="font-size:11px;color:#94a3b8;">Откройте капсулу, чтобы получить питомца</div>
-            </div>`;
-        return;
-    }
-
-    const selectedPetId = localStorage.getItem('raid_selected_pet');
-    if (selectedPetId && !availablePets.some(p => p.creatureId === selectedPetId)) {
-        localStorage.removeItem('raid_selected_pet');
-    }
-    const currentSelected = localStorage.getItem('raid_selected_pet');
-
-    container.innerHTML = availablePets.map(item => {
-        const c = getCreature(item.creatureId);
-        const isSelected = currentSelected === c.id;
-        const skill = window.ARENA_SKILLS_MAP?.[c.id];
-        const raidAttack = (c.incomeBase * 2) || 20;
-        return `
-            <div class="pet-option-card ${isSelected ? 'selected' : ''}" onclick="selectRaidPet('${c.id}')">
-                <div class="pet-option-icon">${getIconHtml(c)}</div>
-                <div class="pet-option-info">
-                    <div class="pet-option-name">${escapeHtml(c.name)}</div>
-                    <div class="pet-option-stats">
-                        <span class="pet-stat">⚔️ ${raidAttack} урона</span>
-                        <span class="pet-stat rarity-${c.rarity}">${c.rarity}</span>
-                    </div>
-                    ${skill ? `<div class="pet-option-skill">✨ ${skill.name} (${Math.round(skill.chance * 100)}%)</div>` : ''}
-                </div>
-                ${isSelected ? '<div class="pet-option-check"><i class="fa-solid fa-circle-check"></i></div>' : ''}
-            </div>`;
-    }).join('');
-}
-
-function selectRaidPet(petId) {
-    localStorage.setItem('raid_selected_pet', petId);
-    renderPetSelector();
-}
-
-async function joinRaid() {
-    if (joinRaid._pending) return;
-    joinRaid._pending = true;
-    const selectedPetId = localStorage.getItem('raid_selected_pet');
-    if (!selectedPetId) {
-        joinRaid._pending = false;
-        showToast('Сначала выберите питомца для рейда!', '⚠️');
-        return;
-    }
-    try {
-        const res = await apiRequest('POST', '/api/raid/join', { petId: selectedPetId });
-        if (!res) { showToast('Нет ответа от сервера', 'error'); return; }
-        if (res.success) {
-            showToast(res.message, 'success');
-            loadRaidData();
-            updateHeader();
-        } else {
-            showToast(res.message || 'Ошибка', 'error');
-        }
-    } catch (e) {
-        showToast('catch: ' + e.message, 'error');
-    } finally {
-        joinRaid._pending = false;
+        showToast((data && data.message) || 'Ошибка', '❌');
     }
 }
 
-// ============================================
-// RAID BATTLE SCREEN
-// ============================================
-
-function openRaidBattle() {
-    if (!currentRaid || currentRaid.phase !== 'fighting') {
-        showToast('Рейд ещё не начался', '⚠️');
-        return;
-    }
-    raidBattleOpen = true;
-    document.getElementById('raidBattleScreen').style.display = 'flex';
-    document.getElementById('raidBattleScreen').style.flexDirection = 'column';
-    updateRaidBattleScreen();
-    addRaidLogEntry('⚔️ Вы вошли в бой!', 'system');
-}
-
-function closeRaidBattle() {
-    raidBattleOpen = false;
-    document.getElementById('raidBattleScreen').style.display = 'none';
-}
-
-function updateRaidBattleScreen() {
-    if (!currentRaid || !raidBattleOpen) return;
-
-    // Turn info
-    const rbsTurn = document.getElementById('rbsTurn');
-    if (rbsTurn) rbsTurn.textContent = currentRaid.currentTurn || 1;
-
-    // Participants & prize
-    const rbsP = document.getElementById('rbsParticipants');
-    const rbsPP = document.getElementById('rbsPrizePool');
-    if (rbsP) rbsP.textContent = currentRaid.participantsCount || 0;
-    if (rbsPP) rbsPP.textContent = (currentRaid.totalPrizePool || 0).toLocaleString();
-
-    // Pet card
-    const petId = currentRaid.myPetId;
-    const creature = petId ? getCreature(petId) : null;
-    const rbsPetIcon = document.getElementById('rbsPetIcon');
-    const rbsPetName = document.getElementById('rbsPetName');
-    if (rbsPetIcon && creature) {
-        const iconHtml = getIconHtml(creature);
-        // If image, wrap in correct size; if emoji, set as text
-        rbsPetIcon.innerHTML = iconHtml;
-    }
-    if (rbsPetName && creature) rbsPetName.textContent = creature.name;
-
-    // My stats
-    const rbsMyDamage = document.getElementById('rbsMyDamage');
-    const rbsMyAttacks = document.getElementById('rbsMyAttacks');
-    if (rbsMyDamage) rbsMyDamage.textContent = (currentRaid.myDamage || 0).toLocaleString();
-    if (rbsMyAttacks) rbsMyAttacks.textContent = currentRaid.myAttacks || 0;
-
-    // Attack button
-    updateRaidAttackBtn();
-
-    // Turn timer bar
-    updateRaidTurnBar();
-}
-
-function updateRaidAttackBtn() {
-    const btn = document.getElementById('raidAttackBtn');
-    if (!btn) return;
-
-    if (currentRaid.phase !== 'fighting') {
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-hourglass-half"></i> Рейд не активен';
-        return;
-    }
-
-    if (currentRaid.turnEndsAt) {
-        const timeLeft = Math.max(0, Math.floor((currentRaid.turnEndsAt - Date.now()) / 1000));
-        if (timeLeft <= 0) {
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-hourglass-end"></i> Ход закончился';
-            return;
-        }
-    }
-
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fa-solid fa-sword"></i> Атаковать!';
-}
-
-function updateRaidTurnBar() {
-    const wrap = document.getElementById('rbsTurnBarWrap');
-    const bar = document.getElementById('rbsTurnBar');
-    const sec = document.getElementById('raidTurnSeconds');
-    const timerEl = document.getElementById('rbsTurnTimer');
-
-    if (!currentRaid?.turnEndsAt) {
-        if (wrap) wrap.style.display = 'none';
-        if (timerEl) timerEl.textContent = '';
-        return;
-    }
-
-    const timeLeft = Math.max(0, Math.floor((currentRaid.turnEndsAt - Date.now()) / 1000));
-    const pct = Math.min(100, (timeLeft / 20) * 100);
-
-    if (timeLeft <= 0) {
-        if (wrap) wrap.style.display = 'none';
-        if (timerEl) timerEl.textContent = '';
-        return;
-    }
-
-    if (wrap) wrap.style.display = 'block';
-    if (bar) {
-        bar.style.width = pct + '%';
-        bar.style.background = timeLeft <= 5 ? '#ef4444' : '#f59e0b';
-    }
-    if (sec) sec.textContent = timeLeft;
-    if (timerEl) timerEl.textContent = `⏱ ${timeLeft}с`;
-}
-
-function startRaidTurnTimer() {
-    if (raidTurnTimerInterval) clearInterval(raidTurnTimerInterval);
-    raidTurnTimerInterval = setInterval(() => {
-        if (!currentRaid?.turnEndsAt) return;
-        const timeLeft = Math.max(0, Math.floor((currentRaid.turnEndsAt - Date.now()) / 1000));
-        updateRaidTurnBar();
-        updateRaidAttackBtn();
-        if (timeLeft <= 0) {
-            clearInterval(raidTurnTimerInterval);
-            raidTurnTimerInterval = null;
-        }
-    }, 1000);
-}
-
-function addRaidLogEntry(text, type = '') {
-    const log = document.getElementById('rbsLog');
-    if (!log) return;
-    const entry = document.createElement('div');
-    entry.className = `rbs-log-entry${type ? ' is-' + type : ''}`;
-    entry.textContent = text;
-    log.prepend(entry);
-    // Limit log to 50 entries
-    while (log.children.length > 50) log.removeChild(log.lastChild);
-}
-
-async function attackRaidBoss() {
-    if (!currentRaid || currentRaid.phase !== 'fighting') {
-        showToast('Рейд не активен', '⚠️');
-        return;
-    }
-    const btn = document.getElementById('raidAttackBtn');
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Атака...';
-    }
-    try {
-        const res = await apiRequest('POST', '/api/raid/attack', {});
-        if (res.success) {
-            // Shake boss card
-            const bossCard = document.getElementById('rbsBossCard');
-            if (bossCard) {
-                bossCard.classList.add('rbs-boss-shake');
-                setTimeout(() => bossCard.classList.remove('rbs-boss-shake'), 300);
-            }
-            // Log entry
-            const isCrit = res.isCrit;
-            const skillTriggered = res.skillTriggered;
-            let logText = `⚔️ Вы нанесли ${res.damage} урона!`;
-            if (isCrit) logText += ' 💥 КРИТ!';
-            if (skillTriggered) logText += ` ✨ ${res.skillName}!`;
-            addRaidLogEntry(logText, isCrit ? 'crit' : skillTriggered ? 'skill' : 'mine');
-            loadRaidData();
-        } else {
-            showToast(res.message, 'error');
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fa-solid fa-sword"></i> Атаковать!';
-            }
-        }
-    } catch (e) {
-        showToast('Ошибка при атаке', 'error');
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fa-solid fa-sword"></i> Атаковать!';
-        }
-    }
-}
-
-async function loadRaidHistory() {
-    const container = document.getElementById('raidHistoryList');
-    if (!container) return;
-    try {
-        const res = await apiRequest('GET', '/api/raid/history');
-        if (res?.success && res.history?.length) {
-            container.innerHTML = res.history.map(h => `
-                <div class="raid-history-item">
-                    <div class="raid-history-name">${escapeHtml(h.raidId || 'Рейд')}</div>
-                    <div class="raid-history-details">
-                        👥 ${h.totalParticipants} участников | 💰 ${h.totalPrizePool.toLocaleString()} MMO пул
-                    </div>
-                    <div class="raid-history-details" style="font-size:9px;color:#64748b">
-                        🏆 Топ: ${h.topDamage?.slice(0, 3).map(t => `${t.username}: ${t.damage}`).join(', ') || '—'}
-                    </div>
-                </div>
-            `).join('');
-        } else {
-            container.innerHTML = '<div class="empty-listings">История рейдов пуста</div>';
-        }
-    } catch (e) {
-        container.innerHTML = '<div class="empty-listings">Ошибка загрузки истории</div>';
-    }
-}
-
-function showRaidResults(data) {
-    const modal = document.getElementById('raidResultsModal');
-    const list = document.getElementById('raidResultsList');
-    const subtitle = document.getElementById('raidResultsSubtitle');
-    const myReward = document.getElementById('raidResultsMyReward');
-    if (!modal) return;
-
-    subtitle.textContent = `Участников: ${data.totalParticipants || 0} | Пул: ${(data.totalPrizePool || 0).toLocaleString()} MMO`;
-
-    const ranks = data.topDamage || [];
-    list.innerHTML = ranks.map((p, i) => `
-        <div class="raid-result-item">
-            <div class="raid-result-rank">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</div>
-            <div class="raid-result-name">${escapeHtml(p.username)}</div>
-            <div class="raid-result-damage">${p.damage} урон</div>
-            <div class="raid-result-reward">+${p.reward} MMO</div>
-        </div>
-    `).join('');
-
-    const myEntry = ranks.find(p => p.telegramId === String(state.user?.telegramId));
-    if (myEntry) {
-        myReward.style.display = 'block';
-        myReward.innerHTML = `🏆 Ваша награда: <span style="color:#22c55e">+${myEntry.reward} MMO</span>`;
-    } else {
-        myReward.style.display = 'none';
-    }
-
-    modal.style.display = 'flex';
-    closeRaidBattle();
-}
-
-function closeRaidResults() {
-    document.getElementById('raidResultsModal').style.display = 'none';
-    loadRaidData();
-    updateHeader();
-}
-
-function initRaidWebSocket() {
-    if (window.io && window.socket) {
-        window.socket.on('raid_phase_update', (data) => {
-            if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
-                loadRaidData();
-                if (data.message) showToast(data.message, '⚔️');
-                if (data.phase === 'fighting' && currentRaid?.isRegistered) {
-                    addRaidLogEntry('⚔️ БОЙ НАЧАЛСЯ! Атакуйте босса!', 'system');
-                }
-            }
-        });
-
-        window.socket.on('raid_turn_start', (data) => {
-            if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
-                currentRaid.currentTurn = data.turn;
-                currentRaid.turnEndsAt = Number(data.turnEndsAt);
-                addRaidLogEntry(`— Ход ${data.turn} начался —`, 'system');
-                if (raidBattleOpen) updateRaidBattleScreen();
-                showToast(`⚔️ Ход ${data.turn}/15! 20 секунд на атаку`, '⚔️');
-                startRaidTurnTimer();
-            }
-        });
-
-        window.socket.on('raid_attack', (data) => {
-            if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
-                const isMe = data.attackerName === (state.user?.username || state.user?.firstName);
-                if (!isMe) {
-                    let logText = `${data.attackerName}: ${data.damage} урона`;
-                    if (data.isCrit) logText += ' 💥';
-                    if (data.skillTriggered) logText += ` ✨ ${data.skillName}`;
-                    addRaidLogEntry(logText, data.isCrit ? 'crit' : '');
-                    loadRaidData();
-                }
-            }
-        });
-
-        window.socket.on('raid_end', (data) => {
-            showToast('🏆 Рейд завершён! Награды распределены!', '🏆');
-            if (data.results) {
-                showRaidResults(data.results);
-            } else {
-                loadRaidData();
-            }
-        });
-    }
-}
-
-// Переключатель вкладок с поддержкой рейда
-const originalSwitchTab = window.switchTab;
-window.switchTab = function(tab) {
-    originalSwitchTab(tab);
-    if (tab === 'raid') {
-        loadRaidData();
-        if (raidUpdateInterval) clearInterval(raidUpdateInterval);
-        raidUpdateInterval = setInterval(loadRaidData, 3000);
-    } else if (raidUpdateInterval) {
-        clearInterval(raidUpdateInterval);
-        raidUpdateInterval = null;
-    }
-};
-
-function initRaid() {
-    loadRaidData();
-    initRaidWebSocket();
-    setInterval(updateRaidTimer, 1000);
-    setInterval(() => {
-        if (raidBattleOpen) updateRaidTurnBar();
-    }, 500);
-}
-
-// Вызываем после загрузки пользователя
-
-
-// ========== ЭТИ СТРОКИ УЖЕ БЫЛИ, НИЧЕГО НЕ МЕНЯЙТЕ ==========
 window.selectStakingPlan = selectStakingPlan;
 window.openStakingModal   = openStakingModal;
 window.closeStakingModal  = closeStakingModal;

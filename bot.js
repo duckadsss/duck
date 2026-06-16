@@ -65,7 +65,8 @@ const UserSchema = new mongoose.Schema({
     lastDailyBonus: { type: Date, default: null },
     lastLogin: { type: Date, default: Date.now },
     createdAt: { type: Date, default: Date.now },
-    notifiedLostIncome: { type: Boolean, default: false }
+    notifiedLostIncome: { type: Boolean, default: false },
+    guildRole: { type: String, default: null }
 }, { collection: 'users' });
 
 const User = mongoose.model('User', UserSchema);
