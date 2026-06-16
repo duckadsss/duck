@@ -3824,7 +3824,7 @@ app.get('/api/wallet/history', authMiddleware, async (req, res) => {
 // RAID BOSS ФУНКЦИИ И ПЛАНИРОВЩИК
 // ============================================
 
-function getRaidTime() {
+function getNextRaidTime() {
     const now = new Date();
     const next = new Date(now);
     next.setSeconds(0, 0);
@@ -3839,13 +3839,25 @@ function getRaidTime() {
     return next;
 }
 
+function getRaidTime() {
+    return getNextRaidTime();
+}
+
 function getTodayRaidId() {
-    const raidTime = getRaidTime();
+    const raidTime = getNextRaidTime();
     return `raid_${raidTime.toISOString().slice(0, 16).replace('T', '_').replace(/:/g, '-')}`;
 }
+
 async function ensureRaidForToday() {
-    const raidId = getTodayRaidId();
-    let raid = await Raid.findOne({ raidId });
+    // Сначала ищем активный рейд
+    let raid = await Raid.findOne({ phase: { $in: ['registration', 'fighting'] } }).sort({ scheduledAt: 1 });
+    if (raid) return raid;
+
+    // Активного нет — создаём новый
+    const raidTime = getNextRaidTime();
+    const raidId = `raid_${raidTime.toISOString().slice(0, 16).replace('T', '_').replace(/:/g, '-')}`;
+
+    raid = await Raid.findOne({ raidId });
     if (!raid) {
         raid = await Raid.create({
             raidId,
@@ -3854,12 +3866,14 @@ async function ensureRaidForToday() {
             totalPrizePool: 0,
             commission: 0,
             playersPrizePool: 0,
-            scheduledAt: getRaidTime()
+            scheduledAt: raidTime
         });
         console.log(`🎮 Создан рейд на ${raidId}`);
     }
     return raid;
 }
+
+
 
 async function startRaidFight(raidId) {
     const raid = await Raid.findByIdAndUpdate(raidId, {
@@ -4015,36 +4029,35 @@ async function finishRaid(raidId) {
 
 async function processRaidScheduler() {
     const now = new Date();
-    const raidId = getTodayRaidId();
-    const raid = await Raid.findOne({ raidId });
+
+    // Ищем активный рейд (registration или fighting)
+    const raid = await Raid.findOne({ phase: { $in: ['registration', 'fighting'] } }).sort({ scheduledAt: 1 });
     if (!raid) return;
 
-    // Если scheduledAt не задан — берём из raidId (формат raid_YYYY-MM-DD_HH-MM)
-    let raidTime = raid.scheduledAt;
-    if (!raidTime) {
-        const parts = raidId.replace('raid_', '').split('_');
-        const dateStr = parts[0];
-        const timeParts = parts[1].split('-');
-        raidTime = new Date(`${dateStr}T${timeParts[0]}:${timeParts[1]}:00Z`);
-        // Сохраняем чтобы не парсить каждый раз
-        await Raid.findByIdAndUpdate(raid._id, { $set: { scheduledAt: raidTime } });
-    }
+    const raidTime = raid.scheduledAt;
+    if (!raidTime) return;
 
     const fightEndTime = new Date(raidTime.getTime() + 5 * 60 * 1000);
 
-    console.log(`🕐 Рейд: ${raidId} | phase: ${raid.phase} | now: ${now.toISOString()} | raidTime: ${raidTime.toISOString()} | diff: ${Math.round((raidTime-now)/1000)}с`);
+    console.log(`🕐 Рейд: ${raid.raidId} | phase: ${raid.phase} | diff: ${Math.round((raidTime-now)/1000)}с`);
 
+    // Пора начинать бой
     if (raid.phase === 'registration' && now >= raidTime && now < fightEndTime) {
         await startRaidFight(raid._id);
     }
 
     if (raid.phase === 'fighting') {
+        // Бой закончился по времени
         if (now >= fightEndTime) {
             await finishRaid(raid._id);
+            // Сразу создаём следующий рейд
+            await ensureRaidForToday();
         }
+        // Следующий ход
         if (raid.turnEndsAt && now >= raid.turnEndsAt && raid.currentTurn < 15) {
             await nextRaidTurn(raid._id);
         }
+        // Запускаем первый ход
         if (!raid.turnEndsAt && now >= raidTime) {
             await startRaidTurns(raid._id);
         }
