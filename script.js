@@ -4138,6 +4138,7 @@ function updateRaidUI() {
     }
 
     updateRaidTimer();
+    updateHomeBossStatus();
 
     // Топ участников в лобби
     const topList = document.getElementById('raidTopList');
@@ -4549,6 +4550,39 @@ function closeRaidResults() {
     document.getElementById('raidResultsModal').style.display = 'none';
     loadRaidData();
     updateHeader();
+}
+
+
+// Открыть рейд с главной страницы
+function openRaidFromHome() {
+    switchTab('raid');
+    // Если бой идёт и игрок записан — сразу открываем экран боя
+    if (currentRaid?.phase === 'fighting' && currentRaid?.isRegistered) {
+        setTimeout(() => openRaidBattle(), 300);
+    }
+}
+
+// Обновить статус рейда на главной
+function updateHomeBossStatus() {
+    const el = document.getElementById('homeBossStatus');
+    if (!el || !currentRaid) return;
+    if (currentRaid.phase === 'registration') {
+        const diff = new Date(currentRaid.raidStartTime) - Date.now();
+        if (diff > 0) {
+            const m = Math.floor(diff / 60000);
+            const s = Math.floor((diff % 60000) / 1000);
+            el.textContent = `Старт через ${m > 0 ? m + 'м ' : ''}${s}с`;
+        } else {
+            el.textContent = 'Скоро начнётся';
+        }
+    } else if (currentRaid.phase === 'fighting') {
+        el.textContent = `⚔️ БОЙ! Ход ${currentRaid.currentTurn}/15`;
+        // Пульсирующий эффект
+        const card = document.querySelector('.raid-mode-card');
+        if (card) card.style.borderColor = 'rgba(239,68,68,0.5)';
+    } else {
+        el.textContent = 'Ожидание рейда';
+    }
 }
 
 function initRaidWebSocket() {

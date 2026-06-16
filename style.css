@@ -348,7 +348,7 @@ body {
 .capsule-area {
     display: flex;
     gap: 10px;
-    margin-bottom: 16px;
+    margin-bottom: 10px;
 }
 
 .capsule-card {
@@ -3511,4 +3511,53 @@ img {
     font-size: 15px;
     font-weight: 700;
     cursor: pointer;
+}
+
+/* Game mode row (Арена + Рейд) */
+.game-mode-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.game-mode-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.08);
+    transition: all 0.2s;
+}
+.game-mode-btn:active { transform: scale(0.97); }
+.arena-btn {
+    background: linear-gradient(135deg, rgba(139,92,246,0.15), rgba(10,5,30,0.5));
+    border-color: rgba(139,92,246,0.3);
+}
+.raid-btn {
+    background: linear-gradient(135deg, rgba(239,68,68,0.12), rgba(30,5,5,0.5));
+    border-color: rgba(239,68,68,0.25);
+}
+.game-mode-btn > i {
+    font-size: 22px;
+    flex-shrink: 0;
+}
+.arena-btn > i { color: #c4b5fd; }
+.raid-btn > i { color: #f87171; }
+.gmb-info { min-width: 0; }
+.gmb-name {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 0.05em;
+}
+.gmb-desc {
+    font-size: 10px;
+    color: var(--text3);
+    margin-top: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }

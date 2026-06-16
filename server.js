@@ -179,7 +179,7 @@ const UserSchema = new mongoose.Schema({
     firstName: { type: String, default: '' },
     lastName: { type: String, default: '' },
     photoUrl: { type: String, default: '' },
-    balance: { type: Number, default: 4000 },
+    balance: { type: Number, default: 1500 },
     dust: { type: Number, default: 0 },
     xp: { type: Number, default: 0 },
     level: { type: Number, default: 1 },
@@ -1284,7 +1284,7 @@ app.post('/api/auth/login', async (req, res) => {
                 firstName: userData.first_name || '',
                 lastName: userData.last_name || '',
                 photoUrl: userData.photo_url || '',
-                balance: 4000,
+                balance: 1500,
                 adsAvailable: MAX_ADS_AVAILABLE,
                 adsLastRegen: new Date()
             };
@@ -1908,7 +1908,7 @@ app.post('/api/game/watch-ad', authMiddleware, async (req, res) => {
 
         let kangarooUnlocked = false;
         const newTotal = updatedUser.adsWatchedTotal;
-        if (newTotal >= 200 && !(updatedUser.discovered || []).includes('kangaroo_u')) {
+        if (newTotal >= 10000 && !(updatedUser.discovered || []).includes('kangaroo_u')) {
             let inv = await Inventory.findOne({ telegramId: updatedUser.telegramId, creatureId: 'kangaroo_u' });
             if (inv) { inv.count += 1; await inv.save(); }
             else { await Inventory.create({ userId: updatedUser._id, telegramId: updatedUser.telegramId, creatureId: 'kangaroo_u', count: 1 }); }
@@ -4410,7 +4410,7 @@ app.post('/api/admin/users/:id/reset', adminAuthMiddleware, async (req, res) => 
         if (!user) return res.status(404).json({ success: false, message: 'Пользователь не найден' });
         
         await Inventory.deleteMany({ telegramId: user.telegramId });
-        user.balance = 4000;
+        user.balance = 1500;
         user.xp = 0;
         user.level = 1;
         user.mergeCount = 0;
