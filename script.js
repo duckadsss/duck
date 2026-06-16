@@ -4290,8 +4290,14 @@ function openRaidBattle() {
         return;
     }
     raidBattleOpen = true;
-    document.getElementById('raidBattleScreen').style.display = 'flex';
-    document.getElementById('raidBattleScreen').style.flexDirection = 'column';
+    const screen = document.getElementById('raidBattleScreen');
+    screen.style.display = 'flex';
+    screen.style.flexDirection = 'column';
+    // Динамически берём высоту хедера приложения
+    const appHeader = document.querySelector('.header');
+    const topOffset = appHeader ? appHeader.getBoundingClientRect().bottom : 60;
+    screen.style.top = topOffset + 'px';
+    screen.style.paddingTop = '0';
     updateRaidBattleScreen();
     addRaidLogEntry('⚔️ Вы вошли в бой!', 'system');
 }
