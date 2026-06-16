@@ -434,7 +434,8 @@ const RaidSchema = new mongoose.Schema({
     totalPrizePool: { type: Number, default: 0 },
     commission: { type: Number, default: 0 },
     playersPrizePool: { type: Number, default: 0 },
-    createdAt: { type: Date, default: Date.now }
+    createdAt: { type: Date, default: Date.now },
+    scheduledAt: { type: Date, default: null }
 });
 
 const RaidParticipantSchema = new mongoose.Schema({
@@ -3852,7 +3853,8 @@ async function ensureRaidForToday() {
             entryFee: 100,
             totalPrizePool: 0,
             commission: 0,
-            playersPrizePool: 0
+            playersPrizePool: 0,
+            scheduledAt: getRaidTime()
         });
         console.log(`🎮 Создан рейд на ${raidId}`);
     }
@@ -4016,7 +4018,7 @@ async function processRaidScheduler() {
     const raid = await Raid.findOne({ raidId: getTodayRaidId() });
     if (!raid) return;
 
-    const raidTime = getRaidTime();
+    const raidTime = raid.scheduledAt || getRaidTime();
     const timeUntilFight = raidTime.getTime() - now.getTime();
     const fightEndTime = new Date(raidTime.getTime() + 5 * 60 * 1000);
 
