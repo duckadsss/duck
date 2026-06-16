@@ -3147,7 +3147,9 @@ app.get('/api/raid/current', authMiddleware, async (req, res) => {
             .populate('userId', 'username firstName');
         
         const raidTime = raid.scheduledAt || getRaidTime();
-        const fightEndTime = new Date(raidTime.getTime() + 15 * 20 * 1000); // 15 ходов * 20 сек
+        // fightEndTime считаем от реального старта боя, не от времени регистрации
+        const fightStartTime = (raid.phase === 'fighting' && raid.startTime) ? raid.startTime : raidTime;
+        const fightEndTime = new Date(fightStartTime.getTime() + 15 * 20 * 1000); // 15 ходов * 20 сек
         
         res.json({
             success: true,
@@ -3170,8 +3172,7 @@ app.get('/api/raid/current', authMiddleware, async (req, res) => {
                 raidEndTime: fightEndTime,
                 topParticipants: participants.map(p => ({
                     username: p.userId?.username || p.username || 'Anonymous',
-                    damage: p.totalDamage,
-                    telegramId: String(p.telegramId || '')
+                    damage: p.totalDamage
                 }))
             }
         });
@@ -3376,19 +3377,15 @@ const raid = await Raid.findOne({ phase: { $in: ['registration', 'fighting'] } }
         const updatedParticipant = await RaidParticipant.findById(participant._id);
         
         // Рассылаем обновление всем через WebSocket
-        const lbLive = await RaidParticipant.find({ raidId: raid._id })
-            .sort({ totalDamage: -1 }).select('username totalDamage telegramId');
         io.emit('raid_attack', {
-            raidId: String(raid._id),
-            telegramId: String(user.telegramId),
+            raidId: raid._id,
             attackerName: user.username || user.firstName || 'Игрок',
             damage: finalDamage,
             isCrit,
             skillTriggered,
             skillName,
             totalDamage: updatedParticipant.totalDamage,
-            currentTurn: raid.currentTurn,
-            leaderboard: lbLive.map(p => ({ username: p.username, damage: p.totalDamage, telegramId: String(p.telegramId) }))
+            currentTurn: raid.currentTurn
         });
         
         res.json({
@@ -3903,13 +3900,10 @@ async function startRaidTurns(raidId) {
         $set: { currentTurn: 1, turnEndsAt, endTime: null }
     });
     
-    const lb1 = await RaidParticipant.find({ raidId: raid._id })
-        .sort({ totalDamage: -1 }).select('username totalDamage telegramId');
     io.emit('raid_turn_start', {
         raidId: String(raid._id),
         turn: 1,
-        turnEndsAt: turnEndsAt.getTime(),
-        leaderboard: lb1.map(p => ({ username: p.username, damage: p.totalDamage, telegramId: String(p.telegramId) }))
+        turnEndsAt: turnEndsAt.getTime()
     });
 }
 
@@ -3935,13 +3929,10 @@ async function nextRaidTurn(raidId) {
         $set: { currentTurn: nextTurn, turnEndsAt }
     });
     
-    const lb2 = await RaidParticipant.find({ raidId: raid._id })
-        .sort({ totalDamage: -1 }).select('username totalDamage telegramId');
     io.emit('raid_turn_start', {
         raidId: String(raid._id),
         turn: nextTurn,
-        turnEndsAt: turnEndsAt.getTime(),
-        leaderboard: lb2.map(p => ({ username: p.username, damage: p.totalDamage, telegramId: String(p.telegramId) }))
+        turnEndsAt: turnEndsAt.getTime()
     });
 }
 
@@ -4054,7 +4045,8 @@ async function processRaidScheduler() {
         await Raid.findByIdAndUpdate(raid._id, { $set: { scheduledAt: raidTime } });
     }
 
-    const fightEndTime = new Date(raidTime.getTime() + 15 * 20 * 1000); // 15 ходов * 20 сек
+    const fightStartTime = (raid.phase === 'fighting' && raid.startTime) ? raid.startTime : raidTime;
+    const fightEndTime = new Date(fightStartTime.getTime() + 15 * 20 * 1000); // 15 ходов * 20 сек
 
     console.log(`🕐 ${raid.raidId} | ${raid.phase} | diff: ${Math.round((raidTime-now)/1000)}с`);
 
