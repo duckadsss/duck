@@ -4305,23 +4305,29 @@ function selectRaidPet(petId) {
 }
 
 async function joinRaid() {
+    if (joinRaid._pending) return;
+    joinRaid._pending = true;
     const selectedPetId = localStorage.getItem('raid_selected_pet');
     if (!selectedPetId) {
+        joinRaid._pending = false;
         showToast('Сначала выберите питомца для рейда!', '⚠️');
         return;
     }
     
     try {
         const res = await apiRequest('POST', '/api/raid/join', { petId: selectedPetId });
+        if (!res) return;
         if (res.success) {
             showToast(res.message, 'success');
             loadRaidData();
             updateUserBalance();
         } else {
-            showToast(res.message, 'error');
+            showToast(res.message || 'Ошибка', 'error');
         }
     } catch (e) {
         showToast('Ошибка при записи', 'error');
+    } finally {
+        joinRaid._pending = false;
     }
 }
 
