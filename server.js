@@ -4189,7 +4189,7 @@ async function processRaidScheduler() {
 
     console.log(`🕐 ${raid.raidId} | ${raid.phase} | diff: ${Math.round((raidTime-now)/1000)}с`);
 
-    if (raid.phase === 'registration' && now >= raidTime && now < fightEndTime) {
+    if (raid.phase === 'registration' && now >= raidTime) {
         console.log(`⚔️ Стартуем бой для ${raid.raidId}`);
         await startRaidFight(raid._id);
     }
