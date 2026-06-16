@@ -233,6 +233,8 @@ const InventorySchema = new mongoose.Schema({
     telegramId: { type: String, required: true },
     creatureId: { type: String, required: true },
     count: { type: Number, default: 1 },
+    upgradeLevel: { type: Number, default: 0 },       // текущий уровень улучшения
+    upgradeSuccesses: { type: Number, default: 0 },   // успешных попыток на текущем уровне
     createdAt: { type: Date, default: Date.now }
 });
 InventorySchema.index({ telegramId: 1, creatureId: 1 }, { unique: true });
@@ -919,7 +921,9 @@ async function formatInventory(telegramId) {
         ...item,
         incomeBase: creatureMap.get(item.creatureId)?.incomeBase || 1,
         name: creatureMap.get(item.creatureId)?.name || item.creatureId,
-        icon: creatureMap.get(item.creatureId)?.icon || '🧬'
+        icon: creatureMap.get(item.creatureId)?.icon || '🧬',
+        upgradeLevel: item.upgradeLevel || 0,
+        upgradeSuccesses: item.upgradeSuccesses || 0
     }));
     
     inventoryCache.set(telegramId, { data: result, expiresAt: Date.now() + INVENTORY_CACHE_TTL });
@@ -1830,6 +1834,101 @@ app.post('/api/game/upgrade-inventory', authMiddleware, async (req, res) => {
 // ============================================
 // GAME: WATCH AD
 // ============================================
+
+// ============================================
+// FORGE — УЛУЧШЕНИЕ СУЩЕСТВ
+// ============================================
+// Формула стоимости: базовая 30 MMO * 2^level за попытку
+// 10 успешных попыток (шанс 30%) = переход на след. уровень
+// +1 атака к incomeBase за каждый уровень
+
+app.post('/api/game/forge', authMiddleware, async (req, res) => {
+    try {
+        const { creatureId } = req.body;
+        const user = req.user;
+
+        if (!creatureId) {
+            return res.status(400).json({ success: false, message: 'Укажите creatureId' });
+        }
+
+        const item = await Inventory.findOne({ telegramId: user.telegramId, creatureId });
+        if (!item || item.count < 1) {
+            return res.status(400).json({ success: false, message: 'Существо не найдено в инвентаре' });
+        }
+
+        const level = item.upgradeLevel || 0;
+        const MAX_LEVEL = 10;
+        if (level >= MAX_LEVEL) {
+            return res.status(400).json({ success: false, message: `Максимальный уровень улучшения (${MAX_LEVEL}) достигнут` });
+        }
+
+        // Стоимость одной попытки: 30 * 2^level
+        const attemptCost = 30 * Math.pow(2, level);
+
+        if (user.balance < attemptCost) {
+            return res.status(400).json({ success: false, message: `Недостаточно средств. Нужно ${attemptCost.toLocaleString()} MMO` });
+        }
+
+        // Списываем ММО атомарно
+        const updatedUser = await User.findOneAndUpdate(
+            { _id: user._id, balance: { $gte: attemptCost } },
+            {
+                $inc: { balance: -attemptCost },
+                $push: {
+                    transactions: {
+                        $each: [{ name: `Forge attempt (lvl ${level}→${level+1})`, amount: -attemptCost, time: new Date() }],
+                        $position: 0, $slice: 30
+                    }
+                }
+            },
+            { new: true }
+        );
+
+        if (!updatedUser) {
+            return res.status(400).json({ success: false, message: 'Ошибка списания средств' });
+        }
+
+        // 30% шанс успеха
+        const success = Math.random() < 0.30;
+        let newSuccesses = (item.upgradeSuccesses || 0) + (success ? 1 : 0);
+        let newLevel = level;
+        let leveledUp = false;
+
+        if (newSuccesses >= 10) {
+            newLevel = level + 1;
+            newSuccesses = 0;
+            leveledUp = true;
+        }
+
+        // Обновляем инвентарь
+        await Inventory.updateOne(
+            { _id: item._id },
+            { $set: { upgradeLevel: newLevel, upgradeSuccesses: newSuccesses } }
+        );
+
+        // Инвалидируем кэш
+        invalidateInventoryCache(user.telegramId);
+
+        res.json({
+            success: true,
+            attemptSuccess: success,
+            leveledUp,
+            newLevel,
+            newSuccesses,
+            successesNeeded: 10,
+            attemptCost,
+            balance: updatedUser.balance,
+            message: success
+                ? (leveledUp ? `🎉 УРОВЕНЬ ${newLevel}! Атака увеличена!` : `✅ Успех! (${newSuccesses}/10)`)
+                : `❌ Неудача... (${newSuccesses}/10)`
+        });
+
+    } catch (e) {
+        console.error('forge error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
 app.post('/api/game/watch-ad', authMiddleware, async (req, res) => {
     const userId = req.user.telegramId;
     if (adLocks.get(userId)) {
@@ -3250,6 +3349,9 @@ app.post('/api/raid/join', authMiddleware, async (req, res) => {
             $inc: { totalPrizePool: entryFee }
         });
         
+        // Получаем уровень улучшения питомца
+        const upgradeItem = await Inventory.findOne({ telegramId: user.telegramId, creatureId: petId }).select('upgradeLevel');
+        
         // Создаём запись участника
         const skill = getSkillForCreature(petId);
         await RaidParticipant.create({
@@ -3258,7 +3360,11 @@ app.post('/api/raid/join', authMiddleware, async (req, res) => {
             telegramId: user.telegramId,
             username: user.username || user.firstName || `User${user.telegramId.slice(-4)}`,
             petId,
-            petAttack: creature.incomeBase * 2, // ATK питомца для рейда
+            petAttack: (() => {
+                // Базовая атака + бонус от уровня улучшения
+                const upgradeBonus = upgradeItem?.upgradeLevel || 0;
+                return (creature.incomeBase + upgradeBonus) * 2;
+            })(), // ATK питомца для рейда (с учётом forge)
             petCritChance: 0.1,
             petSkill: skill,
             totalDamage: 0,

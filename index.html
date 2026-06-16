@@ -656,6 +656,19 @@
 </div>
     
 <!-- Вкладка Wallet -->
+<div class="tab-content" id="tab-forge">
+    <div class="section-title"><i class="fa-solid fa-hammer" style="color:#f59e0b"></i> Кузница улучшений</div>
+    <div class="forge-info-banner">
+        <div class="fib-text">
+            <div class="fib-title">Как работает Forge?</div>
+            <div class="fib-desc">Каждая попытка стоит MMO. Шанс успеха 30%. Нужно 10 успехов для повышения уровня. Каждый уровень даёт +1 атаки питомцу (влияет на Арену и Рейд).</div>
+        </div>
+    </div>
+    <div id="forgeCreatureList" class="forge-creature-list">
+        <div class="empty-listings">Загрузка...</div>
+    </div>
+</div>
+
 <div class="tab-content" id="tab-wallet">
     <div class="wallet-hero">
         <div class="wallet-label" data-i18n="wallet.totalBalance">Total Balance</div>
@@ -773,6 +786,10 @@
     <div class="nav-item" onclick="switchTab('special')" id="nav-special">
         <i class="fa-solid fa-star"></i>
         <span data-i18n="nav.special">Special</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('forge')" id="nav-forge">
+        <i class="fa-solid fa-hammer"></i>
+        <span>Forge</span>
     </div>
     <div class="nav-item" onclick="switchTab('wallet')" id="nav-wallet">
         <i class="fa-solid fa-wallet"></i>

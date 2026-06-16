@@ -3867,6 +3867,8 @@ window.showDepositModal = showDepositModal;
 window.getPaymentDetails = getPaymentDetails;
 window.createDepositRequestAfterPayment = createDepositRequestAfterPayment;
 window.showWithdrawModal = showWithdrawModal;
+window.forgeAttempt = forgeAttempt;
+window.renderForgeTab = renderForgeTab;
 window.createWithdrawRequest = createWithdrawRequest;
 window.copyToClipboard = copyToClipboard;
 window.checkActiveRequests = checkActiveRequests;
@@ -4658,11 +4660,128 @@ function initRaidWebSocket() {
     }
 }
 
+
+// ============================================
+// FORGE — КУЗНИЦА УЛУЧШЕНИЙ
+// ============================================
+
+function renderForgeTab() {
+    const container = document.getElementById('forgeCreatureList');
+    if (!container) return;
+
+    if (!state.inventory.length) {
+        container.innerHTML = '<div class="empty-listings">Нет существ в инвентаре</div>';
+        return;
+    }
+
+    const sorted = [...state.inventory].sort((a, b) => {
+        const ai = RARITY_ORDER.indexOf(getCreature(a.creatureId)?.rarity || 'common');
+        const bi = RARITY_ORDER.indexOf(getCreature(b.creatureId)?.rarity || 'common');
+        return bi - ai;
+    });
+
+    container.innerHTML = sorted.map(item => {
+        const c = getCreature(item.creatureId);
+        if (!c) return '';
+        const level = item.upgradeLevel || 0;
+        const successes = item.upgradeSuccesses || 0;
+        const maxLevel = 10;
+        const baseAtk = (c.incomeBase + level) * 2;
+        const nextAtk = (c.incomeBase + level + 1) * 2;
+        const attemptCost = 30 * Math.pow(2, level);
+        const pct = Math.round((successes / 10) * 100);
+        const isMaxed = level >= maxLevel;
+        const canAfford = state.user?.balance >= attemptCost;
+
+        return `<div class="forge-card" id="forge-card-${c.id}">
+            <div class="forge-card-top">
+                <div class="forge-card-icon">${getIconHtml(c)}</div>
+                <div class="forge-card-info">
+                    <div class="forge-card-name">${escapeHtml(c.name)}</div>
+                    <div class="forge-card-stats">
+                        <span>⚡ ${baseAtk} ATK${level > 0 ? ` <span style="color:#f59e0b">(+${level*2})</span>` : ''}</span>
+                        <span style="color:#94a3b8">${c.rarity}</span>
+                    </div>
+                </div>
+                <div class="forge-card-level">${isMaxed ? '✨ MAX' : `LVL ${level}`}</div>
+            </div>
+            ${!isMaxed ? `
+            <div class="forge-progress-wrap">
+                <div class="forge-progress-label">
+                    <span>Успехов: ${successes}/10</span>
+                    <span style="color:#f59e0b">→ LVL ${level+1} (+${(level+1)*2} ATK)</span>
+                </div>
+                <div class="forge-progress-bar-bg">
+                    <div class="forge-progress-bar" style="width:${pct}%"></div>
+                </div>
+            </div>
+            <button class="forge-attempt-btn" ${!canAfford ? 'disabled' : ''} onclick="forgeAttempt('${c.id}')">
+                <i class="fa-solid fa-hammer"></i>
+                Улучшить — ${attemptCost.toLocaleString()} MMO
+                <span style="font-size:11px;opacity:0.7">(30%)</span>
+            </button>
+            ` : `<div class="forge-maxed-badge">✨ Максимальный уровень достигнут!</div>`}
+        </div>`;
+    }).join('');
+}
+
+async function forgeAttempt(creatureId) {
+    const btn = document.querySelector(`#forge-card-${creatureId} .forge-attempt-btn`);
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Попытка...'; }
+
+    try {
+        const res = await apiRequest('POST', '/api/game/forge', { creatureId });
+
+        const card = document.getElementById(`forge-card-${creatureId}`);
+
+        if (res.success) {
+            showToast(res.message, res.attemptSuccess ? '✅' : '❌');
+
+            // Обновляем данные в state.inventory
+            const item = state.inventory.find(i => i.creatureId === creatureId);
+            if (item) {
+                item.upgradeLevel = res.newLevel;
+                item.upgradeSuccesses = res.newSuccesses;
+            }
+
+            // Анимация карточки
+            if (card) {
+                card.classList.add(res.attemptSuccess ? 'forge-result-success' : 'forge-result-fail');
+                setTimeout(() => {
+                    card.classList.remove('forge-result-success', 'forge-result-fail');
+                }, 400);
+            }
+
+            // Обновляем баланс
+            if (state.user) state.user.balance = res.balance;
+            updateHeader();
+
+            // Перерисовываем вкладку
+            renderForgeTab();
+        } else {
+            showToast(res.message, '❌');
+            if (btn) {
+                btn.disabled = false;
+                const item = state.inventory.find(i => i.creatureId === creatureId);
+                const level = item?.upgradeLevel || 0;
+                const cost = 30 * Math.pow(2, level);
+                btn.innerHTML = `<i class="fa-solid fa-hammer"></i> Улучшить — ${cost.toLocaleString()} MMO <span style="font-size:11px;opacity:0.7">(30%)</span>`;
+            }
+        }
+    } catch (e) {
+        showToast('Ошибка попытки', '❌');
+        if (btn) btn.disabled = false;
+    }
+}
+
+
 // Переключатель вкладок с поддержкой рейда
 const originalSwitchTab = window.switchTab;
 window.switchTab = function(tab) {
     originalSwitchTab(tab);
-    if (tab === 'raid') {
+    if (tab === 'forge') {
+        renderForgeTab();
+    } else if (tab === 'raid') {
         loadRaidData();
         if (raidUpdateInterval) clearInterval(raidUpdateInterval);
         // Во время боя данные идут через сокет — поллим редко
