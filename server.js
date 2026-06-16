@@ -4012,10 +4012,17 @@ async function finishRaid(raidId) {
     });
     
     io.emit('raid_end', {
-        raidId: raid._id,
-        topDamage: topDamageList.slice(0, 10),
-        totalParticipants: participants.length,
-        totalPrizePool: raid.totalPrizePool
+        raidId: String(raid._id),
+        results: {
+            totalParticipants: participants.length,
+            totalPrizePool: raid.totalPrizePool,
+            topDamage: topDamageList.slice(0, 10).map(p => ({
+                username: p.username,
+                telegramId: p.telegramId,
+                damage: p.damage,
+                reward: p.reward
+            }))
+        }
     });
 }
 

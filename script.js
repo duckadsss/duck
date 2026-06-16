@@ -4097,12 +4097,15 @@ function setMarketplaceFilter(filter) {
 // RAID BOSS FUNCTIONS
 // ============================================
 
+let raidBattleOpen = false;
+
 async function loadRaidData() {
     try {
         const res = await apiRequest('GET', '/api/raid/current');
         if (res?.success) {
             currentRaid = res.raid;
             updateRaidUI();
+            if (raidBattleOpen) updateRaidBattleScreen();
         }
     } catch (e) {
         console.error('loadRaidData error:', e);
@@ -4111,64 +4114,65 @@ async function loadRaidData() {
 
 function updateRaidUI() {
     if (!currentRaid) return;
-    
+
     document.getElementById('raidBossIcon').textContent = '🐉';
     document.getElementById('raidBossName').textContent = 'Ежедневный Рейд';
-    
     document.getElementById('raidParticipantsCount').textContent = currentRaid.participantsCount || 0;
     document.getElementById('raidPrizePool').textContent = (currentRaid.totalPrizePool || 0).toLocaleString();
     document.getElementById('raidCurrentTurn').textContent = currentRaid.currentTurn || 0;
-    
+
     const hasJoined = currentRaid.isRegistered;
+    document.getElementById('raidNotJoined').style.display = hasJoined ? 'none' : 'block';
+    document.getElementById('raidJoined').style.display = hasJoined ? 'block' : 'none';
+
     if (hasJoined) {
-        document.getElementById('raidNotJoined').style.display = 'none';
-        document.getElementById('raidJoined').style.display = 'block';
-        document.getElementById('raidMyStats').style.display = 'flex';
-        document.getElementById('raidMyDamage').textContent = (currentRaid.myDamage || 0).toLocaleString();
-        document.getElementById('raidMyAttacks').textContent = currentRaid.myAttacks || 0;
-        document.getElementById('raidMyPetName').textContent = currentRaid.myPetId || '?';
+        const petName = getPetDisplayName(currentRaid.myPetId);
+        document.getElementById('raidMyPetName').textContent = petName;
+        // Показываем кнопку "Открыть бой" только во время боя
+        const openBtn = document.getElementById('raidOpenBattleBtn');
+        if (openBtn) {
+            openBtn.style.display = currentRaid.phase === 'fighting' ? 'flex' : 'none';
+        }
     } else {
-        document.getElementById('raidNotJoined').style.display = 'block';
-        document.getElementById('raidJoined').style.display = 'none';
-        document.getElementById('raidMyStats').style.display = 'none';
         renderPetSelector();
     }
-    
-    // Обновляем таймер
+
     updateRaidTimer();
-    
-    // Обновляем кнопку атаки
-    updateAttackButton();
-    
+
     // Топ участников
     const topList = document.getElementById('raidTopList');
-    if (currentRaid.topParticipants?.length) {
-        topList.innerHTML = currentRaid.topParticipants.map((p, i) => `
-            <div class="raid-top-item">
-                <div class="raid-top-rank">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</div>
-                <div class="raid-top-name">${escapeHtml(p.username)}</div>
-                <div class="raid-top-damage">${p.damage.toLocaleString()}</div>
-            </div>
-        `).join('');
-    } else {
-        topList.innerHTML = '<div class="empty-listings">Нет участников</div>';
+    if (topList) {
+        if (currentRaid.topParticipants?.length) {
+            topList.innerHTML = currentRaid.topParticipants.map((p, i) => `
+                <div class="raid-top-item">
+                    <div class="raid-top-rank">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</div>
+                    <div class="raid-top-name">${escapeHtml(p.username)}</div>
+                    <div class="raid-top-damage">${p.damage.toLocaleString()}</div>
+                </div>
+            `).join('');
+        } else {
+            topList.innerHTML = '<div class="empty-listings">Нет участников</div>';
+        }
     }
-    
-    // История рейдов
+
     loadRaidHistory();
+}
+
+function getPetDisplayName(petId) {
+    if (!petId) return '?';
+    const c = getCreature(petId);
+    return c ? c.name : petId;
 }
 
 function updateRaidTimer() {
     const timerLabel = document.getElementById('raidTimerLabel');
     const timerValue = document.getElementById('raidTimerValue');
-    
     if (!timerValue || !currentRaid) return;
-    
+
     const now = new Date();
     let targetTime = null;
     let label = '';
-    
-    // Определяем фазу рейда
+
     if (currentRaid.phase === 'registration') {
         targetTime = new Date(currentRaid.raidStartTime);
         label = '⏳ До начала рейда';
@@ -4184,104 +4188,51 @@ function updateRaidTimer() {
         if (timerLabel) timerLabel.textContent = 'Следующий рейд';
         return;
     }
-    
-    if (timerLabel) timerLabel.textContent = label;
-    
-    const diff = targetTime.getTime() - now.getTime();
-    
-    if (diff <= 0) {
-        if (currentRaid.phase === 'registration') {
-            timerValue.textContent = '🔥 НАЧИНАЕТСЯ!';
-        } else {
-            timerValue.textContent = '⚔️ БОЙ ИДЁТ!';
-        }
-        return;
-    }
-    
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-    
-    if (hours > 0) {
-        timerValue.textContent = `${hours}ч ${minutes}м ${seconds}с`;
-    } else if (minutes > 0) {
-        timerValue.textContent = `${minutes}м ${seconds}с`;
-    } else {
-        timerValue.textContent = `${seconds}с`;
-    }
-}
 
-function updateAttackButton() {
-    const attackBtn = document.getElementById('raidAttackBtn');
-    const turnTimer = document.getElementById('raidTurnTimer');
-    const turnSeconds = document.getElementById('raidTurnSeconds');
-    
-    if (!attackBtn) return;
-    
-    if (currentRaid.phase !== 'fighting') {
-        attackBtn.disabled = true;
-        attackBtn.innerHTML = '<i class="fa-solid fa-hourglass-half"></i> Рейд не активен';
-        if (turnTimer) turnTimer.style.display = 'none';
+    if (timerLabel) timerLabel.textContent = label;
+    const diff = targetTime.getTime() - now.getTime();
+
+    if (diff <= 0) {
+        timerValue.textContent = currentRaid.phase === 'registration' ? '🔥 НАЧИНАЕТСЯ!' : '⚔️ БОЙ ИДЁТ!';
         return;
     }
-    
-    // Проверяем, не закончился ли ход
-    if (currentRaid.turnEndsAt) {
-        const now = Date.now();
-        const timeLeft = Math.max(0, Math.floor((currentRaid.turnEndsAt - now) / 1000));
-        
-        if (turnTimer) turnTimer.style.display = 'block';
-        if (turnSeconds) turnSeconds.textContent = timeLeft;
-        
-        if (timeLeft <= 0) {
-            attackBtn.disabled = true;
-            attackBtn.innerHTML = '<i class="fa-solid fa-hourglass-end"></i> Ход закончился';
-            return;
-        }
-    }
-    
-    attackBtn.disabled = false;
-    attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> Атаковать!';
+
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    timerValue.textContent = h > 0 ? `${h}ч ${m}м ${s}с` : m > 0 ? `${m}м ${s}с` : `${s}с`;
 }
 
 function renderPetSelector() {
     const container = document.getElementById('raidPetSelector');
     if (!container) return;
-    
-    // Фильтруем только тех питомцев, которые есть в инвентаре (count >= 1)
+
     const availablePets = state.inventory.filter(item => {
         const c = getCreature(item.creatureId);
         return c && item.count >= 1;
     });
-    
+
     if (availablePets.length === 0) {
         container.innerHTML = `
-            <div style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 12px; padding: 16px; text-align: center;">
-                <i class="fa-solid fa-circle-exclamation" style="font-size: 24px; color: #ef4444; margin-bottom: 8px; display: block;"></i>
-                <div style="font-size: 13px; color: #ef4444; margin-bottom: 4px;">Нет существ для участия!</div>
-                <div style="font-size: 11px; color: #94a3b8;">Откройте капсулу, чтобы получить питомца</div>
-            </div>
-        `;
+            <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:12px;padding:16px;text-align:center;">
+                <i class="fa-solid fa-circle-exclamation" style="font-size:24px;color:#ef4444;margin-bottom:8px;display:block;"></i>
+                <div style="font-size:13px;color:#ef4444;margin-bottom:4px;">Нет существ для участия!</div>
+                <div style="font-size:11px;color:#94a3b8;">Откройте капсулу, чтобы получить питомца</div>
+            </div>`;
         return;
     }
-    
+
     const selectedPetId = localStorage.getItem('raid_selected_pet');
-    
-    // Если выбранный питомец больше не в инвентаре — очищаем выбор
     if (selectedPetId && !availablePets.some(p => p.creatureId === selectedPetId)) {
         localStorage.removeItem('raid_selected_pet');
     }
-    
     const currentSelected = localStorage.getItem('raid_selected_pet');
-    
+
     container.innerHTML = availablePets.map(item => {
         const c = getCreature(item.creatureId);
         const isSelected = currentSelected === c.id;
         const skill = window.ARENA_SKILLS_MAP?.[c.id];
-        
-        // Базовый урон для рейда = incomeBase * 2
         const raidAttack = (c.incomeBase * 2) || 20;
-        
         return `
             <div class="pet-option-card ${isSelected ? 'selected' : ''}" onclick="selectRaidPet('${c.id}')">
                 <div class="pet-option-icon">${getIconHtml(c)}</div>
@@ -4294,8 +4245,7 @@ function renderPetSelector() {
                     ${skill ? `<div class="pet-option-skill">✨ ${skill.name} (${Math.round(skill.chance * 100)}%)</div>` : ''}
                 </div>
                 ${isSelected ? '<div class="pet-option-check"><i class="fa-solid fa-circle-check"></i></div>' : ''}
-            </div>
-        `;
+            </div>`;
     }).join('');
 }
 
@@ -4313,16 +4263,15 @@ async function joinRaid() {
         showToast('Сначала выберите питомца для рейда!', '⚠️');
         return;
     }
-    
     try {
         const res = await apiRequest('POST', '/api/raid/join', { petId: selectedPetId });
         if (!res) { showToast('Нет ответа от сервера', 'error'); return; }
         if (res.success) {
-    showToast(res.message, 'success');
-    loadRaidData();
-    updateHeader();  // ← было updateUserBalance()
-} else {
-            showToast(res.message || JSON.stringify(res), 'error');
+            showToast(res.message, 'success');
+            loadRaidData();
+            updateHeader();
+        } else {
+            showToast(res.message || 'Ошибка', 'error');
         }
     } catch (e) {
         showToast('catch: ' + e.message, 'error');
@@ -4331,42 +4280,172 @@ async function joinRaid() {
     }
 }
 
+// ============================================
+// RAID BATTLE SCREEN
+// ============================================
+
+function openRaidBattle() {
+    if (!currentRaid || currentRaid.phase !== 'fighting') {
+        showToast('Рейд ещё не начался', '⚠️');
+        return;
+    }
+    raidBattleOpen = true;
+    document.getElementById('raidBattleScreen').style.display = 'flex';
+    document.getElementById('raidBattleScreen').style.flexDirection = 'column';
+    updateRaidBattleScreen();
+    addRaidLogEntry('⚔️ Вы вошли в бой!', 'system');
+}
+
+function closeRaidBattle() {
+    raidBattleOpen = false;
+    document.getElementById('raidBattleScreen').style.display = 'none';
+}
+
+function updateRaidBattleScreen() {
+    if (!currentRaid || !raidBattleOpen) return;
+
+    // Turn info
+    const rbsTurn = document.getElementById('rbsTurn');
+    if (rbsTurn) rbsTurn.textContent = currentRaid.currentTurn || 1;
+
+    // Participants & prize
+    const rbsP = document.getElementById('rbsParticipants');
+    const rbsPP = document.getElementById('rbsPrizePool');
+    if (rbsP) rbsP.textContent = currentRaid.participantsCount || 0;
+    if (rbsPP) rbsPP.textContent = (currentRaid.totalPrizePool || 0).toLocaleString();
+
+    // Pet card
+    const petId = currentRaid.myPetId;
+    const creature = petId ? getCreature(petId) : null;
+    const rbsPetIcon = document.getElementById('rbsPetIcon');
+    const rbsPetName = document.getElementById('rbsPetName');
+    if (rbsPetIcon && creature) rbsPetIcon.innerHTML = getIconHtml(creature);
+    if (rbsPetName && creature) rbsPetName.textContent = creature.name;
+
+    // My stats
+    const rbsMyDamage = document.getElementById('rbsMyDamage');
+    const rbsMyAttacks = document.getElementById('rbsMyAttacks');
+    if (rbsMyDamage) rbsMyDamage.textContent = (currentRaid.myDamage || 0).toLocaleString();
+    if (rbsMyAttacks) rbsMyAttacks.textContent = currentRaid.myAttacks || 0;
+
+    // Attack button
+    updateRaidAttackBtn();
+
+    // Turn timer bar
+    updateRaidTurnBar();
+}
+
+function updateRaidAttackBtn() {
+    const btn = document.getElementById('raidAttackBtn');
+    if (!btn) return;
+
+    if (currentRaid.phase !== 'fighting') {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-hourglass-half"></i> Рейд не активен';
+        return;
+    }
+
+    if (currentRaid.turnEndsAt) {
+        const timeLeft = Math.max(0, Math.floor((currentRaid.turnEndsAt - Date.now()) / 1000));
+        if (timeLeft <= 0) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-hourglass-end"></i> Ход закончился';
+            return;
+        }
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-sword"></i> Атаковать!';
+}
+
+function updateRaidTurnBar() {
+    const wrap = document.getElementById('rbsTurnBarWrap');
+    const bar = document.getElementById('rbsTurnBar');
+    const sec = document.getElementById('raidTurnSeconds');
+    const timerEl = document.getElementById('rbsTurnTimer');
+
+    if (!currentRaid?.turnEndsAt) {
+        if (wrap) wrap.style.display = 'none';
+        if (timerEl) timerEl.textContent = '';
+        return;
+    }
+
+    const timeLeft = Math.max(0, Math.floor((currentRaid.turnEndsAt - Date.now()) / 1000));
+    const pct = Math.min(100, (timeLeft / 20) * 100);
+
+    if (wrap) wrap.style.display = 'block';
+    if (bar) {
+        bar.style.width = pct + '%';
+        bar.style.background = timeLeft <= 5 ? '#ef4444' : '#f59e0b';
+    }
+    if (sec) sec.textContent = timeLeft;
+    if (timerEl) timerEl.textContent = `${timeLeft}с`;
+}
+
+function startRaidTurnTimer() {
+    if (raidTurnTimerInterval) clearInterval(raidTurnTimerInterval);
+    raidTurnTimerInterval = setInterval(() => {
+        if (!currentRaid?.turnEndsAt) return;
+        const timeLeft = Math.max(0, Math.floor((currentRaid.turnEndsAt - Date.now()) / 1000));
+        updateRaidTurnBar();
+        updateRaidAttackBtn();
+        if (timeLeft <= 0) {
+            clearInterval(raidTurnTimerInterval);
+            raidTurnTimerInterval = null;
+        }
+    }, 1000);
+}
+
+function addRaidLogEntry(text, type = '') {
+    const log = document.getElementById('rbsLog');
+    if (!log) return;
+    const entry = document.createElement('div');
+    entry.className = `rbs-log-entry${type ? ' is-' + type : ''}`;
+    entry.textContent = text;
+    log.prepend(entry);
+    // Limit log to 50 entries
+    while (log.children.length > 50) log.removeChild(log.lastChild);
+}
+
 async function attackRaidBoss() {
     if (!currentRaid || currentRaid.phase !== 'fighting') {
         showToast('Рейд не активен', '⚠️');
         return;
     }
-    
-    const attackBtn = document.getElementById('raidAttackBtn');
-    if (attackBtn) {
-        attackBtn.disabled = true;
-        attackBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Атака...';
+    const btn = document.getElementById('raidAttackBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Атака...';
     }
-    
     try {
         const res = await apiRequest('POST', '/api/raid/attack', {});
-        
         if (res.success) {
-            showToast(res.message, 'success');
-            
-            // Анимация урона
-            const bossCard = document.getElementById('raidBossCard');
-            bossCard.classList.add('raid-taking-damage');
-            setTimeout(() => bossCard.classList.remove('raid-taking-damage'), 300);
-            
+            // Shake boss card
+            const bossCard = document.getElementById('rbsBossCard');
+            if (bossCard) {
+                bossCard.classList.add('rbs-boss-shake');
+                setTimeout(() => bossCard.classList.remove('rbs-boss-shake'), 300);
+            }
+            // Log entry
+            const isCrit = res.isCrit;
+            const skillTriggered = res.skillTriggered;
+            let logText = `⚔️ Вы нанесли ${res.damage} урона!`;
+            if (isCrit) logText += ' 💥 КРИТ!';
+            if (skillTriggered) logText += ` ✨ ${res.skillName}!`;
+            addRaidLogEntry(logText, isCrit ? 'crit' : skillTriggered ? 'skill' : 'mine');
             loadRaidData();
         } else {
             showToast(res.message, 'error');
-            if (attackBtn) {
-                attackBtn.disabled = false;
-                attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> Атаковать!';
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-sword"></i> Атаковать!';
             }
         }
     } catch (e) {
         showToast('Ошибка при атаке', 'error');
-        if (attackBtn) {
-            attackBtn.disabled = false;
-            attackBtn.innerHTML = '<i class="fa-solid fa-sword"></i> Атаковать!';
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-sword"></i> Атаковать!';
         }
     }
 }
@@ -4374,7 +4453,6 @@ async function attackRaidBoss() {
 async function loadRaidHistory() {
     const container = document.getElementById('raidHistoryList');
     if (!container) return;
-    
     try {
         const res = await apiRequest('GET', '/api/raid/history');
         if (res?.success && res.history?.length) {
@@ -4397,74 +4475,94 @@ async function loadRaidHistory() {
     }
 }
 
+function showRaidResults(data) {
+    const modal = document.getElementById('raidResultsModal');
+    const list = document.getElementById('raidResultsList');
+    const subtitle = document.getElementById('raidResultsSubtitle');
+    const myReward = document.getElementById('raidResultsMyReward');
+    if (!modal) return;
+
+    subtitle.textContent = `Участников: ${data.totalParticipants || 0} | Пул: ${(data.totalPrizePool || 0).toLocaleString()} MMO`;
+
+    const ranks = data.topDamage || [];
+    list.innerHTML = ranks.map((p, i) => `
+        <div class="raid-result-item">
+            <div class="raid-result-rank">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</div>
+            <div class="raid-result-name">${escapeHtml(p.username)}</div>
+            <div class="raid-result-damage">${p.damage} урон</div>
+            <div class="raid-result-reward">+${p.reward} MMO</div>
+        </div>
+    `).join('');
+
+    const myEntry = ranks.find(p => p.telegramId === String(state.user?.telegramId));
+    if (myEntry) {
+        myReward.style.display = 'block';
+        myReward.innerHTML = `🏆 Ваша награда: <span style="color:#22c55e">+${myEntry.reward} MMO</span>`;
+    } else {
+        myReward.style.display = 'none';
+    }
+
+    modal.style.display = 'flex';
+    closeRaidBattle();
+}
+
+function closeRaidResults() {
+    document.getElementById('raidResultsModal').style.display = 'none';
+    loadRaidData();
+    updateHeader();
+}
+
 function initRaidWebSocket() {
     if (window.io && window.socket) {
         window.socket.on('raid_phase_update', (data) => {
             if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
                 loadRaidData();
                 if (data.message) showToast(data.message, '⚔️');
+                if (data.phase === 'fighting' && currentRaid?.isRegistered) {
+                    addRaidLogEntry('⚔️ БОЙ НАЧАЛСЯ! Атакуйте босса!', 'system');
+                }
             }
         });
-        
+
         window.socket.on('raid_turn_start', (data) => {
             if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
                 currentRaid.currentTurn = data.turn;
                 currentRaid.turnEndsAt = Number(data.turnEndsAt);
-                updateRaidUI();
-                showToast(`⚔️ Ход ${data.turn} начался! У вас есть 20 секунд чтобы атаковать!`, '⚔️');
+                addRaidLogEntry(`— Ход ${data.turn} начался —`, 'system');
+                if (raidBattleOpen) updateRaidBattleScreen();
+                showToast(`⚔️ Ход ${data.turn}/15! 20 секунд на атаку`, '⚔️');
                 startRaidTurnTimer();
             }
         });
-        
+
         window.socket.on('raid_attack', (data) => {
             if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
-                const toastMsg = `⚔️ ${data.attackerName} нанёс ${data.damage} урона!${data.skillTriggered ? ` ✨ ${data.skillName}!` : ''}`;
-                showToast(toastMsg, data.isCrit ? '💥' : '⚔️');
-                if (data.attackerName !== (state.user?.username || state.user?.firstName)) {
+                const isMe = data.attackerName === (state.user?.username || state.user?.firstName);
+                if (!isMe) {
+                    let logText = `${data.attackerName}: ${data.damage} урона`;
+                    if (data.isCrit) logText += ' 💥';
+                    if (data.skillTriggered) logText += ` ✨ ${data.skillName}`;
+                    addRaidLogEntry(logText, data.isCrit ? 'crit' : '');
                     loadRaidData();
                 }
             }
         });
-        
+
         window.socket.on('raid_end', (data) => {
-            if (currentRaid && data.raidId === currentRaid._id) {
-                showToast('🏆 Рейд завершён! Награды распределены!', '🏆');
+            showToast('🏆 Рейд завершён! Награды распределены!', '🏆');
+            if (data.results) {
+                showRaidResults(data.results);
+            } else {
                 loadRaidData();
             }
         });
     }
 }
 
-function startRaidTurnTimer() {
-    if (raidTurnTimerInterval) clearInterval(raidTurnTimerInterval);
-    
-    raidTurnTimerInterval = setInterval(() => {
-        if (currentRaid?.turnEndsAt) {
-            const timeLeft = Math.max(0, Math.floor((currentRaid.turnEndsAt - Date.now()) / 1000));
-            const turnSeconds = document.getElementById('raidTurnSeconds');
-            if (turnSeconds) turnSeconds.textContent = timeLeft;
-            
-            if (timeLeft <= 0) {
-                clearInterval(raidTurnTimerInterval);
-                raidTurnTimerInterval = null;
-                const attackBtn = document.getElementById('raidAttackBtn');
-                if (attackBtn) {
-                    attackBtn.disabled = true;
-                    attackBtn.innerHTML = '<i class="fa-solid fa-hourglass-end"></i> Ход закончился';
-                }
-            } else if (timeLeft <= 5) {
-                const turnTimer = document.getElementById('raidTurnTimer');
-                if (turnTimer) turnTimer.style.color = '#ef4444';
-            }
-        }
-    }, 1000);
-}
-
 // Переключатель вкладок с поддержкой рейда
 const originalSwitchTab = window.switchTab;
 window.switchTab = function(tab) {
     originalSwitchTab(tab);
-    
     if (tab === 'raid') {
         loadRaidData();
         if (raidUpdateInterval) clearInterval(raidUpdateInterval);
@@ -4475,19 +4573,13 @@ window.switchTab = function(tab) {
     }
 };
 
-// Инициализация рейда
 function initRaid() {
     loadRaidData();
     initRaidWebSocket();
-    setInterval(updateRaidTimer, 1000); // ← добавить
-    
-    
-    const attackPowerSlider = document.getElementById('attackPower');
-    if (attackPowerSlider) {
-        attackPowerSlider.addEventListener('input', (e) => {
-            document.getElementById('attackPowerValue').textContent = `${e.target.value}x`;
-        });
-    }
+    setInterval(updateRaidTimer, 1000);
+    setInterval(() => {
+        if (raidBattleOpen) updateRaidTurnBar();
+    }, 500);
 }
 
 // Вызываем после загрузки пользователя

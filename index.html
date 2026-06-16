@@ -486,13 +486,13 @@
 <!-- Вкладка Рейд -->
 <div class="tab-content" id="tab-raid">
     <div class="section-title"><i class="fa-solid fa-dragon"></i> Ежедневный Рейд</div>
-    
+
+    <!-- КАРТОЧКА РЕЙДА (лобби) -->
     <div id="raidBossCard" class="raid-boss-card">
         <div class="raid-boss-header">
-<div class="raid-boss-icon" id="raidBossIcon">🐉</div>
-<div class="raid-boss-name" id="raidBossName">Ежедневный Рейд</div>
+            <div class="raid-boss-icon" id="raidBossIcon">🐉</div>
+            <div class="raid-boss-name" id="raidBossName">Ежедневный Рейд</div>
         </div>
-        
         <div class="raid-boss-stats">
             <div class="raid-stat">
                 <span class="stat-icon">👥</span>
@@ -510,62 +510,113 @@
                 <span class="stat-label">ход</span>
             </div>
         </div>
-        
         <div class="raid-timer" id="raidTimerBlock">
             <div class="raid-timer-label" id="raidTimerLabel">До начала рейда</div>
             <div class="raid-timer-value" id="raidTimerValue">--:--:--</div>
         </div>
-        
-        <div class="raid-my-stats" id="raidMyStats" style="display: none;">
-            <div class="my-damage">
-                <i class="fa-solid fa-bolt"></i>
-                <span id="raidMyDamage">0</span> урона
-            </div>
-            <div class="my-attacks">
-                <i class="fa-solid fa-fist-raised"></i>
-                <span id="raidMyAttacks">0</span> атак
-            </div>
-        </div>
-        
-        <!-- БЛОК ВЫБОРА ПИТОМЦА - ВИДИМ, КОГДА ИГРОК НЕ ЗАПИСАН -->
+
+        <!-- НЕ ЗАПИСАН -->
         <div id="raidNotJoined">
             <div style="font-size: 12px; color: var(--text2); margin-bottom: 8px;">
                 <i class="fa-solid fa-paw"></i> Выберите питомца для участия:
             </div>
-            <div id="raidPetSelector" class="pet-selector-grid">
-                <!-- Сюда динамически подгрузятся питомцы из инвентаря -->
-            </div>
+            <div id="raidPetSelector" class="pet-selector-grid"></div>
             <button class="raid-join-btn" onclick="joinRaid()">
                 <i class="fa-solid fa-ticket"></i> Записаться (100 MMO)
             </button>
         </div>
-        
-        <!-- БЛОК ДЛЯ ЗАПИСАВШИХСЯ -->
-        <div id="raidJoined" style="display: none;">
-            <div class="raid-attack-controls">
-                <div class="attack-power-label">
-                    <i class="fa-solid fa-paw"></i> Ваш питомец: 
-                    <span id="raidMyPetName"></span>
-                </div>
-                <button class="raid-attack-btn" onclick="attackRaidBoss()" id="raidAttackBtn">
-                    <i class="fa-solid fa-sword"></i> Атаковать!
-                </button>
-                <div class="attack-info" id="raidAttackInfo">
-                    💡 Урон зависит от силы питомца, критического удара и навыка
-                </div>
-                <div id="raidTurnTimer" class="raid-turn-timer" style="display: none;">
-                    <span>⏱ Ход закончится через: </span>
-                    <span id="raidTurnSeconds">20</span>
-                </div>
+
+        <!-- ЗАПИСАН (ожидание) -->
+        <div id="raidJoined" style="display:none;">
+            <div class="raid-waiting-info">
+                <i class="fa-solid fa-paw"></i> Ваш питомец: <span id="raidMyPetName"></span>
+            </div>
+            <button class="raid-attack-btn" id="raidOpenBattleBtn" onclick="openRaidBattle()" style="margin-top:12px;">
+                <i class="fa-solid fa-swords"></i> Открыть бой
+            </button>
+        </div>
+    </div>
+
+    <div class="section-title"><i class="fa-solid fa-trophy"></i> Топ уронщики</div>
+    <div id="raidTopList" class="raid-top-list"></div>
+
+    <div class="section-title"><i class="fa-solid fa-history"></i> История рейдов</div>
+    <div id="raidHistoryList" class="raid-history-list"></div>
+</div>
+
+<!-- ===== RAID BATTLE SCREEN (fullscreen overlay) ===== -->
+<div id="raidBattleScreen" class="raid-battle-screen" style="display:none;">
+
+    <!-- Шапка -->
+    <div class="rbs-header">
+        <button class="rbs-close-btn" onclick="closeRaidBattle()">
+            <i class="fa-solid fa-arrow-left"></i>
+        </button>
+        <div class="rbs-title">⚔️ Ежедневный Рейд</div>
+        <div class="rbs-turn-info">
+            Ход <span id="rbsTurn">1</span>/15
+            <span id="rbsTurnTimer" class="rbs-turn-timer"></span>
+        </div>
+    </div>
+
+    <!-- Карточки: Босс vs Питомец -->
+    <div class="rbs-battle-area">
+
+        <!-- Карточка босса -->
+        <div class="rbs-card rbs-boss-card" id="rbsBossCard">
+            <div class="rbs-card-label">БОСС</div>
+            <div class="rbs-card-icon" id="rbsBossIcon">🐉</div>
+            <div class="rbs-card-name">Дракон Апокалипсиса</div>
+            <div class="rbs-hp-bar-wrap">
+                <div class="rbs-hp-bar" id="rbsBossHp" style="width:100%"></div>
+            </div>
+            <div class="rbs-hp-label"><span id="rbsBossHpVal">∞</span> HP</div>
+            <div class="rbs-card-stats">
+                <span>👥 <span id="rbsParticipants">0</span></span>
+                <span>💰 <span id="rbsPrizePool">0</span></span>
+            </div>
+        </div>
+
+        <div class="rbs-vs">VS</div>
+
+        <!-- Карточка питомца -->
+        <div class="rbs-card rbs-pet-card" id="rbsPetCard">
+            <div class="rbs-card-label">ВАШ</div>
+            <div class="rbs-card-icon" id="rbsPetIcon">🧬</div>
+            <div class="rbs-card-name" id="rbsPetName">—</div>
+            <div class="rbs-card-stats">
+                <span>⚡ <span id="rbsMyDamage">0</span> урон</span>
+                <span>👊 <span id="rbsMyAttacks">0</span> атак</span>
+            </div>
+            <!-- КНОПКА АТАКИ в карточке -->
+            <button class="rbs-attack-btn" id="raidAttackBtn" onclick="attackRaidBoss()">
+                <i class="fa-solid fa-sword"></i> Атаковать!
+            </button>
+            <div class="rbs-turn-bar-wrap" id="rbsTurnBarWrap" style="display:none;">
+                <div class="rbs-turn-bar" id="rbsTurnBar" style="width:100%"></div>
+                <div class="rbs-turn-seconds"><span id="raidTurnSeconds">20</span>с</div>
             </div>
         </div>
     </div>
-    
-    <div class="section-title"><i class="fa-solid fa-trophy"></i> Топ уронщики</div>
-    <div id="raidTopList" class="raid-top-list"></div>
-    
-    <div class="section-title"><i class="fa-solid fa-history"></i> История рейдов</div>
-    <div id="raidHistoryList" class="raid-history-list"></div>
+
+    <!-- Лог урона -->
+    <div class="rbs-log-wrap">
+        <div class="rbs-log-title">📜 Лог боя</div>
+        <div class="rbs-log" id="rbsLog"></div>
+    </div>
+</div>
+
+<!-- ===== RAID RESULTS MODAL ===== -->
+<div id="raidResultsModal" class="raid-results-modal" style="display:none;">
+    <div class="raid-results-box">
+        <div class="raid-results-title">🏆 Рейд завершён!</div>
+        <div class="raid-results-subtitle" id="raidResultsSubtitle"></div>
+        <div class="raid-results-list" id="raidResultsList"></div>
+        <div class="raid-results-my-reward" id="raidResultsMyReward"></div>
+        <button class="raid-results-close" onclick="closeRaidResults()">
+            <i class="fa-solid fa-check"></i> Забрать награды
+        </button>
+    </div>
 </div>
     
 <!-- Вкладка Wallet -->
