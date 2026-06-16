@@ -4015,31 +4015,36 @@ async function finishRaid(raidId) {
 
 async function processRaidScheduler() {
     const now = new Date();
-    const raid = await Raid.findOne({ raidId: getTodayRaidId() });
+    const raidId = getTodayRaidId();
+    const raid = await Raid.findOne({ raidId });
     if (!raid) return;
 
-    const raidTime = raid.scheduledAt || getRaidTime();
-    const timeUntilFight = raidTime.getTime() - now.getTime();
+    // Если scheduledAt не задан — берём из raidId (формат raid_YYYY-MM-DD_HH-MM)
+    let raidTime = raid.scheduledAt;
+    if (!raidTime) {
+        const parts = raidId.replace('raid_', '').split('_');
+        const dateStr = parts[0];
+        const timeParts = parts[1].split('-');
+        raidTime = new Date(`${dateStr}T${timeParts[0]}:${timeParts[1]}:00Z`);
+        // Сохраняем чтобы не парсить каждый раз
+        await Raid.findByIdAndUpdate(raid._id, { $set: { scheduledAt: raidTime } });
+    }
+
     const fightEndTime = new Date(raidTime.getTime() + 5 * 60 * 1000);
 
-    // Регистрация всегда открыта
+    console.log(`🕐 Рейд: ${raidId} | phase: ${raid.phase} | now: ${now.toISOString()} | raidTime: ${raidTime.toISOString()} | diff: ${Math.round((raidTime-now)/1000)}с`);
+
     if (raid.phase === 'registration' && now >= raidTime && now < fightEndTime) {
         await startRaidFight(raid._id);
     }
-    
-    // Бой идёт
+
     if (raid.phase === 'fighting') {
-        // Проверяем окончание боя
         if (now >= fightEndTime) {
             await finishRaid(raid._id);
         }
-        
-        // Проверяем окончание текущего хода
         if (raid.turnEndsAt && now >= raid.turnEndsAt && raid.currentTurn < 15) {
             await nextRaidTurn(raid._id);
         }
-        
-        // Если ещё не начали ходы — запускаем первый ход
         if (!raid.turnEndsAt && now >= raidTime) {
             await startRaidTurns(raid._id);
         }
