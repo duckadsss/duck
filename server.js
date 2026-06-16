@@ -3824,7 +3824,7 @@ app.get('/api/wallet/history', authMiddleware, async (req, res) => {
 // RAID BOSS ФУНКЦИИ И ПЛАНИРОВЩИК
 // ============================================
 
-function getNextRaidTime() {
+function getRaidTime() {
     const now = new Date();
     const next = new Date(now);
     next.setSeconds(0, 0);
@@ -3839,24 +3839,18 @@ function getNextRaidTime() {
     return next;
 }
 
-function getRaidTime() {
-    return getNextRaidTime();
-}
-
 function getTodayRaidId() {
-    const raidTime = getNextRaidTime();
+    const raidTime = getRaidTime();
     return `raid_${raidTime.toISOString().slice(0, 16).replace('T', '_').replace(/:/g, '-')}`;
 }
-
 async function ensureRaidForToday() {
     // Сначала ищем активный рейд
     let raid = await Raid.findOne({ phase: { $in: ['registration', 'fighting'] } }).sort({ scheduledAt: 1 });
     if (raid) return raid;
 
-    // Активного нет — создаём новый
-    const raidTime = getNextRaidTime();
+    // Нет активного — создаём новый
+    const raidTime = getRaidTime();
     const raidId = `raid_${raidTime.toISOString().slice(0, 16).replace('T', '_').replace(/:/g, '-')}`;
-
     raid = await Raid.findOne({ raidId });
     if (!raid) {
         raid = await Raid.create({
@@ -3872,8 +3866,6 @@ async function ensureRaidForToday() {
     }
     return raid;
 }
-
-
 
 async function startRaidFight(raidId) {
     const raid = await Raid.findByIdAndUpdate(raidId, {
@@ -4030,34 +4022,36 @@ async function finishRaid(raidId) {
 async function processRaidScheduler() {
     const now = new Date();
 
-    // Ищем активный рейд (registration или fighting)
+    // Ищем любой активный рейд
     const raid = await Raid.findOne({ phase: { $in: ['registration', 'fighting'] } }).sort({ scheduledAt: 1 });
     if (!raid) return;
 
-    const raidTime = raid.scheduledAt;
-    if (!raidTime) return;
+    // Парсим время из raidId если scheduledAt не задан
+    let raidTime = raid.scheduledAt;
+    if (!raidTime) {
+        const parts = raid.raidId.replace('raid_', '').split('_');
+        const dateStr = parts[0];
+        const timeParts = parts[1].split('-');
+        raidTime = new Date(`${dateStr}T${timeParts[0]}:${timeParts[1]}:00Z`);
+        await Raid.findByIdAndUpdate(raid._id, { $set: { scheduledAt: raidTime } });
+    }
 
     const fightEndTime = new Date(raidTime.getTime() + 5 * 60 * 1000);
 
-    console.log(`🕐 Рейд: ${raid.raidId} | phase: ${raid.phase} | diff: ${Math.round((raidTime-now)/1000)}с`);
+    console.log(`🕐 ${raid.raidId} | ${raid.phase} | diff: ${Math.round((raidTime-now)/1000)}с`);
 
-    // Пора начинать бой
     if (raid.phase === 'registration' && now >= raidTime && now < fightEndTime) {
+        console.log(`⚔️ Стартуем бой для ${raid.raidId}`);
         await startRaidFight(raid._id);
     }
 
     if (raid.phase === 'fighting') {
-        // Бой закончился по времени
         if (now >= fightEndTime) {
             await finishRaid(raid._id);
-            // Сразу создаём следующий рейд
-            await ensureRaidForToday();
         }
-        // Следующий ход
         if (raid.turnEndsAt && now >= raid.turnEndsAt && raid.currentTurn < 15) {
             await nextRaidTurn(raid._id);
         }
-        // Запускаем первый ход
         if (!raid.turnEndsAt && now >= raidTime) {
             await startRaidTurns(raid._id);
         }
