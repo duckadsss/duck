@@ -4139,7 +4139,7 @@ function updateRaidUI() {
 
     updateRaidTimer();
 
-    // Топ участников
+    // Топ участников в лобби
     const topList = document.getElementById('raidTopList');
     if (topList) {
         if (currentRaid.topParticipants?.length) {
@@ -4153,6 +4153,14 @@ function updateRaidUI() {
         } else {
             topList.innerHTML = '<div class="empty-listings">Нет участников</div>';
         }
+    }
+    // Обновляем лидерборд в экране боя
+    if (raidBattleOpen && currentRaid.topParticipants?.length) {
+        renderRaidLeaderboard(currentRaid.topParticipants.map(p => ({
+            username: p.username,
+            damage: p.damage,
+            telegramId: p.telegramId || ''
+        })));
     }
 
     loadRaidHistory();
@@ -4412,15 +4420,29 @@ function startRaidTurnTimer() {
     }, 1000);
 }
 
+function renderRaidLeaderboard(leaderboard) {
+    const lb = document.getElementById('rbsLeaderboard');
+    if (!lb || !leaderboard?.length) return;
+
+    const myId = String(state.user?.telegramId || state.user?.id || '');
+    const maxDmg = leaderboard[0]?.damage || 1;
+
+    lb.innerHTML = leaderboard.map((p, i) => {
+        const isMe = String(p.telegramId) === myId;
+        const rankIcon = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`;
+        const pct = Math.round((p.damage / maxDmg) * 100);
+        return `<div class="rbs-lb-item rank-${i+1}${isMe ? ' is-me' : ''}" style="position:relative;overflow:hidden;">
+            <div class="rbs-lb-damage-bar" style="width:${pct}%"></div>
+            <div class="rbs-lb-rank">${rankIcon}</div>
+            <div class="rbs-lb-name">${escapeHtml(p.username)}${isMe ? ' 👤' : ''}</div>
+            <div class="rbs-lb-damage">⚡ ${p.damage.toLocaleString()}</div>
+        </div>`;
+    }).join('');
+}
+
 function addRaidLogEntry(text, type = '') {
-    const log = document.getElementById('rbsLog');
-    if (!log) return;
-    const entry = document.createElement('div');
-    entry.className = `rbs-log-entry${type ? ' is-' + type : ''}`;
-    entry.textContent = text;
-    log.prepend(entry);
-    // Limit log to 50 entries
-    while (log.children.length > 50) log.removeChild(log.lastChild);
+    // оставляем для системных сообщений через toast
+    if (type === 'system') showToast(text, '⚔️');
 }
 
 async function attackRaidBoss() {
@@ -4544,23 +4566,18 @@ function initRaidWebSocket() {
             if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
                 currentRaid.currentTurn = data.turn;
                 currentRaid.turnEndsAt = Number(data.turnEndsAt);
-                addRaidLogEntry(`— Ход ${data.turn} начался —`, 'system');
+                if (data.leaderboard) renderRaidLeaderboard(data.leaderboard);
                 if (raidBattleOpen) updateRaidBattleScreen();
-                showToast(`⚔️ Ход ${data.turn}/15! 20 секунд на атаку`, '⚔️');
+                showToast(`⚔️ Ход ${data.turn}/15 начался!`, '⚔️');
                 startRaidTurnTimer();
             }
         });
 
         window.socket.on('raid_attack', (data) => {
             if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
-                const isMe = data.attackerName === (state.user?.username || state.user?.firstName);
-                if (!isMe) {
-                    let logText = `${data.attackerName}: ${data.damage} урона`;
-                    if (data.isCrit) logText += ' 💥';
-                    if (data.skillTriggered) logText += ` ✨ ${data.skillName}`;
-                    addRaidLogEntry(logText, data.isCrit ? 'crit' : '');
-                    loadRaidData();
-                }
+                if (data.leaderboard) renderRaidLeaderboard(data.leaderboard);
+                if (data.isCrit) showToast(`💥 ${data.attackerName}: ${data.damage} КРИТ!`, '💥');
+                loadRaidData();
             }
         });
 

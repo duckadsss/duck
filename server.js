@@ -3170,7 +3170,8 @@ app.get('/api/raid/current', authMiddleware, async (req, res) => {
                 raidEndTime: fightEndTime,
                 topParticipants: participants.map(p => ({
                     username: p.userId?.username || p.username || 'Anonymous',
-                    damage: p.totalDamage
+                    damage: p.totalDamage,
+                    telegramId: String(p.telegramId || '')
                 }))
             }
         });
@@ -3375,15 +3376,19 @@ const raid = await Raid.findOne({ phase: { $in: ['registration', 'fighting'] } }
         const updatedParticipant = await RaidParticipant.findById(participant._id);
         
         // Рассылаем обновление всем через WebSocket
+        const lbLive = await RaidParticipant.find({ raidId: raid._id })
+            .sort({ totalDamage: -1 }).select('username totalDamage telegramId');
         io.emit('raid_attack', {
-            raidId: raid._id,
+            raidId: String(raid._id),
+            telegramId: String(user.telegramId),
             attackerName: user.username || user.firstName || 'Игрок',
             damage: finalDamage,
             isCrit,
             skillTriggered,
             skillName,
             totalDamage: updatedParticipant.totalDamage,
-            currentTurn: raid.currentTurn
+            currentTurn: raid.currentTurn,
+            leaderboard: lbLive.map(p => ({ username: p.username, damage: p.totalDamage, telegramId: String(p.telegramId) }))
         });
         
         res.json({
@@ -3898,10 +3903,13 @@ async function startRaidTurns(raidId) {
         $set: { currentTurn: 1, turnEndsAt, endTime: null }
     });
     
+    const lb1 = await RaidParticipant.find({ raidId: raid._id })
+        .sort({ totalDamage: -1 }).select('username totalDamage telegramId');
     io.emit('raid_turn_start', {
         raidId: String(raid._id),
         turn: 1,
-        turnEndsAt: turnEndsAt.getTime()
+        turnEndsAt: turnEndsAt.getTime(),
+        leaderboard: lb1.map(p => ({ username: p.username, damage: p.totalDamage, telegramId: String(p.telegramId) }))
     });
 }
 
@@ -3927,10 +3935,13 @@ async function nextRaidTurn(raidId) {
         $set: { currentTurn: nextTurn, turnEndsAt }
     });
     
+    const lb2 = await RaidParticipant.find({ raidId: raid._id })
+        .sort({ totalDamage: -1 }).select('username totalDamage telegramId');
     io.emit('raid_turn_start', {
         raidId: String(raid._id),
         turn: nextTurn,
-        turnEndsAt: turnEndsAt.getTime()
+        turnEndsAt: turnEndsAt.getTime(),
+        leaderboard: lb2.map(p => ({ username: p.username, damage: p.totalDamage, telegramId: String(p.telegramId) }))
     });
 }
 
