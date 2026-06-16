@@ -2234,6 +2234,20 @@ async function createDepositRequestAfterPayment() {
     currentPaymentAmount = null;
 }
 
+function updateWithdrawSummary() {
+    const COMMISSION = 2000;
+    const input = document.getElementById('withdrawAmount');
+    const summary = document.getElementById('withdrawSummary');
+    const summaryAmount = document.getElementById('summaryAmount');
+    const summaryTotal = document.getElementById('summaryTotal');
+    if (!input || !summary) return;
+    const amount = parseInt(input.value);
+    if (!amount || amount < 1) { summary.style.display = 'none'; return; }
+    summary.style.display = 'block';
+    summaryAmount.textContent = amount.toLocaleString() + ' MMO';
+    summaryTotal.textContent = (amount + COMMISSION).toLocaleString() + ' MMO';
+}
+
 async function showWithdrawModal() {
     if (state.isLoading) return;
     
@@ -2243,18 +2257,33 @@ async function showWithdrawModal() {
         return;
     }
     
+    const COMMISSION = 2000;
     document.getElementById('popup').innerHTML = `
         <div class="popup-close" onclick="closeOverlay()"><i class="fa-solid fa-xmark"></i></div>
         <div class="popup-title">💸 Вывод средств</div>
-        <div class="popup-subtitle" style="margin-bottom:16px">Минимальная сумма: ${MIN_TRANSACTION_AMOUNT.toLocaleString()} MMO</div>
+        <div class="popup-subtitle" style="margin-bottom:16px">Минимальная сумма: ${MIN_TRANSACTION_AMOUNT.toLocaleString()} MMO · Комиссия: 2,000 MMO</div>
         <div class="price-input-modal">
             <div>
-                <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Сумма (MMO)</div>
-                <input type="number" class="price-input-field" id="withdrawAmount" placeholder="Введите сумму" min="${MIN_TRANSACTION_AMOUNT}">
+                <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Сумма вывода (MMO)</div>
+                <input type="number" class="price-input-field" id="withdrawAmount" placeholder="Введите сумму" min="${MIN_TRANSACTION_AMOUNT}" oninput="updateWithdrawSummary()">
             </div>
             <div>
                 <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">TON Кошелек</div>
                 <input type="text" class="price-input-field" id="withdrawWallet" placeholder="Введите TON адрес кошелька">
+            </div>
+        </div>
+        <div id="withdrawSummary" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px;margin-top:12px;font-size:13px;display:none;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                <span style="color:#94a3b8">Сумма вывода</span>
+                <span id="summaryAmount" style="color:#e2e8f0">—</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                <span style="color:#94a3b8">Комиссия</span>
+                <span style="color:#ef4444">-2,000 MMO</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;border-top:1px solid rgba(255,255,255,0.08);padding-top:6px;">
+                <span style="color:#94a3b8;font-weight:700">Спишется с баланса</span>
+                <span id="summaryTotal" style="color:#f87171;font-weight:700">—</span>
             </div>
         </div>
         <button class="popup-btn" style="background:linear-gradient(135deg,#16a34a,#22c55e);margin-top:16px" onclick="createWithdrawRequest()">
@@ -2272,9 +2301,11 @@ async function createWithdrawRequest() {
     const amount = parseInt(amountInput?.value);
     const wallet = walletInput?.value.trim();
     
+    const WITHDRAW_COMMISSION = 2000;
     if (!amount || amount < MIN_TRANSACTION_AMOUNT) { showToast(`Минимальная сумма ${MIN_TRANSACTION_AMOUNT.toLocaleString()} MMO`, '❌'); return; }
     if (!wallet || wallet.length < 20) { showToast('Введите корректный TON адрес кошелька (минимум 20 символов)', '❌'); return; }
-    if (state.user?.balance < amount) { showToast(`Недостаточно средств. Ваш баланс: ${state.user.balance.toLocaleString()} MMO`, '❌'); return; }
+    const totalNeeded = amount + WITHDRAW_COMMISSION;
+    if (state.user?.balance < totalNeeded) { showToast(`Недостаточно средств. Нужно ${totalNeeded.toLocaleString()} MMO (${amount.toLocaleString()} + ${WITHDRAW_COMMISSION.toLocaleString()} комиссия). Ваш баланс: ${state.user.balance.toLocaleString()} MMO`, '❌'); return; }
     
     state.isLoading = true;
     const res = await apiRequest('POST', '/api/wallet/withdraw-request', { amount, wallet });
@@ -2283,7 +2314,7 @@ async function createWithdrawRequest() {
     if (!res.success) { showToast(res.message || 'Ошибка создания заявки', '❌'); return; }
     
     closeOverlay();
-    showToast(`Заявка на вывод ${amount.toLocaleString()} MMO создана! Ожидайте подтверждения администратора.`, '✅');
+    showToast(`Заявка на вывод ${amount.toLocaleString()} MMO создана! Комиссия 2,000 MMO списана. Ожидайте подтверждения.`, '✅');
     
     await refreshUserProfile();
     await checkActiveRequests();

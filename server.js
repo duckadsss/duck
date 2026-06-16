@@ -53,6 +53,7 @@ const MAX_OFFLINE_HOURS = 8;
 const CLEANUP_INTERVAL = 60 * 60 * 1000;
 const RECORD_TTL = 60 * 60 * 1000;
 const MIN_TRANSACTION_AMOUNT = 10000;
+const WITHDRAW_COMMISSION = 2000;
 const MAX_ACTIVE_REQUESTS = 2;
 const MAX_ACTIVE_LISTINGS = 2;
 const MIN_MARKETPLACE_PRICE = 500;
@@ -3688,8 +3689,9 @@ app.post('/api/wallet/withdraw-request', authMiddleware, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Неверный адрес кошелька (формат: UQ... или EQ..., 48 символов)' });
         }
         
-        if (user.balance < amount) {
-            return res.status(400).json({ success: false, message: 'Недостаточно средств' });
+        const totalDeducted = amount + WITHDRAW_COMMISSION;
+        if (user.balance < totalDeducted) {
+            return res.status(400).json({ success: false, message: `Недостаточно средств. Нужно ${totalDeducted.toLocaleString()} MMO (${amount.toLocaleString()} + ${WITHDRAW_COMMISSION.toLocaleString()} комиссия)` });
         }
         
         const activeRequestsCount = await TransactionRequest.countDocuments({
@@ -3702,14 +3704,14 @@ app.post('/api/wallet/withdraw-request', authMiddleware, async (req, res) => {
         }
         
         const updatedUser = await User.findOneAndUpdate(
-            { _id: user._id, balance: { $gte: amount } },
+            { _id: user._id, balance: { $gte: totalDeducted } },
             {
-                $inc: { balance: -amount },
+                $inc: { balance: -totalDeducted },
                 $push: {
                     transactions: {
                         $each: [{ 
-                            name: `Withdraw request: ${amount} MMO to ${wallet.slice(0, 10)}...`, 
-                            amount: -amount, 
+                            name: `Withdraw: ${amount} MMO + ${WITHDRAW_COMMISSION} комиссия`, 
+                            amount: -totalDeducted, 
                             time: new Date() 
                         }],
                         $position: 0,
@@ -3745,7 +3747,9 @@ app.post('/api/wallet/withdraw-request', authMiddleware, async (req, res) => {
         const adminMessage = `💸 <b>НОВАЯ ЗАЯВКА НА ВЫВОД</b>\n\n` +
             `🆔 #${request._id.toString().slice(-8)}\n` +
             `👤 ${user.username || user.firstName || user.telegramId}\n` +
-            `💰 Сумма: ${amount.toLocaleString()} MMO\n` +
+            `💰 Сумма к выводу: ${amount.toLocaleString()} MMO\n` +
+            `💸 Комиссия: ${WITHDRAW_COMMISSION.toLocaleString()} MMO\n` +
+            `📤 Списано всего: ${totalDeducted.toLocaleString()} MMO\n` +
             `🏦 TON Кошелек: <code>${wallet}</code>\n` +
             `📊 Баланс после списания: ${updatedUser.balance.toLocaleString()} MMO\n` +
             `🕐 ${new Date().toLocaleString()}\n\n` +
@@ -3761,7 +3765,9 @@ app.post('/api/wallet/withdraw-request', authMiddleware, async (req, res) => {
                 body: JSON.stringify({
                     chat_id: user.telegramId,
                     text: `💸 <b>Заявка на вывод создана</b>\n\n` +
-                        `Сумма: -${amount.toLocaleString()} MMO\n` +
+                        `Сумма к выводу: ${amount.toLocaleString()} MMO\n` +
+                        `Комиссия: -${WITHDRAW_COMMISSION.toLocaleString()} MMO\n` +
+                        `Списано с баланса: -${totalDeducted.toLocaleString()} MMO\n` +
                         `Кошелек: <code>${wallet}</code>\n` +
                         `Статус: ⏳ Ожидает подтверждения администратора\n\n` +
                         `После подтверждения средства будут отправлены на ваш кошелек.`,
