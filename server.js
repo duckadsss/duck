@@ -3277,8 +3277,8 @@ app.post('/api/raid/join', authMiddleware, async (req, res) => {
 app.post('/api/raid/attack', authMiddleware, async (req, res) => {
     try {
         const user = req.user;
-        
-        const raid = await Raid.findOne({ raidId: getTodayRaidId() });
+
+const raid = await Raid.findOne({ phase: { $in: ['registration', 'fighting'] } }).sort({ scheduledAt: 1 });
         if (!raid || raid.phase !== 'fighting') {
             return res.status(400).json({ success: false, message: 'Рейд не активен' });
         }
