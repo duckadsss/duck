@@ -4400,16 +4400,16 @@ async function loadRaidHistory() {
 function initRaidWebSocket() {
     if (window.io && window.socket) {
         window.socket.on('raid_phase_update', (data) => {
-            if (currentRaid && data.raidId === currentRaid._id) {
+            if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
                 loadRaidData();
                 if (data.message) showToast(data.message, '⚔️');
             }
         });
         
         window.socket.on('raid_turn_start', (data) => {
-            if (currentRaid && data.raidId === currentRaid._id) {
+            if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
                 currentRaid.currentTurn = data.turn;
-                currentRaid.turnEndsAt = data.turnEndsAt;
+                currentRaid.turnEndsAt = Number(data.turnEndsAt);
                 updateRaidUI();
                 showToast(`⚔️ Ход ${data.turn} начался! У вас есть 20 секунд чтобы атаковать!`, '⚔️');
                 startRaidTurnTimer();
@@ -4417,7 +4417,7 @@ function initRaidWebSocket() {
         });
         
         window.socket.on('raid_attack', (data) => {
-            if (currentRaid && data.raidId === currentRaid._id) {
+            if (currentRaid && String(data.raidId) === String(currentRaid._id)) {
                 const toastMsg = `⚔️ ${data.attackerName} нанёс ${data.damage} урона!${data.skillTriggered ? ` ✨ ${data.skillName}!` : ''}`;
                 showToast(toastMsg, data.isCrit ? '💥' : '⚔️');
                 if (data.attackerName !== (state.user?.username || state.user?.firstName)) {

@@ -3146,8 +3146,8 @@ app.get('/api/raid/current', authMiddleware, async (req, res) => {
             .limit(10)
             .populate('userId', 'username firstName');
         
-        const raidTime = getRaidTime();
-        const fightEndTime = new Date(raidTime.getTime() + 5 * 60 * 1000);
+        const raidTime = raid.scheduledAt || getRaidTime();
+        const fightEndTime = new Date(raidTime.getTime() + 15 * 20 * 1000); // 15 ходов * 20 сек
         
         res.json({
             success: true,
@@ -3158,7 +3158,7 @@ app.get('/api/raid/current', authMiddleware, async (req, res) => {
                 entryFee: raid.entryFee,
                 totalPrizePool: raid.totalPrizePool,
                 currentTurn: raid.currentTurn,
-                turnEndsAt: raid.turnEndsAt,
+                turnEndsAt: raid.turnEndsAt ? new Date(raid.turnEndsAt).getTime() : null,
                 startTime: raid.startTime,
                 endTime: raid.endTime,
                 participantsCount,
@@ -3899,7 +3899,7 @@ async function startRaidTurns(raidId) {
     });
     
     io.emit('raid_turn_start', {
-        raidId: raid._id,
+        raidId: String(raid._id),
         turn: 1,
         turnEndsAt: turnEndsAt.getTime()
     });
@@ -3928,7 +3928,7 @@ async function nextRaidTurn(raidId) {
     });
     
     io.emit('raid_turn_start', {
-        raidId: raid._id,
+        raidId: String(raid._id),
         turn: nextTurn,
         turnEndsAt: turnEndsAt.getTime()
     });
@@ -4036,7 +4036,7 @@ async function processRaidScheduler() {
         await Raid.findByIdAndUpdate(raid._id, { $set: { scheduledAt: raidTime } });
     }
 
-    const fightEndTime = new Date(raidTime.getTime() + 5 * 60 * 1000);
+    const fightEndTime = new Date(raidTime.getTime() + 15 * 20 * 1000); // 15 ходов * 20 сек
 
     console.log(`🕐 ${raid.raidId} | ${raid.phase} | diff: ${Math.round((raidTime-now)/1000)}с`);
 
