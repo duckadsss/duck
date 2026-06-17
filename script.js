@@ -4359,7 +4359,6 @@ async function joinRaid() {
         if (res.success) {
             showToast(res.message, 'success');
             
-            // 👇👇👇 ДОБАВЛЯЕМ ОБНОВЛЕНИЕ UI 👇👇👇
             // Обновляем локальные данные, чтобы сразу отобразить участника и пул
             const entryFee = 100;
             if (currentRaid) {
@@ -4379,7 +4378,6 @@ async function joinRaid() {
                 updateRaidUI();
                 if (raidBattleOpen) updateRaidBattleScreen();
             }
-            // 👆👆👆 КОНЕЦ ДОБАВЛЕННОГО БЛОКА 👆👆👆
             
             loadRaidData();
             updateHeader();
@@ -4741,6 +4739,7 @@ function initRaidWebSocket() {
         socket.off('raid_turn_start');
         socket.off('raid_attack');
         socket.off('raid_end');
+        socket.off('raid_update');
 
         socket.on('raid_phase_update', (data) => {
             loadRaidData();
@@ -4776,6 +4775,29 @@ function initRaidWebSocket() {
                 showRaidResults(data.results);
             } else {
                 loadRaidData();
+            }
+        });
+
+        // Обработчик обновления рейда в реальном времени
+        socket.on('raid_update', (data) => {
+            if (!currentRaid) return;
+            if (String(data.raidId) !== String(currentRaid._id)) return;
+            
+            // Обновляем данные
+            currentRaid.participantsCount = data.participantsCount || 0;
+            currentRaid.totalPrizePool = data.totalPrizePool || 0;
+            if (data.topParticipants) {
+                currentRaid.topParticipants = data.topParticipants;
+            }
+            if (data.phase) {
+                currentRaid.phase = data.phase;
+            }
+            
+            // Обновляем UI
+            updateRaidUI();
+            if (raidBattleOpen) {
+                updateRaidBattleScreen();
+                if (data.topParticipants) renderRaidLeaderboard(data.topParticipants);
             }
         });
 
@@ -4936,16 +4958,14 @@ function initRaid() {
         }
     }, 500);
 
-    // Частая проверка статуса рейда (каждые 3 секунды)
+    // Поллинг — обновляем данные каждые 3 секунды, если рейд активен
+    // Это заменяет оба старых интервала
     setInterval(() => {
-        if (!currentRaid || currentRaid.phase !== 'fighting') {
-            if (currentRaid?.phase === 'registration') {
-                const now = new Date();
-                const startTime = new Date(currentRaid.raidStartTime || currentRaid.scheduledAt);
-                if (now >= startTime) {
-                    console.log('🔄 Принудительная проверка рейда (клиент)');
-                    loadRaidData();
-                }
+        if (currentRaid && (currentRaid.phase === 'registration' || currentRaid.phase === 'fighting')) {
+            const socket = getRaidSocket();
+            // Если сокет не работает или нет соединения — используем HTTP запрос
+            if (!socket || !socket.connected) {
+                loadRaidData();
             }
         }
     }, 3000);

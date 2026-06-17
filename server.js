@@ -3371,7 +3371,6 @@ app.post('/api/raid/join', authMiddleware, async (req, res) => {
             attackedInCurrentTurn: false
         });
 
-        // 👇👇👇 ДОБАВЛЯЕМ В КЭШ 👇👇👇
         // Добавляем участника в кэш лидерборда
         const myTelegramId = String(user.telegramId);
         const myUsername = user.username || user.firstName || `User${user.telegramId.slice(-4)}`;
@@ -3385,7 +3384,16 @@ app.post('/api/raid/join', authMiddleware, async (req, res) => {
         if (activeRaidCache && activeRaidCache._id.toString() === raid._id.toString()) {
             activeRaidCache.totalPrizePool += entryFee;
         }
-        // 👆👆👆 КОНЕЦ ДОБАВЛЕННОГО БЛОКА 👆👆👆
+
+        // Отправляем обновление ВСЕМ игрокам через WebSocket
+        io.emit('raid_update', {
+            raidId: String(raid._id),
+            participantsCount: raidLbCache.size,
+            totalPrizePool: activeRaidCache ? activeRaidCache.totalPrizePool : raid.totalPrizePool,
+            topParticipants: Array.from(raidLbCache.values())
+                .sort((a, b) => b.damage - a.damage)
+                .slice(0, 20)
+        });
         
         res.json({
             success: true,
@@ -3490,7 +3498,6 @@ app.post('/api/raid/attack', authMiddleware, async (req, res) => {
         finalDamage = Math.max(1, finalDamage);
         
         // Обновляем статистику участника
-        // Атомарный update без лишнего findById
         await RaidParticipant.updateOne(
             { _id: participant._id },
             {
@@ -3504,6 +3511,16 @@ app.post('/api/raid/attack', authMiddleware, async (req, res) => {
         const existing = raidLbCache.get(myTelegramId) || { username: user.username || user.firstName || 'Игрок', damage: 0, telegramId: myTelegramId };
         existing.damage += finalDamage;
         raidLbCache.set(myTelegramId, existing);
+
+        // Отправляем обновление ВСЕМ игрокам через WebSocket
+        io.emit('raid_update', {
+            raidId: String(raid._id),
+            participantsCount: raidLbCache.size,
+            totalPrizePool: activeRaidCache ? activeRaidCache.totalPrizePool : raid.totalPrizePool,
+            topParticipants: Array.from(raidLbCache.values())
+                .sort((a, b) => b.damage - a.damage)
+                .slice(0, 20)
+        });
 
         // Лидерборд из памяти — без запроса в БД
         const lb = Array.from(raidLbCache.values()).sort((a, b) => b.damage - a.damage);
@@ -4058,6 +4075,15 @@ async function startRaidTurns(raidId) {
         turnEndsAt: turnEndsAt.getTime(),
         leaderboard: lb
     });
+    
+    // Отправляем обновление ВСЕМ игрокам
+    io.emit('raid_update', {
+        raidId: String(raid._id),
+        participantsCount: raidLbCache.size,
+        totalPrizePool: activeRaidCache ? activeRaidCache.totalPrizePool : raid.totalPrizePool,
+        topParticipants: lb.slice(0, 20)
+    });
+    
     console.log(`🎯 Ход 1 начался. Конец через ${15*20}с`);
 }
 
@@ -4089,6 +4115,15 @@ async function nextRaidTurn(raidId) {
         turnEndsAt: turnEndsAt.getTime(),
         leaderboard: lb
     });
+    
+    // Отправляем обновление ВСЕМ игрокам
+    io.emit('raid_update', {
+        raidId: String(raid._id),
+        participantsCount: raidLbCache.size,
+        totalPrizePool: activeRaidCache ? activeRaidCache.totalPrizePool : raid.totalPrizePool,
+        topParticipants: lb.slice(0, 20)
+    });
+    
     console.log(`🎯 Ход ${nextTurn}/15`);
 }
 
