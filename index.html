@@ -515,55 +515,55 @@
     <div class="section-title"><i class="fa-solid fa-dragon"></i> Ежедневный Рейд</div>
 
     <!-- КАРТОЧКА РЕЙДА (лобби) -->
-    <div id="raidBossCard" class="raid-boss-card">
-        <div class="raid-boss-header">
-            <div class="raid-boss-icon" id="raidBossIcon">🐉</div>
-            <div class="raid-boss-name" id="raidBossName">Ежедневный Рейд</div>
+<!-- КАРТОЧКА РЕЙДА (лобби) -->
+<div id="raidBossCard" class="raid-boss-card">
+    <div class="raid-boss-header">
+        <div class="raid-boss-icon" id="raidBossIcon">🐉</div>
+        <div class="raid-boss-name" id="raidBossName">Ежедневный Рейд</div>
+    </div>
+    <div class="raid-boss-stats">
+        <div class="raid-stat">
+            <span class="stat-icon">👥</span>
+            <span id="raidParticipantsCount">0</span>
+            <span class="stat-label">участников</span>
         </div>
-<div class="raid-boss-stats">
-    <div class="raid-stat">
-        <span class="stat-icon">👥</span>
-        <span id="raidParticipantsCount">0</span>   <!-- ⬅️ ЭТОТ ID -->
-        <span class="stat-label">участников</span>
+        <div class="raid-stat">
+            <span class="stat-icon">💰</span>
+            <span id="raidPrizePool">0</span>
+            <span class="stat-label">призовой пул</span>
+        </div>
+        <div class="raid-stat">
+            <span class="stat-icon">⚔️</span>
+            <span id="raidCurrentTurn">0</span>
+            <span class="stat-label">ход</span>
+        </div>
     </div>
-    <div class="raid-stat">
-        <span class="stat-icon">💰</span>
-        <span id="raidPrizePool">0</span>           <!-- ⬅️ ЭТОТ ID -->
-        <span class="stat-label">призовой пул</span>
+    <div class="raid-timer" id="raidTimerBlock">
+        <div class="raid-timer-label" id="raidTimerLabel">До начала рейда</div>
+        <div class="raid-timer-value" id="raidTimerValue">--:--:--</div>
     </div>
-    <div class="raid-stat">
-        <span class="stat-icon">⚔️</span>
-        <span id="raidCurrentTurn">0</span>         <!-- ⬅️ ЭТОТ ID -->
-        <span class="stat-label">ход</span>
+
+    <!-- НЕ ЗАПИСАН -->
+    <div id="raidNotJoined">
+        <div style="font-size: 12px; color: var(--text2); margin-bottom: 8px;">
+            <i class="fa-solid fa-paw"></i> Выберите питомца для участия:
+        </div>
+        <div id="raidPetSelector" class="pet-selector-grid"></div>
+        <button class="raid-join-btn" onclick="joinRaid()">
+            <i class="fa-solid fa-ticket"></i> Записаться (100 MMO)
+        </button>
+    </div>
+
+    <!-- ЗАПИСАН (ожидание) -->
+    <div id="raidJoined" style="display:none;">
+        <div class="raid-waiting-info">
+            <i class="fa-solid fa-paw"></i> Ваш питомец: <span id="raidMyPetName"></span>
+        </div>
+        <button class="raid-attack-btn" id="raidOpenBattleBtn" onclick="openRaidBattle()" style="margin-top:12px;">
+            <span style="font-size:22px;line-height:1">⚔️</span> Открыть бой
+        </button>
     </div>
 </div>
-        <div class="raid-timer" id="raidTimerBlock">
-            <div class="raid-timer-label" id="raidTimerLabel">До начала рейда</div>
-            <div class="raid-timer-value" id="raidTimerValue">--:--:--</div>
-        </div>
-
-        <!-- НЕ ЗАПИСАН -->
-        <div id="raidNotJoined">
-            <div style="font-size: 12px; color: var(--text2); margin-bottom: 8px;">
-                <i class="fa-solid fa-paw"></i> Выберите питомца для участия:
-            </div>
-            <div id="raidPetSelector" class="pet-selector-grid"></div>
-            <button class="raid-join-btn" onclick="joinRaid()">
-                <i class="fa-solid fa-ticket"></i> Записаться (100 MMO)
-            </button>
-        </div>
-
-        <!-- ЗАПИСАН (ожидание) -->
-        <div id="raidJoined" style="display:none;">
-            <div class="raid-waiting-info">
-                <i class="fa-solid fa-paw"></i> Ваш питомец: <span id="raidMyPetName"></span>
-            </div>
-            <button class="raid-attack-btn" id="raidOpenBattleBtn" onclick="openRaidBattle()" style="margin-top:12px;">
-                <span style="font-size:22px;line-height:1">⚔️</span> Открыть бой
-            </button>
-        </div>
-    </div>
-
 </div>
 
 <!-- ===== RAID BATTLE SCREEN (fullscreen overlay) ===== -->
