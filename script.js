@@ -4136,7 +4136,17 @@ async function loadRaidData() {
     try {
         const res = await apiRequest('GET', '/api/raid/current');
         if (res?.success) {
-            currentRaid = res.raid;
+            // Нормализуем данные — если raid вложен, достаём
+            if (res.raid) {
+                currentRaid = {
+                    ...res.raid,
+                    participantsCount: res.raid.participantsCount || 0,
+                    totalPrizePool: res.raid.totalPrizePool || 0,
+                    topParticipants: res.raid.topParticipants || []
+                };
+            } else {
+                currentRaid = res;
+            }
             updateRaidUI();
             if (raidBattleOpen) updateRaidBattleScreen();
         }
@@ -4150,8 +4160,13 @@ function updateRaidUI() {
 
     document.getElementById('raidBossIcon').textContent = '🐉';
     document.getElementById('raidBossName').textContent = 'Ежедневный Рейд';
-    document.getElementById('raidParticipantsCount').textContent = currentRaid.participantsCount || 0;
-    document.getElementById('raidPrizePool').textContent = (currentRaid.totalPrizePool || 0).toLocaleString();
+    
+    // Используем currentRaid.raid.participantsCount если данные пришли в таком виде
+    const participantsCount = currentRaid.participantsCount || currentRaid.raid?.participantsCount || 0;
+    const prizePool = currentRaid.totalPrizePool || currentRaid.raid?.totalPrizePool || 0;
+    
+    document.getElementById('raidParticipantsCount').textContent = participantsCount;
+    document.getElementById('raidPrizePool').textContent = prizePool.toLocaleString();
     document.getElementById('raidCurrentTurn').textContent = currentRaid.currentTurn || 0;
 
     const hasJoined = currentRaid.isRegistered;
@@ -4161,7 +4176,6 @@ function updateRaidUI() {
     if (hasJoined) {
         const petName = getPetDisplayName(currentRaid.myPetId);
         document.getElementById('raidMyPetName').textContent = petName;
-        // Показываем кнопку "Открыть бой" только во время боя
         const openBtn = document.getElementById('raidOpenBattleBtn');
         if (openBtn) {
             openBtn.style.display = currentRaid.phase === 'fighting' ? 'flex' : 'none';
@@ -4176,8 +4190,9 @@ function updateRaidUI() {
     // Топ участников в лобби
     const topList = document.getElementById('raidTopList');
     if (topList) {
-        if (currentRaid.topParticipants?.length) {
-            topList.innerHTML = currentRaid.topParticipants.map((p, i) => `
+        const topParticipants = currentRaid.topParticipants || currentRaid.raid?.topParticipants || [];
+        if (topParticipants.length) {
+            topList.innerHTML = topParticipants.map((p, i) => `
                 <div class="raid-top-item">
                     <div class="raid-top-rank">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</div>
                     <div class="raid-top-name">${escapeHtml(p.username)}</div>
@@ -4188,9 +4203,10 @@ function updateRaidUI() {
             topList.innerHTML = '<div class="empty-listings">Нет участников</div>';
         }
     }
-    // Обновляем лидерборд в экране боя (из API при открытии)
-    if (raidBattleOpen && currentRaid.topParticipants?.length) {
-        renderRaidLeaderboard(currentRaid.topParticipants);
+    
+    if (raidBattleOpen) {
+        const lb = currentRaid.topParticipants || currentRaid.raid?.topParticipants || [];
+        if (lb.length) renderRaidLeaderboard(lb);
     }
 
     loadRaidHistory();
@@ -4355,15 +4371,16 @@ function closeRaidBattle() {
 function updateRaidBattleScreen() {
     if (!currentRaid || !raidBattleOpen) return;
 
-    // Turn info
     const rbsTurn = document.getElementById('rbsTurn');
     if (rbsTurn) rbsTurn.textContent = currentRaid.currentTurn || 1;
 
-    // Participants & prize
+    const participantsCount = currentRaid.participantsCount || currentRaid.raid?.participantsCount || 0;
+    const prizePool = currentRaid.totalPrizePool || currentRaid.raid?.totalPrizePool || 0;
+    
     const rbsP = document.getElementById('rbsParticipants');
     const rbsPP = document.getElementById('rbsPrizePool');
-    if (rbsP) rbsP.textContent = currentRaid.participantsCount || 0;
-    if (rbsPP) rbsPP.textContent = (currentRaid.totalPrizePool || 0).toLocaleString();
+    if (rbsP) rbsP.textContent = participantsCount;
+    if (rbsPP) rbsPP.textContent = prizePool.toLocaleString();
 
     // Pet card
     const petId = currentRaid.myPetId;
