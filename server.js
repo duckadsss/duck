@@ -4166,14 +4166,15 @@ async function finishRaid(raidId) {
     });
 }
 
+// server.js — processRaidScheduler (исправленная версия)
 async function processRaidScheduler() {
     const now = new Date();
 
-    // Ищем любой активный рейд
+    // Ищем активный рейд (регистрация или бой)
     const raid = await Raid.findOne({ phase: { $in: ['registration', 'fighting'] } }).sort({ scheduledAt: 1 });
     if (!raid) return;
 
-    // Парсим время из raidId если scheduledAt не задан
+    // Время старта рейда
     let raidTime = raid.scheduledAt;
     if (!raidTime) {
         const parts = raid.raidId.replace('raid_', '').split('_');
@@ -4183,26 +4184,44 @@ async function processRaidScheduler() {
         await Raid.findByIdAndUpdate(raid._id, { $set: { scheduledAt: raidTime } });
     }
 
-    // fightEndTime считаем от первого хода (точнее чем от startTime)
-    const fightStartTime = raid.firstTurnAt || raid.startTime || raidTime;
-    const fightEndTime = new Date(fightStartTime.getTime() + 15 * 20 * 1000 + 5000); // 15*20с + 5с буфер
-
-    console.log(`🕐 ${raid.raidId} | ${raid.phase} | diff: ${Math.round((raidTime-now)/1000)}с`);
-
-    if (raid.phase === 'registration' && now >= raidTime) {
-        console.log(`⚔️ Стартуем бой для ${raid.raidId}`);
-        await startRaidFight(raid._id);
+    // --- ФАЗА РЕГИСТРАЦИИ ---
+    if (raid.phase === 'registration') {
+        if (now >= raidTime) {
+            console.log(`⚔️ Стартуем бой для ${raid.raidId}`);
+            await startRaidFight(raid._id);
+        }
+        // Если время ещё не наступило, ничего не делаем
+        return;
     }
 
+    // --- ФАЗА БОЯ ---
     if (raid.phase === 'fighting') {
+        // Время начала первого хода
+        const fightStartTime = raid.firstTurnAt || raid.startTime || raidTime;
+        // Время окончания всего боя (15 ходов * 20 сек + 5 сек буфер)
+        const fightEndTime = new Date(fightStartTime.getTime() + 15 * 20 * 1000 + 5000);
+
+        // Завершаем рейд, если время вышло
         if (now >= fightEndTime) {
             await finishRaid(raid._id);
+            return;
         }
-        if (raid.turnEndsAt && now >= raid.turnEndsAt && raid.currentTurn < 15) {
-            await nextRaidTurn(raid._id);
-        }
-        if (!raid.turnEndsAt && now >= raidTime) {
+
+        // Если это первый ход (ещё не было), запускаем таймер хода
+        if (!raid.turnEndsAt) {
             await startRaidTurns(raid._id);
+            return;
+        }
+
+        // Если таймер хода истёк, переходим к следующему ходу
+        if (raid.turnEndsAt && now >= raid.turnEndsAt) {
+            // Если это не последний ход (15-й), запускаем следующий
+            if (raid.currentTurn < 15) {
+                await nextRaidTurn(raid._id);
+            } else {
+                // Если это был 15-й ход, завершаем рейд
+                await finishRaid(raid._id);
+            }
         }
     }
 }
@@ -5213,41 +5232,52 @@ setInterval(() => {
 // ============================================
 async function initCreatures() {
     const staticCreatures = [
-        { id: 'duck_c', name: 'Duck', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/dc.png', incomeBase: 2, desc: 'Young waterfowl.' },
-        { id: 'duck_u', name: 'Duck', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/du.png', incomeBase: 8, desc: 'Mature waterfowl.' },
+        // ===== COMMON (доход 0) =====
+        { id: 'duck_c', name: 'Duck', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/dc.png', incomeBase: 0, desc: 'Young waterfowl.' },
+        { id: 'owl_c', name: 'Owl', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/oc.png', incomeBase: 0, desc: 'Small night hunter.' },
+        { id: 'shark_c', name: 'Shark', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/sc.png', incomeBase: 0, desc: 'Young predator.' },
+        { id: 'wolf_c', name: 'Wolf', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/wc.png', incomeBase: 0, desc: 'Young pack member.' },
+        { id: 'dragon_c', name: 'Dragon', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/ddc.png', incomeBase: 0, desc: 'Young fire breather.' },
+        { id: 'unicorn_c', name: 'Unicorn', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/uc.png', incomeBase: 0, desc: 'Young magical beast.' },
+
+        // ===== UNCOMMON (доход 6) =====
+        { id: 'duck_u', name: 'Duck', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/du.png', incomeBase: 6, desc: 'Mature waterfowl.' },
+        { id: 'owl_u', name: 'Owl', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/ou.png', incomeBase: 6, desc: 'Experienced night hunter.' },
+        { id: 'shark_u', name: 'Shark', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/su.png', incomeBase: 6, desc: 'Experienced apex predator.' },
+        { id: 'wolf_u', name: 'Wolf', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/wu.png', incomeBase: 6, desc: 'Pack leader in training.' },
+        { id: 'dragon_u', name: 'Dragon', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/ddu.png', incomeBase: 6, desc: 'Grown fire breather.' },
+        { id: 'unicorn_u', name: 'Unicorn', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/uu.png', incomeBase: 6, desc: 'Magical evolution.' },
+        { id: 'kangaroo_u', name: 'Kangaroo', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/ku.png', incomeBase: 6, desc: 'Poisons all enemies for 3 turns (-10% HP/turn). Reward for 200 ads watched.', stakingOnly: true },
+
+        // ===== RARE (доход 25) =====
         { id: 'duck_r', name: 'Duck', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/dr.png', incomeBase: 25, desc: 'Ancient waterfowl.' },
-        { id: 'duck_e', name: 'Duck', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/de.png', incomeBase: 120, desc: 'Eternal waterfowl.' },
-        { id: 'duck_l', name: 'Duck', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/dl.png', incomeBase: 400, desc: 'Divine waterfowl.' },
-        { id: 'owl_c', name: 'Owl', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/oc.png', incomeBase: 2, desc: 'Small night hunter.' },
-        { id: 'owl_u', name: 'Owl', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/ou.png', incomeBase: 8, desc: 'Experienced night hunter.' },
         { id: 'owl_r', name: 'Owl', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/or.png', incomeBase: 25, desc: 'Wise night guardian.' },
-        { id: 'owl_e', name: 'Owl', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/oe.png', incomeBase: 120, desc: 'Eternal guardian.' },
-        { id: 'owl_l', name: 'Owl', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/ol.png', incomeBase: 400, desc: 'Divine guardian.' },
-        { id: 'shark_c', name: 'Shark', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/sc.png', incomeBase: 2, desc: 'Young predator.' },
-        { id: 'shark_u', name: 'Shark', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/su.png', incomeBase: 8, desc: 'Experienced apex predator.' },
         { id: 'shark_r', name: 'Shark', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/sr.png', incomeBase: 25, desc: 'Legendary predator.' },
-        { id: 'shark_e', name: 'Shark', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/se.png', incomeBase: 120, desc: 'Eternal terror.' },
-        { id: 'shark_l', name: 'Shark', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/sl.png', incomeBase: 400, desc: 'Divine terror.' },
-        { id: 'wolf_c', name: 'Wolf', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/wc.png', incomeBase: 2, desc: 'Young pack member.' },
-        { id: 'wolf_u', name: 'Wolf', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/wu.png', incomeBase: 8, desc: 'Pack leader in training.' },
         { id: 'wolf_r', name: 'Rare Wolf', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/wr.png', incomeBase: 25, desc: 'Rare wolf for 10 friends 5+.' },
-        { id: 'wolf_e', name: 'Epic Wolf', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/we.png', incomeBase: 120, desc: 'Epic wolf for 50 friends 5+.' },
-        { id: 'wolf_l', name: 'Legendary Wolf', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/wl.png', incomeBase: 400, desc: 'Legendary wolf for 150 friends 5+.' },
-        { id: 'dragon_c', name: 'Dragon', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/ddc.png', incomeBase: 2, desc: 'Young fire breather.' },
-        { id: 'dragon_u', name: 'Dragon', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/ddu.png', incomeBase: 8, desc: 'Grown fire breather.' },
         { id: 'dragon_r', name: 'Dragon', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/ddr.png', incomeBase: 25, desc: 'Ancient fire drake.' },
-        { id: 'dragon_e', name: 'Dragon', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/dde.png', incomeBase: 120, desc: 'Eternal flame.' },
-        { id: 'dragon_l', name: 'Dragon', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/ddl.png', incomeBase: 400, desc: 'Divine flame.' },
-        { id: 'unicorn_c', name: 'Unicorn', rarity: 'common', icon: 'https://ndammo.github.io/Mmodna/uc.png', incomeBase: 2, desc: 'Young magical beast.' },
-        { id: 'unicorn_u', name: 'Unicorn', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/uu.png', incomeBase: 8, desc: 'Magical evolution.' },
         { id: 'unicorn_r', name: 'Unicorn', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/ru.png', incomeBase: 25, desc: 'Rare magical entity.' },
-        { id: 'unicorn_e', name: 'Unicorn', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/er.png', incomeBase: 120, desc: 'Eternal magic.' },
-        { id: 'unicorn_l', name: 'Unicorn', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/ll.png', incomeBase: 400, desc: 'Divine magic.' },
-        { id: 'lion_mythic', name: 'Lion', rarity: 'mythic', icon: 'https://ndammo.github.io/Mmodna/lm.png', incomeBase: 1000, desc: 'THE MYTHIC KING.' },
-        { id: 'panther_mythic', name: 'Black Panther', rarity: 'mythic', icon: 'https://ndammo.github.io/Mmodna/pm.png', incomeBase: 2000, desc: 'TOP 1 SEASON.' },
-        { id: 'monkey_r', name: 'Monkey', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/mr.png', incomeBase: 30, desc: 'Warrior with twin axes. Premium capsule only.', premiumOnly: true },
+        { id: 'monkey_r', name: 'Monkey', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/mr.png', incomeBase: 25, desc: 'Warrior with twin axes. Premium capsule only.', premiumOnly: true },
         { id: 'capybara_r', name: 'Capybara', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/cr.png', incomeBase: 25, desc: 'Zen master. Disables enemy skill for 3 turns. Staking reward only.', stakingOnly: true },
-        { id: 'kangaroo_u', name: 'Kangaroo', rarity: 'uncommon', icon: 'https://ndammo.github.io/Mmodna/ku.png', incomeBase: 15, desc: 'Poisons all enemies for 3 turns (-10% HP/turn). Reward for 200 ads watched.', stakingOnly: true }
+
+        // ===== EPIC (доход 200) =====
+        { id: 'duck_e', name: 'Duck', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/de.png', incomeBase: 200, desc: 'Eternal waterfowl.' },
+        { id: 'owl_e', name: 'Owl', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/oe.png', incomeBase: 200, desc: 'Eternal guardian.' },
+        { id: 'shark_e', name: 'Shark', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/se.png', incomeBase: 200, desc: 'Eternal terror.' },
+        { id: 'wolf_e', name: 'Epic Wolf', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/we.png', incomeBase: 200, desc: 'Epic wolf for 50 friends 5+.' },
+        { id: 'dragon_e', name: 'Dragon', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/dde.png', incomeBase: 200, desc: 'Eternal flame.' },
+        { id: 'unicorn_e', name: 'Unicorn', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/er.png', incomeBase: 200, desc: 'Eternal magic.' },
+
+        // ===== LEGENDARY (доход 1000) =====
+        { id: 'duck_l', name: 'Duck', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/dl.png', incomeBase: 1000, desc: 'Divine waterfowl.' },
+        { id: 'owl_l', name: 'Owl', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/ol.png', incomeBase: 1000, desc: 'Divine guardian.' },
+        { id: 'shark_l', name: 'Shark', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/sl.png', incomeBase: 1000, desc: 'Divine terror.' },
+        { id: 'wolf_l', name: 'Legendary Wolf', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/wl.png', incomeBase: 1000, desc: 'Legendary wolf for 150 friends 5+.' },
+        { id: 'dragon_l', name: 'Dragon', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/ddl.png', incomeBase: 1000, desc: 'Divine flame.' },
+        { id: 'unicorn_l', name: 'Unicorn', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/ll.png', incomeBase: 1000, desc: 'Divine magic.' },
+
+        // ===== MYTHIC (оставляем как есть) =====
+        { id: 'lion_mythic', name: 'Lion', rarity: 'mythic', icon: 'https://ndammo.github.io/Mmodna/lm.png', incomeBase: 2000, desc: 'THE MYTHIC KING.' },
+        { id: 'panther_mythic', name: 'Black Panther', rarity: 'mythic', icon: 'https://ndammo.github.io/Mmodna/pm.png', incomeBase: 3000, desc: 'TOP 1 SEASON.' }
     ];
 
     for (const creature of staticCreatures) {
@@ -5258,6 +5288,7 @@ async function initCreatures() {
         } else {
             await Creature.updateOne({ id: creature.id }, {
                 $set: {
+                    incomeBase: creature.incomeBase,
                     stakingOnly: creature.stakingOnly || false,
                     premiumOnly: creature.premiumOnly || false
                 }
@@ -5469,6 +5500,15 @@ io.on('connection', (socket) => {
 // ============================================
 mongoose.connection.once('open', async () => {
     await initCreatures();
+    // server.js — внутри mongoose.connection.once('open', ...)
+
+// Принудительно обрабатываем рейды при старте сервера
+try {
+    await processRaidScheduler();
+    console.log('✅ Рейды проверены при старте сервера');
+} catch (e) {
+    console.error('❌ Ошибка при старте рейда:', e);
+}
     
     const currentConfig = await GameConfig.findOne();
     if (currentConfig) {
