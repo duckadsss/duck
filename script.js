@@ -4137,6 +4137,27 @@ async function loadRaidData() {
         const res = await apiRequest('GET', '/api/raid/current');
         if (res?.success) {
             currentRaid = res.raid;
+            
+            // Обновляем кэш лидерборда
+            if (currentRaid.topParticipants) {
+                raidLbCache.clear();
+                currentRaid.topParticipants.forEach(p => {
+                    const id = p.telegramId || p.id;
+                    raidLbCache.set(String(id), {
+                        username: p.username,
+                        damage: p.damage,
+                        telegramId: String(id)
+                    });
+                });
+            }
+            
+            // ⬇️ ЛОГ ДЛЯ ОТЛАДКИ ⬇️
+            console.log('📊 Рейд загружен:', {
+                participants: currentRaid.participantsCount,
+                pool: currentRaid.totalPrizePool,
+                phase: currentRaid.phase
+            });
+            
             updateRaidUI();
             if (raidBattleOpen) updateRaidBattleScreen();
         }
@@ -4150,18 +4171,27 @@ function updateRaidUI() {
 
     document.getElementById('raidBossIcon').textContent = '🐉';
     document.getElementById('raidBossName').textContent = 'Ежедневный Рейд';
-    document.getElementById('raidParticipantsCount').textContent = currentRaid.participantsCount || 0;
-    document.getElementById('raidPrizePool').textContent = (currentRaid.totalPrizePool || 0).toLocaleString();
+    
+    // ⬇️ ИСПРАВЛЕНО: участники из currentRaid
+    const participantsCount = currentRaid.participantsCount || 0;
+    document.getElementById('raidParticipantsCount').textContent = participantsCount;
+    
+    // ⬇️ ИСПРАВЛЕНО: пул
+    const prizePool = currentRaid.totalPrizePool || 0;
+    document.getElementById('raidPrizePool').textContent = prizePool.toLocaleString();
+    
     document.getElementById('raidCurrentTurn').textContent = currentRaid.currentTurn || 0;
 
     const hasJoined = currentRaid.isRegistered;
-    document.getElementById('raidNotJoined').style.display = hasJoined ? 'none' : 'block';
-    document.getElementById('raidJoined').style.display = hasJoined ? 'block' : 'none';
+    const notJoined = document.getElementById('raidNotJoined');
+    const joined = document.getElementById('raidJoined');
+    if (notJoined) notJoined.style.display = hasJoined ? 'none' : 'block';
+    if (joined) joined.style.display = hasJoined ? 'block' : 'none';
 
     if (hasJoined) {
         const petName = getPetDisplayName(currentRaid.myPetId);
-        document.getElementById('raidMyPetName').textContent = petName;
-        // Показываем кнопку "Открыть бой" только во время боя
+        const petNameEl = document.getElementById('raidMyPetName');
+        if (petNameEl) petNameEl.textContent = petName;
         const openBtn = document.getElementById('raidOpenBattleBtn');
         if (openBtn) {
             openBtn.style.display = currentRaid.phase === 'fighting' ? 'flex' : 'none';
@@ -4188,7 +4218,7 @@ function updateRaidUI() {
             topList.innerHTML = '<div class="empty-listings">Нет участников</div>';
         }
     }
-    // Обновляем лидерборд в экране боя (из API при открытии)
+    
     if (raidBattleOpen && currentRaid.topParticipants?.length) {
         renderRaidLeaderboard(currentRaid.topParticipants);
     }
@@ -4215,7 +4245,6 @@ function updateRaidTimer() {
         targetTime = new Date(currentRaid.raidStartTime);
         label = '⏳ До начала рейда';
     } else if (currentRaid.phase === 'fighting') {
-        // Считаем от первого хода если есть, иначе от raidEndTime
         if (currentRaid.firstTurnAt) {
             targetTime = new Date(new Date(currentRaid.firstTurnAt).getTime() + 15 * 20 * 1000 + 5000);
         } else {

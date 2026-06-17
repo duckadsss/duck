@@ -3256,6 +3256,9 @@ app.get('/api/raid/current', authMiddleware, async (req, res) => {
             .sort((a, b) => b.damage - a.damage)
             .slice(0, 20);
 
+        // ⬇️ ПРАВИЛЬНЫЙ ПОДСЧЁТ УЧАСТНИКОВ ИЗ БД ⬇️
+        const participantsCount = await RaidParticipant.countDocuments({ raidId: raid._id });
+
         res.json({
             success: true,
             raid: {
@@ -3263,12 +3266,12 @@ app.get('/api/raid/current', authMiddleware, async (req, res) => {
                 raidId: raid.raidId,
                 phase: raid.phase,
                 entryFee: raid.entryFee,
-                totalPrizePool: raid.totalPrizePool,
-                currentTurn: raid.currentTurn,
+                totalPrizePool: raid.totalPrizePool || 0,  // ⬅️ ЯВНО 0 если null
+                currentTurn: raid.currentTurn || 0,
                 turnEndsAt: raid.turnEndsAt ? new Date(raid.turnEndsAt).getTime() : null,
                 startTime: raid.startTime,
                 endTime: raid.endTime,
-                participantsCount: raidLbCache.size || 0,
+                participantsCount: participantsCount,  // ⬅️ ИЗ БД
                 myDamage: myParticipant?.totalDamage || 0,
                 myAttacks: myParticipant?.attacksCount || 0,
                 myPetId: myParticipant?.petId || null,
