@@ -73,7 +73,7 @@ let CREATURES = [];
 let CAPSULE_COSTS = { basic: 1000, premium: 6000 };
 let RARITY_WEIGHTS = {
     basic: { common: 100, uncommon: 0, rare: 0, epic: 0, legendary: 0 },
-    premium: { common: 70, uncommon: 20, rare: 10, epic: 0, legendary: 0 }
+    premium: { common: 74, uncommon: 20, rare: 5, epic: 1, legendary: 0 }
 };
 let AD_REWARD = 5;
 let AD_COOLDOWN = 60;
@@ -669,7 +669,7 @@ function showCapsuleModal(type) {
     const cost = CAPSULE_COSTS[type];
     const title = type === 'premium' ? 'Premium DNA Capsule' : 'DNA Capsule';
     const canAfford = state.serverBalance >= cost;
-    const rarities = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+    const rarities = ['common', 'uncommon', 'rare', 'epic', 'legendary'];  // ← ДОБАВЛЕН EPIC
 
     const oddsHtml = rarities.map(r => {
         const pct = odds[r] || 0;

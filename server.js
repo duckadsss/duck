@@ -862,7 +862,7 @@ async function getGameConfig() {
             capsuleCosts: { basic: 1000, premium: 6000 },
             capsuleRarities: {
                 basic: { common: 100, uncommon: 0, rare: 0, epic: 0, legendary: 0 },
-                premium: { common: 70, uncommon: 20, rare: 10, epic: 0, legendary: 0 }
+                premium: { common: 74, uncommon: 20, rare: 5, epic: 1, legendary: 0 }
             },
             adReward: 5,
             adCooldown: 60,
@@ -5500,15 +5500,14 @@ io.on('connection', (socket) => {
 // ============================================
 mongoose.connection.once('open', async () => {
     await initCreatures();
-    // server.js — внутри mongoose.connection.once('open', ...)
-
-// Принудительно обрабатываем рейды при старте сервера
-try {
-    await processRaidScheduler();
-    console.log('✅ Рейды проверены при старте сервера');
-} catch (e) {
-    console.error('❌ Ошибка при старте рейда:', e);
-}
+    
+    // Принудительно обрабатываем рейды при старте сервера
+    try {
+        await processRaidScheduler();
+        console.log('✅ Рейды проверены при старте сервера');
+    } catch (e) {
+        console.error('❌ Ошибка при старте рейда:', e);
+    }
     
     const currentConfig = await GameConfig.findOne();
     if (currentConfig) {
@@ -5517,15 +5516,17 @@ try {
             currentConfig.capsuleRarities.basic = { common: 100, uncommon: 0, rare: 0, epic: 0, legendary: 0 };
             needSave = true;
         }
-        if (currentConfig.capsuleRarities.premium.common !== 70 || 
+        // ИСПРАВЛЕННЫЕ ШАНСЫ ДЛЯ PREMIUM
+        if (currentConfig.capsuleRarities.premium.common !== 74 || 
             currentConfig.capsuleRarities.premium.uncommon !== 20 || 
-            currentConfig.capsuleRarities.premium.rare !== 10) {
-            currentConfig.capsuleRarities.premium = { common: 70, uncommon: 20, rare: 10, epic: 0, legendary: 0 };
+            currentConfig.capsuleRarities.premium.rare !== 5 ||
+            currentConfig.capsuleRarities.premium.epic !== 1) {
+            currentConfig.capsuleRarities.premium = { common: 74, uncommon: 20, rare: 5, epic: 1, legendary: 0 };
             needSave = true;
         }
         if (needSave) {
             await currentConfig.save();
-            console.log('✅ Настройки капсул обновлены: Basic только Common, Premium 70/20/10');
+            console.log('✅ Настройки капсул обновлены: Basic только Common, Premium 69/20/10/1 (Epic 1%)');
             await invalidateConfigCache();
         }
     }
