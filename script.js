@@ -4358,6 +4358,29 @@ async function joinRaid() {
         if (!res) { showToast('Нет ответа от сервера', 'error'); return; }
         if (res.success) {
             showToast(res.message, 'success');
+            
+            // 👇👇👇 ДОБАВЛЯЕМ ОБНОВЛЕНИЕ UI 👇👇👇
+            // Обновляем локальные данные, чтобы сразу отобразить участника и пул
+            const entryFee = 100;
+            if (currentRaid) {
+                currentRaid.participantsCount = (currentRaid.participantsCount || 0) + 1;
+                currentRaid.totalPrizePool = (currentRaid.totalPrizePool || 0) + entryFee;
+                currentRaid.isRegistered = true;
+                currentRaid.myPetId = selectedPetId;
+                const myId = String(state.user.telegramId);
+                if (!currentRaid.topParticipants.some(p => String(p.telegramId) === myId)) {
+                    currentRaid.topParticipants.push({
+                        username: state.user.username || state.user.firstName || 'Игрок',
+                        telegramId: myId,
+                        damage: 0
+                    });
+                }
+                currentRaid.topParticipants.sort((a, b) => b.damage - a.damage);
+                updateRaidUI();
+                if (raidBattleOpen) updateRaidBattleScreen();
+            }
+            // 👆👆👆 КОНЕЦ ДОБАВЛЕННОГО БЛОКА 👆👆👆
+            
             loadRaidData();
             updateHeader();
         } else {

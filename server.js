@@ -3361,16 +3361,31 @@ app.post('/api/raid/join', authMiddleware, async (req, res) => {
             username: user.username || user.firstName || `User${user.telegramId.slice(-4)}`,
             petId,
             petAttack: (() => {
-                // Базовая атака + бонус от уровня улучшения
                 const upgradeBonus = upgradeItem?.upgradeLevel || 0;
                 return (creature.incomeBase + upgradeBonus) * 2;
-            })(), // ATK питомца для рейда (с учётом forge)
+            })(),
             petCritChance: 0.1,
             petSkill: skill,
             totalDamage: 0,
             attacksCount: 0,
             attackedInCurrentTurn: false
         });
+
+        // 👇👇👇 ДОБАВЛЯЕМ В КЭШ 👇👇👇
+        // Добавляем участника в кэш лидерборда
+        const myTelegramId = String(user.telegramId);
+        const myUsername = user.username || user.firstName || `User${user.telegramId.slice(-4)}`;
+        raidLbCache.set(myTelegramId, {
+            username: myUsername,
+            damage: 0,
+            telegramId: myTelegramId
+        });
+
+        // Обновляем пул в кэше
+        if (activeRaidCache && activeRaidCache._id.toString() === raid._id.toString()) {
+            activeRaidCache.totalPrizePool += entryFee;
+        }
+        // 👆👆👆 КОНЕЦ ДОБАВЛЕННОГО БЛОКА 👆👆👆
         
         res.json({
             success: true,
