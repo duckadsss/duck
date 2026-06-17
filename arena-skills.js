@@ -198,27 +198,35 @@ const SKILLS_MAP = {
         description: 'Восстанавливает 30% maxHP всем живым союзникам'
     },
 
-    // ── MONKEY ────────────────────────────────────────────
-    monkey_r: {
-        id: 'twin_axes',
-        name: '🪓 Twin Axes',
-        chance: 0.30,
-        description: 'Наносит ×3 урона!'
-    },
+// ── MONKEY ────────────────────────────────────────────
+monkey_r: {
+    id: 'twin_axes',
+    name: '🪓 Twin Axes',
+    chance: 0.30,
+    description: 'Наносит ×3 урона!'
+},
 
-    // ── CAPYBARA ──────────────────────────────────────────
-    capybara_r: {
-        id: 'zen_aura',
-        name: '🧘 Zen Aura',
-        chance: 0.30,
-        description: 'Отключает умение врага на 3 хода'
-    },
+// ── SCORPION ──────────────────────────────────────────  ← ДОБАВИТЬ ЭТОТ БЛОК
+scorpion_e: {
+    id: 'venom_strike',
+    name: '🦂 Venom Strike',
+    chance: 0.20,
+    description: 'Наносит ×2 урона и восстанавливает 10% HP'
+},
+
+// ── CAPYBARA ──────────────────────────────────────────
+capybara_r: {
+    id: 'zen_aura',
+    name: '🧘 Zen Aura',
+    chance: 0.30,
+    description: 'Отключает умение врага на 3 хода'
+},
 
     // ── KANGAROO ──────────────────────────────────────────
     kangaroo_u: {
         id: 'toxic_kick',
         name: '☠️ Toxic Kick',
-        chance: 0.30,
+        chance: 0.10,
         description: 'Отравляет всех врагов на 3 хода — каждый ход -10% HP'
     },
 
@@ -369,8 +377,7 @@ function applySkill(skillId, attacker, target, myTeam, enemyTeam, baseDamage) {
             break;
 
         case 'kraken_call':
-            // Урон всем врагам (включая основную цель) + восстановить 20% maxHP себе
-            result.damage = baseDamage;
+            // Урон всем врагам + восстановить 20% maxHP себе
             result.splashDamage = baseDamage;
             result.splashTargets = _getOtherAliveIndices(enemyTeam, enemyTeam.indexOf(target));
             result.healAmount = Math.floor(attacker.maxHp * 0.20);
@@ -460,16 +467,24 @@ function applySkill(skillId, attacker, target, myTeam, enemyTeam, baseDamage) {
             result.allyHealTarget = 'all';
             break;
 
-        // ── MONKEY ──────────────────────────────────────
-        case 'twin_axes':
-            result.damage = Math.floor(baseDamage * 3);
-            break;
+ // arena-skills.js — внутри applySkill(), добавить после case 'twin_axes':
 
-        // ── KANGAROO ─────────────────────────────────────
-        case 'toxic_kick':
-            // Отравляет всех живых врагов на 3 хода — каждый ход -10% maxHP
-            result.poisonAllTurns = 3;
-            break;
+case 'twin_axes':
+    result.damage = Math.floor(baseDamage * 3);
+    break;
+
+// ── SCORPION ──────────────────────────────────────
+case 'venom_strike':
+    // Урон ×2
+    result.damage = Math.floor(baseDamage * 2);
+    // Восстановление 10% HP будет обработано в arena-socket.js
+    break;
+
+// ── KANGAROO ─────────────────────────────────────
+case 'toxic_kick':
+    // Отравляет всех живых врагов на 3 хода — каждый ход -10% maxHP
+    result.poisonAllTurns = 3;
+    break;
 
         // ── MYTHIC ──────────────────────────────────────
         case 'king_roar':

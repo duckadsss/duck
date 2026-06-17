@@ -5259,13 +5259,14 @@ async function initCreatures() {
         { id: 'monkey_r', name: 'Monkey', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/mr.png', incomeBase: 25, desc: 'Warrior with twin axes. Premium capsule only.', premiumOnly: true },
         { id: 'capybara_r', name: 'Capybara', rarity: 'rare', icon: 'https://ndammo.github.io/Mmodna/cr.png', incomeBase: 25, desc: 'Zen master. Disables enemy skill for 3 turns. Staking reward only.', stakingOnly: true },
 
-        // ===== EPIC (доход 200) =====
-        { id: 'duck_e', name: 'Duck', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/de.png', incomeBase: 200, desc: 'Eternal waterfowl.' },
-        { id: 'owl_e', name: 'Owl', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/oe.png', incomeBase: 200, desc: 'Eternal guardian.' },
-        { id: 'shark_e', name: 'Shark', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/se.png', incomeBase: 200, desc: 'Eternal terror.' },
-        { id: 'wolf_e', name: 'Epic Wolf', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/we.png', incomeBase: 200, desc: 'Epic wolf for 50 friends 5+.' },
-        { id: 'dragon_e', name: 'Dragon', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/dde.png', incomeBase: 200, desc: 'Eternal flame.' },
-        { id: 'unicorn_e', name: 'Unicorn', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/er.png', incomeBase: 200, desc: 'Eternal magic.' },
+ // ===== EPIC (доход 200) =====
+{ id: 'duck_e', name: 'Duck', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/de.png', incomeBase: 200, desc: 'Eternal waterfowl.' },
+{ id: 'owl_e', name: 'Owl', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/oe.png', incomeBase: 200, desc: 'Eternal guardian.' },
+{ id: 'shark_e', name: 'Shark', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/se.png', incomeBase: 200, desc: 'Eternal terror.' },
+{ id: 'wolf_e', name: 'Epic Wolf', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/we.png', incomeBase: 200, desc: 'Epic wolf for 50 friends 5+.' },
+{ id: 'dragon_e', name: 'Dragon', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/dde.png', incomeBase: 200, desc: 'Eternal flame.' },
+{ id: 'unicorn_e', name: 'Unicorn', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/er.png', incomeBase: 200, desc: 'Eternal magic.' },
+{ id: 'scorpion_e', name: 'Scorpion', rarity: 'epic', icon: 'https://ndammo.github.io/Mmodna/sce.png', incomeBase: 200, desc: 'Venomous striker. 20% chance to deal 2x damage and restore 10% HP.' },  // ← ДОБАВИТЬ
 
         // ===== LEGENDARY (доход 1000) =====
         { id: 'duck_l', name: 'Duck', rarity: 'legendary', icon: 'https://ndammo.github.io/Mmodna/dl.png', incomeBase: 1000, desc: 'Divine waterfowl.' },
