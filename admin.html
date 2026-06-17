@@ -717,15 +717,68 @@
                 <div class="stat-card"><h3>Всего слияний</h3><div class="value">${formatNum(stats.totalMerges)}</div></div>
                 <div class="stat-card"><h3>Открыто капсул</h3><div class="value">${formatNum(stats.totalCapsules)}</div></div>
             </div>
-            <div class="user-card">
-                <h3>⚡ Быстрые действия</h3>
-                <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px;">
-                    <button onclick="showGiveAllCoins()"><i class="fas fa-gift"></i> Выдать MMO всем</button>
-                    <button onclick="showGiveAllCreature()"><i class="fas fa-paw"></i> Выдать существо всем</button>
-                    <button class="secondary" onclick="refreshCache()"><i class="fas fa-sync"></i> Обновить кэш</button>
-                    <button style="background: linear-gradient(135deg, #0369a1, #0ea5e9);" onclick="goToArenaTab()">⚔️ Арена</button>
-                </div>
+       <div class="user-card">
+    <h3>⚡ Быстрые действия</h3>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px;">
+        <button onclick="showGiveAllCoins()"><i class="fas fa-gift"></i> Выдать MMO всем</button>
+        <button onclick="showGiveAllCreature()"><i class="fas fa-paw"></i> Выдать существо всем</button>
+        <button class="secondary" onclick="refreshCache()"><i class="fas fa-sync"></i> Обновить кэш</button>
+        <button style="background: linear-gradient(135deg, #0369a1, #0ea5e9);" onclick="goToArenaTab()">⚔️ Арена</button>
+        <button style="background: linear-gradient(135deg, #dc2626, #ef4444);" onclick="toggleRaidPanel()">
+            <i class="fas fa-dragon"></i> Управление рейдом
+        </button>
+    </div>
+</div>
+<!-- Панель управления рейдом (скрыта по умолчанию) -->
+<div id="raidAdminPanel" style="display: none; margin-top: 16px; border-top: 1px solid #1e2d4a; padding-top: 16px;">
+    <h3 style="color: #ef4444; margin-bottom: 12px;"><i class="fas fa-dragon"></i> Панель управления рейдом</h3>
+    
+    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
+        <button onclick="adminForceStartRaid()" class="success"><i class="fas fa-play"></i> Принудительный старт</button>
+        <button onclick="adminForceFinishRaid()" class="danger"><i class="fas fa-stop"></i> Завершить рейд</button>
+        <button onclick="adminResetRaid()" class="warning"><i class="fas fa-undo"></i> Сбросить рейд</button>
+        <button onclick="adminRefreshRaid()" class="secondary"><i class="fas fa-sync"></i> Обновить</button>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+        <div class="form-group">
+            <label>Вступительный взнос (MMO)</label>
+            <div style="display: flex; gap: 8px;">
+                <input type="number" id="raidEntryFeeInput" step="10" value="100">
+                <button onclick="adminUpdateEntryFee()" class="success">Изменить</button>
             </div>
+        </div>
+        <div class="form-group">
+            <label>Призовой пул (MMO)</label>
+            <div style="display: flex; gap: 8px;">
+                <input type="number" id="raidPoolInput" step="100" value="0">
+                <button onclick="adminUpdatePool()" class="success">Изменить</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="raidAdminStatus">
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px;">
+            <div class="stat-card"><h3>Статус</h3><div class="value" id="raidStatusDisplay">—</div></div>
+            <div class="stat-card"><h3>Участников</h3><div class="value" id="raidParticipantsCount">0</div></div>
+            <div class="stat-card"><h3>Призовой пул</h3><div class="value" id="raidPoolDisplay">0</div></div>
+            <div class="stat-card"><h3>Текущий ход</h3><div class="value" id="raidTurnDisplay">0</div></div>
+        </div>
+    </div>
+    
+    <h4>📋 Участники</h4>
+    <div class="data-table" style="max-height: 300px; overflow-y: auto;">
+        <table>
+            <thead><tr><th>#</th><th>Игрок</th><th>Урон</th><th>Атак</th><th>Награда</th></tr></thead>
+            <tbody id="raidParticipantsTable">
+                <tr><td colspan="5" style="text-align:center;">Нет участников</td></tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <h4 style="margin-top: 16px;">📜 История рейдов (последние 10)</h4>
+    <div id="raidHistoryList"></div>
+</div>
         `;
         main.innerHTML = html;
     }
@@ -1885,7 +1938,174 @@
             </div>
         `;
     }
+// ============================================================
+// ПЕРЕКЛЮЧЕНИЕ ПАНЕЛИ РЕЙДА
+// ============================================================
 
+let raidPanelVisible = false;
+
+window.toggleRaidPanel = function() {
+    const panel = document.getElementById('raidAdminPanel');
+    if (!panel) return;
+    
+    raidPanelVisible = !raidPanelVisible;
+    panel.style.display = raidPanelVisible ? 'block' : 'none';
+    
+    if (raidPanelVisible) {
+        loadAdminRaid();
+        showToast('🐉 Панель управления рейдом открыта', 'success');
+    }
+};
+
+// ============================================================
+// АДМИН: УПРАВЛЕНИЕ РЕЙДОМ
+// ============================================================
+
+async function loadAdminRaid() {
+    try {
+        const res = await apiRequest('/api/admin/raid/current');
+        if (res?.success) {
+            const raid = res.raid;
+            const participants = res.participants || [];
+            
+            const statusEl = document.getElementById('raidStatusDisplay');
+            const participantsEl = document.getElementById('raidParticipantsCount');
+            const poolEl = document.getElementById('raidPoolDisplay');
+            const turnEl = document.getElementById('raidTurnDisplay');
+            
+            if (statusEl) statusEl.textContent = raid?.phase || 'Нет активного рейда';
+            if (participantsEl) participantsEl.textContent = participants.length;
+            if (poolEl) poolEl.textContent = raid?.totalPrizePool?.toLocaleString() || '0';
+            if (turnEl) turnEl.textContent = raid?.currentTurn || '0';
+            
+            if (raid) {
+                const feeInput = document.getElementById('raidEntryFeeInput');
+                const poolInput = document.getElementById('raidPoolInput');
+                if (feeInput) feeInput.value = raid.entryFee || 100;
+                if (poolInput) poolInput.value = raid.totalPrizePool || 0;
+            }
+            
+            const tableBody = document.getElementById('raidParticipantsTable');
+            if (tableBody) {
+                if (participants.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Нет участников</td></tr>';
+                } else {
+                    tableBody.innerHTML = participants.map((p, i) => `
+                        <tr>
+                            <td>${i + 1}</td>
+                            <td>${escapeHtml(p.username || p.telegramId || 'Unknown')}</td>
+                            <td>${p.totalDamage?.toLocaleString() || '0'}</td>
+                            <td>${p.attacksCount || '0'}</td>
+                            <td>${p.reward?.toLocaleString() || '—'}</td>
+                        </tr>
+                    `).join('');
+                }
+            }
+        }
+        
+        // История
+        const historyRes = await apiRequest('/api/admin/raid/history');
+        if (historyRes?.success) {
+            const list = document.getElementById('raidHistoryList');
+            if (list) {
+                if (historyRes.history.length === 0) {
+                    list.innerHTML = '<div style="text-align:center;color:#4a5568;padding:20px;">Нет завершённых рейдов</div>';
+                } else {
+                    list.innerHTML = historyRes.history.map(h => `
+                        <div style="background:#0d1120;border:1px solid #1e2d4a;border-radius:12px;padding:12px;margin-bottom:8px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <div>
+                                    <span style="font-weight:700;color:#a855f7;">${escapeHtml(h.raidId)}</span>
+                                    <span style="font-size:11px;color:#4a5568;margin-left:8px;">${new Date(h.defeatedAt).toLocaleString()}</span>
+                                </div>
+                                <div style="font-size:13px;color:#f59e0b;">${h.totalPrizePool?.toLocaleString() || '0'} MMO</div>
+                            </div>
+                            <div style="font-size:11px;color:#94a3b8;margin-top:4px;">
+                                👥 ${h.totalParticipants || 0} участников · 🏆 ${h.topDamage?.slice(0,3).map(t => `${t.username}: ${t.damage}`).join(' | ') || '—'}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            }
+        }
+    } catch (e) {
+        console.error('loadAdminRaid error:', e);
+    }
+}
+
+window.adminRefreshRaid = function() {
+    loadAdminRaid();
+    showToast('Рейд обновлён', 'success');
+};
+
+window.adminForceStartRaid = async function() {
+    const raidId = prompt('Введите ID рейда (оставьте пустым для текущего):');
+    const res = await apiRequest('/api/admin/raid/force-start', 'POST', { raidId: raidId || undefined });
+    if (res?.success) {
+        showToast(res.message, 'success');
+        loadAdminRaid();
+    } else {
+        showToast(res?.message || 'Ошибка', 'error');
+    }
+};
+
+window.adminForceFinishRaid = async function() {
+    if (!confirm('⚠️ Завершить рейд принудительно? Награды будут распределены.')) return;
+    const raidId = prompt('Введите ID рейда (оставьте пустым для текущего):');
+    const res = await apiRequest('/api/admin/raid/force-finish', 'POST', { raidId: raidId || undefined });
+    if (res?.success) {
+        showToast(res.message, 'success');
+        loadAdminRaid();
+    } else {
+        showToast(res?.message || 'Ошибка', 'error');
+    }
+};
+
+window.adminResetRaid = async function() {
+    if (!confirm('⚠️ Сбросить рейд? Все участники будут удалены, пул обнулён.')) return;
+    const raidId = prompt('Введите ID рейда (оставьте пустым для текущего):');
+    const res = await apiRequest('/api/admin/raid/reset', 'POST', { raidId: raidId || undefined });
+    if (res?.success) {
+        showToast(res.message, 'success');
+        loadAdminRaid();
+    } else {
+        showToast(res?.message || 'Ошибка', 'error');
+    }
+};
+
+window.adminUpdateEntryFee = async function() {
+    const input = document.getElementById('raidEntryFeeInput');
+    const newFee = parseInt(input?.value);
+    if (isNaN(newFee) || newFee < 0) {
+        showToast('Введите корректную сумму', 'error');
+        return;
+    }
+    const raidId = prompt('Введите ID рейда (оставьте пустым для текущего):');
+    const res = await apiRequest('/api/admin/raid/update-fee', 'POST', { raidId: raidId || undefined, newFee });
+    if (res?.success) {
+        showToast(`Взнос изменён на ${newFee} MMO`, 'success');
+        loadAdminRaid();
+    } else {
+        showToast(res?.message || 'Ошибка', 'error');
+    }
+};
+
+window.adminUpdatePool = async function() {
+    const input = document.getElementById('raidPoolInput');
+    const newPool = parseInt(input?.value);
+    if (isNaN(newPool) || newPool < 0) {
+        showToast('Введите корректную сумму', 'error');
+        return;
+    }
+    const raidId = prompt('Введите ID рейда (оставьте пустым для текущего):');
+    const res = await apiRequest('/api/admin/raid/update-pool', 'POST', { raidId: raidId || undefined, newPool });
+    if (res?.success) {
+        showToast(`Пул изменён на ${newPool} MMO`, 'success');
+        loadAdminRaid();
+    } else {
+        showToast(res?.message || 'Ошибка', 'error');
+    }
+};
 </script>
 </body>
 </html>

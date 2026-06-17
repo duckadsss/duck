@@ -5636,6 +5636,191 @@ await ensureRaidForToday();
     console.log('⚔️ PvP Арена: активна (WebSocket для Railway)!');
 });
 
+// ============================================
+// АДМИН: УПРАВЛЕНИЕ РЕЙДОМ (добавлено)
+// ============================================
+
+// 1. Получить текущий рейд + участников
+app.get('/api/admin/raid/current', adminAuthMiddleware, async (req, res) => {
+    try {
+        const raid = await Raid.findOne({ phase: { $in: ['registration', 'fighting'] } })
+            .sort({ createdAt: -1 })
+            .lean();
+        
+        if (!raid) {
+            return res.json({ success: true, raid: null, participants: [] });
+        }
+        
+        const participants = await RaidParticipant.find({ raidId: raid._id })
+            .populate('userId', 'username firstName telegramId')
+            .sort({ totalDamage: -1 })
+            .lean();
+        
+        res.json({
+            success: true,
+            raid,
+            participants: participants.map(p => ({
+                ...p,
+                user: p.userId,
+                username: p.username || p.userId?.username || p.userId?.firstName || 'Unknown'
+            }))
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// 2. Обновить пул рейда (вручную)
+app.post('/api/admin/raid/update-pool', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { raidId, newPool } = req.body;
+        if (!raidId || newPool === undefined || newPool < 0) {
+            return res.status(400).json({ success: false, message: 'Неверные параметры' });
+        }
+        
+        const raid = await Raid.findById(raidId);
+        if (!raid) {
+            return res.status(404).json({ success: false, message: 'Рейд не найден' });
+        }
+        
+        raid.totalPrizePool = newPool;
+        await raid.save();
+        
+        if (activeRaidCache && String(activeRaidCache._id) === String(raidId)) {
+            activeRaidCache.totalPrizePool = newPool;
+        }
+        
+        res.json({ success: true, raid });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// 3. Обновить entry fee
+app.post('/api/admin/raid/update-fee', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { raidId, newFee } = req.body;
+        if (!raidId || newFee === undefined || newFee < 0) {
+            return res.status(400).json({ success: false, message: 'Неверные параметры' });
+        }
+        
+        const raid = await Raid.findById(raidId);
+        if (!raid) {
+            return res.status(404).json({ success: false, message: 'Рейд не найден' });
+        }
+        
+        raid.entryFee = newFee;
+        await raid.save();
+        
+        if (activeRaidCache && String(activeRaidCache._id) === String(raidId)) {
+            activeRaidCache.entryFee = newFee;
+        }
+        
+        res.json({ success: true, raid });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// 4. Принудительно завершить рейд
+app.post('/api/admin/raid/force-finish', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { raidId } = req.body;
+        if (!raidId) {
+            return res.status(400).json({ success: false, message: 'Укажите raidId' });
+        }
+        
+        const raid = await Raid.findById(raidId);
+        if (!raid) {
+            return res.status(404).json({ success: false, message: 'Рейд не найден' });
+        }
+        
+        if (raid.phase !== 'fighting') {
+            return res.status(400).json({ success: false, message: 'Рейд не в фазе боя' });
+        }
+        
+        await finishRaid(raidId);
+        
+        res.json({ success: true, message: 'Рейд завершён принудительно' });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// 5. История рейдов (админ)
+app.get('/api/admin/raid/history', adminAuthMiddleware, async (req, res) => {
+    try {
+        const history = await RaidHistory.find()
+            .sort({ defeatedAt: -1 })
+            .limit(10)
+            .lean();
+        
+        res.json({ success: true, history });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// 6. Сброс рейда (очистка участников)
+app.post('/api/admin/raid/reset', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { raidId } = req.body;
+        if (!raidId) {
+            return res.status(400).json({ success: false, message: 'Укажите raidId' });
+        }
+        
+        const raid = await Raid.findById(raidId);
+        if (!raid) {
+            return res.status(404).json({ success: false, message: 'Рейд не найден' });
+        }
+        
+        if (raid.phase === 'fighting') {
+            return res.status(400).json({ success: false, message: 'Нельзя сбросить активный бой' });
+        }
+        
+        await RaidParticipant.deleteMany({ raidId: raid._id });
+        raid.totalPrizePool = 0;
+        raid.currentTurn = 0;
+        await raid.save();
+        
+        raidLbCache.clear();
+        if (activeRaidCache && String(activeRaidCache._id) === String(raidId)) {
+            activeRaidCache.totalPrizePool = 0;
+            activeRaidCache.currentTurn = 0;
+        }
+        
+        res.json({ success: true, message: 'Рейд сброшен' });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// 7. Принудительный старт рейда
+app.post('/api/admin/raid/force-start', adminAuthMiddleware, async (req, res) => {
+    try {
+        const { raidId } = req.body;
+        if (!raidId) {
+            return res.status(400).json({ success: false, message: 'Укажите raidId' });
+        }
+        
+        const raid = await Raid.findById(raidId);
+        if (!raid) {
+            return res.status(404).json({ success: false, message: 'Рейд не найден' });
+        }
+        
+        if (raid.phase !== 'registration') {
+            return res.status(400).json({ success: false, message: 'Рейд не в фазе регистрации' });
+        }
+        
+        await startRaidFight(raidId);
+        
+        res.json({ success: true, message: 'Рейд принудительно запущен' });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`🚀 Сервер запущен на порту ${PORT}`);
