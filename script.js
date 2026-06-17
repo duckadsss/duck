@@ -4856,6 +4856,23 @@ function initRaid() {
             updateRaidAttackBtn();
         }
     }, 500);
+
+    // ========== ВСТАВИТЬ СЮДА ==========
+    // Принудительная проверка каждые 5 секунд, если бой не идёт
+    setInterval(() => {
+        if (!currentRaid || currentRaid.phase !== 'fighting') {
+            // Проверяем, не пора ли перевести рейд в боевую фазу
+            if (currentRaid?.phase === 'registration') {
+                const now = new Date();
+                const startTime = new Date(currentRaid.raidStartTime);
+                // Если время старта уже прошло, но рейд всё ещё в регистрации
+                if (now >= startTime) {
+                    console.log('🔄 Принудительная проверка рейда (клиент)');
+                    loadRaidData(); // Перезапрашиваем данные
+                }
+            }
+        }
+    }, 2000);
 }
 
 // Вызываем после загрузки пользователя
