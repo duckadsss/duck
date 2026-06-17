@@ -4240,14 +4240,13 @@ function updateRaidTimer() {
     } else if (currentRaid.phase === 'finished') {
         timerValue.textContent = '✅ Рейд завершён';
         if (timerLabel) timerLabel.textContent = '🏆 Итоги';
-        // Показываем время до следующего рейда
         const nextRaidTime = getNextRaidTime();
         if (nextRaidTime) {
             const diff = nextRaidTime - now;
             if (diff > 0) {
-                const m = Math.floor(diff / 60000);
-                const s = Math.floor((diff % 60000) / 1000);
-                timerValue.textContent = `Следующий через ${m}м ${s}с`;
+                const h = Math.floor(diff / 3600000);
+                const m = Math.floor((diff % 3600000) / 60000);
+                timerValue.textContent = h > 0 ? `Следующий через ${h}ч ${m}м` : `Следующий через ${m}м`;
                 if (timerLabel) timerLabel.textContent = '⏳ Следующий рейд';
             }
         }
@@ -4280,13 +4279,13 @@ function updateRaidTimer() {
 
 function getNextRaidTime() {
     const now = new Date();
-    const minutes = now.getMinutes();
-    const remainder = minutes % 6;
-    const nextMinutes = remainder === 0 ? minutes : minutes + (6 - remainder);
+    const hours = now.getHours();
+    const remainder = hours % 6;
+    const nextHours = remainder === 0 ? hours : hours + (6 - remainder);
     const next = new Date(now);
-    next.setMinutes(nextMinutes, 0, 0);
+    next.setHours(nextHours, 0, 0, 0);
     if (next <= now) {
-        next.setMinutes(next.getMinutes() + 6);
+        next.setHours(next.getHours() + 6);
     }
     return next;
 }
@@ -4701,15 +4700,14 @@ function updateHomeBossStatus() {
         const startTime = new Date(currentRaid.raidStartTime || currentRaid.scheduledAt);
         const diff = startTime - now;
         if (diff > 0) {
-            const m = Math.floor(diff / 60000);
-            const s = Math.floor((diff % 60000) / 1000);
-            el.textContent = m > 0 ? `Старт через ${m}м ${s}с` : `Старт через ${s}с`;
+            const h = Math.floor(diff / 3600000);
+            const m = Math.floor((diff % 3600000) / 60000);
+            el.textContent = h > 0 ? `Старт через ${h}ч ${m}м` : `Старт через ${m}м`;
         } else {
             el.textContent = '🔥 СКОРО НАЧНЁТСЯ!';
         }
     } else if (currentRaid.phase === 'fighting') {
         el.textContent = `⚔️ БОЙ! Ход ${currentRaid.currentTurn || 1}/15`;
-        // Пульсирующий эффект
         const card = document.querySelector('.raid-mode-card');
         if (card) card.style.borderColor = 'rgba(239,68,68,0.5)';
     } else if (currentRaid.phase === 'finished') {

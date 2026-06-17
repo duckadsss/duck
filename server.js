@@ -3985,15 +3985,13 @@ app.get('/api/wallet/history', authMiddleware, async (req, res) => {
 // Вместо "каждый час в начале часа" — делаем каждые 6 минут
 function getRaidTime() {
     const now = new Date();
-    // Округляем до ближайших 6 минут
-    const minutes = now.getMinutes();
-    const remainder = minutes % 6;
-    const nextMinutes = remainder === 0 ? minutes : minutes + (6 - remainder);
+    const hours = now.getHours();
+    const remainder = hours % 6;
+    const nextHours = remainder === 0 ? hours : hours + (6 - remainder);
     const next = new Date(now);
-    next.setMinutes(nextMinutes, 0, 0);
-    // Если следующий тайм уже прошёл — добавляем 6 минут
+    next.setHours(nextHours, 0, 0, 0);
     if (next <= now) {
-        next.setMinutes(next.getMinutes() + 6);
+        next.setHours(next.getHours() + 6);
     }
     return next;
 }
@@ -4230,7 +4228,6 @@ async function processRaidScheduler() {
     // Ищем активный рейд (регистрация или бой)
     const raid = await Raid.findOne({ phase: { $in: ['registration', 'fighting'] } }).sort({ scheduledAt: 1 });
     if (!raid) {
-        // Если нет рейда — создаём новый на следующий слот
         await ensureRaidForToday();
         return;
     }
@@ -4247,6 +4244,8 @@ async function processRaidScheduler() {
 
     // --- ФАЗА РЕГИСТРАЦИИ ---
     if (raid.phase === 'registration') {
+        // Регистрация открыта ВСЕГДА до момента старта
+        // Бой начинается ровно в scheduledAt
         if (now >= raidTime) {
             console.log(`⚔️ Стартуем бой для ${raid.raidId}`);
             await startRaidFight(raid._id);
@@ -4261,7 +4260,6 @@ async function processRaidScheduler() {
 
         if (now >= fightEndTime) {
             await finishRaid(raid._id);
-            // Сразу создаём следующий рейд
             await ensureRaidForToday();
             return;
         }
@@ -5607,9 +5605,10 @@ mongoose.connection.once('open', async () => {
     }, 10000);
     
     // Планировщик рейда (каждые 10 секунд)
+// Проверка рейда каждые 10 секунд (достаточно часто, чтобы точно запустить в нужное время)
 setInterval(async () => {
     await processRaidScheduler();
-}, 3000);
+}, 10000);
 
 // Создаём рейд на сегодня при старте
 await ensureRaidForToday();
