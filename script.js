@@ -4823,6 +4823,14 @@ async function forgeAttempt(creatureId) {
                 item.upgradeSuccesses = res.newSuccesses;
             }
 
+            // ⬇️ ГЛАВНОЕ ИСПРАВЛЕНИЕ: синхронизируем баланс ⬇️
+            if (state.user) {
+                state.user.balance = res.balance;
+                // Обновляем серверный снапшот, чтобы визуальный баланс тоже обновился
+                state.serverBalance = res.balance;
+                state.lastServerSync = Date.now();
+            }
+
             // Анимация карточки
             if (card) {
                 card.classList.add(res.attemptSuccess ? 'forge-result-success' : 'forge-result-fail');
@@ -4831,8 +4839,7 @@ async function forgeAttempt(creatureId) {
                 }, 400);
             }
 
-            // Обновляем баланс
-            if (state.user) state.user.balance = res.balance;
+            // Обновляем заголовок (баланс, пыль, XP)
             updateHeader();
 
             // Перерисовываем вкладку
