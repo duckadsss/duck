@@ -3950,12 +3950,19 @@ app.get('/api/wallet/history', authMiddleware, async (req, res) => {
 // RAID BOSS ФУНКЦИИ И ПЛАНИРОВЩИК
 // ============================================
 
+// Вместо "каждый час в начале часа" — делаем каждые 6 минут
 function getRaidTime() {
-    // Рейд каждый час — в начале следующего часа
     const now = new Date();
+    // Округляем до ближайших 6 минут
+    const minutes = now.getMinutes();
+    const remainder = minutes % 6;
+    const nextMinutes = remainder === 0 ? minutes : minutes + (6 - remainder);
     const next = new Date(now);
-    next.setMinutes(0, 0, 0); // начало часа
-    next.setHours(next.getHours() + 1); // следующий час
+    next.setMinutes(nextMinutes, 0, 0);
+    // Если следующий тайм уже прошёл — добавляем 6 минут
+    if (next <= now) {
+        next.setMinutes(next.getMinutes() + 6);
+    }
     return next;
 }
 
@@ -3982,7 +3989,7 @@ async function ensureRaidForToday() {
             playersPrizePool: 0,
             scheduledAt: raidTime
         });
-        console.log(`🎮 Создан рейд на ${raidId}`);
+        console.log(`🎮 Создан рейд на ${raidId} (старт в ${raidTime.toLocaleTimeString()})`);
         activeRaidCache = raid;
         raidLbCache.clear();
     }
@@ -4172,7 +4179,11 @@ async function processRaidScheduler() {
 
     // Ищем активный рейд (регистрация или бой)
     const raid = await Raid.findOne({ phase: { $in: ['registration', 'fighting'] } }).sort({ scheduledAt: 1 });
-    if (!raid) return;
+    if (!raid) {
+        // Если нет рейда — создаём новый на следующий слот
+        await ensureRaidForToday();
+        return;
+    }
 
     // Время старта рейда
     let raidTime = raid.scheduledAt;
@@ -4190,37 +4201,32 @@ async function processRaidScheduler() {
             console.log(`⚔️ Стартуем бой для ${raid.raidId}`);
             await startRaidFight(raid._id);
         }
-        // Если время ещё не наступило, ничего не делаем
         return;
     }
 
     // --- ФАЗА БОЯ ---
     if (raid.phase === 'fighting') {
-        // Время начала первого хода
         const fightStartTime = raid.firstTurnAt || raid.startTime || raidTime;
-        // Время окончания всего боя (15 ходов * 20 сек + 5 сек буфер)
         const fightEndTime = new Date(fightStartTime.getTime() + 15 * 20 * 1000 + 5000);
 
-        // Завершаем рейд, если время вышло
         if (now >= fightEndTime) {
             await finishRaid(raid._id);
+            // Сразу создаём следующий рейд
+            await ensureRaidForToday();
             return;
         }
 
-        // Если это первый ход (ещё не было), запускаем таймер хода
         if (!raid.turnEndsAt) {
             await startRaidTurns(raid._id);
             return;
         }
 
-        // Если таймер хода истёк, переходим к следующему ходу
         if (raid.turnEndsAt && now >= raid.turnEndsAt) {
-            // Если это не последний ход (15-й), запускаем следующий
             if (raid.currentTurn < 15) {
                 await nextRaidTurn(raid._id);
             } else {
-                // Если это был 15-й ход, завершаем рейд
                 await finishRaid(raid._id);
+                await ensureRaidForToday();
             }
         }
     }

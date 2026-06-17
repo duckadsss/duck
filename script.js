@@ -4136,13 +4136,14 @@ async function loadRaidData() {
     try {
         const res = await apiRequest('GET', '/api/raid/current');
         if (res?.success) {
-            // Нормализуем данные — если raid вложен, достаём
+            // Нормализуем данные
             if (res.raid) {
                 currentRaid = {
                     ...res.raid,
                     participantsCount: res.raid.participantsCount || 0,
                     totalPrizePool: res.raid.totalPrizePool || 0,
-                    topParticipants: res.raid.topParticipants || []
+                    topParticipants: res.raid.topParticipants || [],
+                    scheduledAt: res.raid.raidStartTime || res.raid.scheduledAt
                 };
             } else {
                 currentRaid = res;
@@ -4161,9 +4162,8 @@ function updateRaidUI() {
     document.getElementById('raidBossIcon').textContent = '🐉';
     document.getElementById('raidBossName').textContent = 'Ежедневный Рейд';
     
-    // Используем currentRaid.raid.participantsCount если данные пришли в таком виде
-    const participantsCount = currentRaid.participantsCount || currentRaid.raid?.participantsCount || 0;
-    const prizePool = currentRaid.totalPrizePool || currentRaid.raid?.totalPrizePool || 0;
+    const participantsCount = currentRaid.participantsCount || 0;
+    const prizePool = currentRaid.totalPrizePool || 0;
     
     document.getElementById('raidParticipantsCount').textContent = participantsCount;
     document.getElementById('raidPrizePool').textContent = prizePool.toLocaleString();
@@ -4190,7 +4190,7 @@ function updateRaidUI() {
     // Топ участников в лобби
     const topList = document.getElementById('raidTopList');
     if (topList) {
-        const topParticipants = currentRaid.topParticipants || currentRaid.raid?.topParticipants || [];
+        const topParticipants = currentRaid.topParticipants || [];
         if (topParticipants.length) {
             topList.innerHTML = topParticipants.map((p, i) => `
                 <div class="raid-top-item">
@@ -4205,7 +4205,7 @@ function updateRaidUI() {
     }
     
     if (raidBattleOpen) {
-        const lb = currentRaid.topParticipants || currentRaid.raid?.topParticipants || [];
+        const lb = currentRaid.topParticipants || [];
         if (lb.length) renderRaidLeaderboard(lb);
     }
 
@@ -4228,19 +4228,29 @@ function updateRaidTimer() {
     let label = '';
 
     if (currentRaid.phase === 'registration') {
-        targetTime = new Date(currentRaid.raidStartTime);
+        targetTime = new Date(currentRaid.raidStartTime || currentRaid.scheduledAt);
         label = '⏳ До начала рейда';
     } else if (currentRaid.phase === 'fighting') {
-        // Считаем от первого хода если есть, иначе от raidEndTime
         if (currentRaid.firstTurnAt) {
             targetTime = new Date(new Date(currentRaid.firstTurnAt).getTime() + 15 * 20 * 1000 + 5000);
         } else {
-            targetTime = new Date(currentRaid.raidEndTime);
+            targetTime = new Date(currentRaid.raidEndTime || currentRaid.endTime);
         }
         label = '⚔️ До завершения';
     } else if (currentRaid.phase === 'finished') {
         timerValue.textContent = '✅ Рейд завершён';
         if (timerLabel) timerLabel.textContent = '🏆 Итоги';
+        // Показываем время до следующего рейда
+        const nextRaidTime = getNextRaidTime();
+        if (nextRaidTime) {
+            const diff = nextRaidTime - now;
+            if (diff > 0) {
+                const m = Math.floor(diff / 60000);
+                const s = Math.floor((diff % 60000) / 1000);
+                timerValue.textContent = `Следующий через ${m}м ${s}с`;
+                if (timerLabel) timerLabel.textContent = '⏳ Следующий рейд';
+            }
+        }
         return;
     } else {
         timerValue.textContent = '📅 Ожидание';
@@ -4249,6 +4259,12 @@ function updateRaidTimer() {
     }
 
     if (timerLabel) timerLabel.textContent = label;
+    
+    if (!targetTime) {
+        timerValue.textContent = '⏳ Ожидание...';
+        return;
+    }
+    
     const diff = targetTime.getTime() - now.getTime();
 
     if (diff <= 0) {
@@ -4260,6 +4276,19 @@ function updateRaidTimer() {
     const m = Math.floor((diff % 3600000) / 60000);
     const s = Math.floor((diff % 60000) / 1000);
     timerValue.textContent = h > 0 ? `${h}ч ${m}м ${s}с` : m > 0 ? `${m}м ${s}с` : `${s}с`;
+}
+
+function getNextRaidTime() {
+    const now = new Date();
+    const minutes = now.getMinutes();
+    const remainder = minutes % 6;
+    const nextMinutes = remainder === 0 ? minutes : minutes + (6 - remainder);
+    const next = new Date(now);
+    next.setMinutes(nextMinutes, 0, 0);
+    if (next <= now) {
+        next.setMinutes(next.getMinutes() + 6);
+    }
+    return next;
 }
 
 function renderPetSelector() {
@@ -4374,8 +4403,8 @@ function updateRaidBattleScreen() {
     const rbsTurn = document.getElementById('rbsTurn');
     if (rbsTurn) rbsTurn.textContent = currentRaid.currentTurn || 1;
 
-    const participantsCount = currentRaid.participantsCount || currentRaid.raid?.participantsCount || 0;
-    const prizePool = currentRaid.totalPrizePool || currentRaid.raid?.totalPrizePool || 0;
+    const participantsCount = currentRaid.participantsCount || 0;
+    const prizePool = currentRaid.totalPrizePool || 0;
     
     const rbsP = document.getElementById('rbsParticipants');
     const rbsPP = document.getElementById('rbsPrizePool');
@@ -4388,9 +4417,7 @@ function updateRaidBattleScreen() {
     const rbsPetIcon = document.getElementById('rbsPetIcon');
     const rbsPetName = document.getElementById('rbsPetName');
     if (rbsPetIcon && creature) {
-        const iconHtml = getIconHtml(creature);
-        // If image, wrap in correct size; if emoji, set as text
-        rbsPetIcon.innerHTML = iconHtml;
+        rbsPetIcon.innerHTML = getIconHtml(creature);
     }
     if (rbsPetName && creature) rbsPetName.textContent = creature.name;
 
@@ -4400,10 +4427,7 @@ function updateRaidBattleScreen() {
     if (rbsMyDamage) rbsMyDamage.textContent = (currentRaid.myDamage || 0).toLocaleString();
     if (rbsMyAttacks) rbsMyAttacks.textContent = currentRaid.myAttacks || 0;
 
-    // Attack button
     updateRaidAttackBtn();
-
-    // Turn timer bar
     updateRaidTurnBar();
 }
 
@@ -4644,23 +4668,33 @@ function openRaidFromHome() {
 // Обновить статус рейда на главной
 function updateHomeBossStatus() {
     const el = document.getElementById('homeBossStatus');
-    if (!el || !currentRaid) return;
+    if (!el) return;
+    
+    if (!currentRaid) {
+        el.textContent = 'Загрузка...';
+        return;
+    }
+    
     if (currentRaid.phase === 'registration') {
-        const diff = new Date(currentRaid.raidStartTime) - Date.now();
+        const now = new Date();
+        const startTime = new Date(currentRaid.raidStartTime || currentRaid.scheduledAt);
+        const diff = startTime - now;
         if (diff > 0) {
             const m = Math.floor(diff / 60000);
             const s = Math.floor((diff % 60000) / 1000);
-            el.textContent = m > 0 ? `Старт через ~${m}м` : 'Скоро начнётся';
+            el.textContent = m > 0 ? `Старт через ${m}м ${s}с` : `Старт через ${s}с`;
         } else {
-            el.textContent = 'Скоро начнётся';
+            el.textContent = '🔥 СКОРО НАЧНЁТСЯ!';
         }
     } else if (currentRaid.phase === 'fighting') {
-        el.textContent = `⚔️ БОЙ! Ход ${currentRaid.currentTurn}/15`;
+        el.textContent = `⚔️ БОЙ! Ход ${currentRaid.currentTurn || 1}/15`;
         // Пульсирующий эффект
         const card = document.querySelector('.raid-mode-card');
         if (card) card.style.borderColor = 'rgba(239,68,68,0.5)';
+    } else if (currentRaid.phase === 'finished') {
+        el.textContent = '✅ Рейд завершён';
     } else {
-        el.textContent = 'Ожидание рейда';
+        el.textContent = '⏳ Ожидание рейда';
     }
 }
 
@@ -4864,8 +4898,13 @@ function initRaid() {
     raidSocketInitialized = false;
     loadRaidData();
     initRaidWebSocket();
+    
+    // Таймер обновляем каждую секунду
     setInterval(updateRaidTimer, 1000);
-    setInterval(updateHomeBossStatus, 10000);
+    
+    // Статус на главной обновляем каждые 5 секунд
+    setInterval(updateHomeBossStatus, 5000);
+    
     // Обновляем кнопку и таймер хода каждые 500мс
     setInterval(() => {
         if (raidBattleOpen) {
@@ -4874,22 +4913,19 @@ function initRaid() {
         }
     }, 500);
 
-    // ========== ВСТАВИТЬ СЮДА ==========
-    // Принудительная проверка каждые 5 секунд, если бой не идёт
+    // Частая проверка статуса рейда (каждые 3 секунды)
     setInterval(() => {
         if (!currentRaid || currentRaid.phase !== 'fighting') {
-            // Проверяем, не пора ли перевести рейд в боевую фазу
             if (currentRaid?.phase === 'registration') {
                 const now = new Date();
-                const startTime = new Date(currentRaid.raidStartTime);
-                // Если время старта уже прошло, но рейд всё ещё в регистрации
+                const startTime = new Date(currentRaid.raidStartTime || currentRaid.scheduledAt);
                 if (now >= startTime) {
                     console.log('🔄 Принудительная проверка рейда (клиент)');
-                    loadRaidData(); // Перезапрашиваем данные
+                    loadRaidData();
                 }
             }
         }
-    }, 2000);
+    }, 3000);
 }
 
 // Вызываем после загрузки пользователя
