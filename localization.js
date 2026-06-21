@@ -15,7 +15,7 @@ const translations = {
         'nav.friends': 'Друзья',
         'nav.special': 'Квесты',
         'nav.wallet': 'Кошелек',
-        
+
         // Game tab
         'game.capsules': 'DNA Капсулы',
         'game.dnaCapsule': 'DNA КАПСУЛА',
@@ -24,15 +24,15 @@ const translations = {
         'game.watchAd': 'Смотреть Рекламу',
         'game.mmo': 'MMO',
         'game.ready': 'Готово',
-        
+
         // Inventory
         'inventory.myCreatures': 'Мои Существа',
         'inventory.empty': 'Откройте капсулу, чтобы получить первое существо!',
-        
+
         // Encyclopedia
         'encyclopedia.title': 'Коллекция Существ',
         'encyclopedia.subtitle': 'Откройте всех существ',
-        
+
         // Marketplace
         'marketplace.title': 'Торговая Площадка',
         'marketplace.buy': 'Купить',
@@ -53,13 +53,13 @@ const translations = {
         'marketplace.platformFee': 'Комиссия платформы (10%)',
         'marketplace.youReceive': 'Вы получите',
         'marketplace.yourPrice': 'Ваша цена',
-        
+
         // Leaderboard
         'leaderboard.title': 'Глобальный Рейтинг',
         'leaderboard.lvl': 'УР',
         'leaderboard.xp': 'ОП',
         'leaderboard.you': '(Вы)',
-        
+
         // Friends (обновлено)
         'friends.inviteTitle': 'ПРИГЛАСИТЕ ДРУЗЕЙ',
         'friends.inviteBtn': 'ПРИГЛАСИТЬ ДРУГА',
@@ -72,8 +72,8 @@ const translations = {
         'friends.qualified': '✅ 5+ уровень',
         'friends.notQualified': '📈 нужно {left} ур.',
         'friends.levelRequirement': '🔥 ВАЖНО: Для получения наград друзья должны достичь 5 уровня!',
-        
-        // Special Quests (обновлено)
+
+        // Special Quests
         'specialQuests.title': 'Особые Квесты',
         'specialQuests.noQuests': 'Нет активных спец-квестов',
         'specialQuests.comingSoon': 'Скоро появятся новые квесты!',
@@ -81,7 +81,7 @@ const translations = {
         'specialQuests.claim': 'ЗАБРАТЬ',
         'specialQuests.completed': 'ВЫПОЛНЕНО',
         'specialQuests.locked': 'НУЖНО {required} ДРУЗЕЙ 5+ УРОВНЯ ({current})',
-        
+
         // Wallet
         'wallet.totalBalance': 'Общий Баланс',
         'wallet.mmoPerHour': 'MMO / Час',
@@ -94,17 +94,17 @@ const translations = {
         'wallet.withdraw': 'ВЫВЕСТИ',
         'wallet.activeRequests': 'Активных заявок: {count}/{max}',
         'wallet.pending': 'ОЖИДАНИЕ',
-        'wallet.depositAmount': 'Сумма (MMO)',
-        'wallet.withdrawAmount': 'Сумма (MMO)',
+        'wallet.depositAmount': 'Сумма в MMO',
+        'wallet.withdrawAmount': 'Сумма в MMO',
         'wallet.tonWallet': 'TON Кошелек',
         'wallet.minAmount': 'Минимальная сумма {min} MMO',
         'wallet.insufficientFunds': 'Недостаточно средств. Ваш баланс: {balance} MMO',
         'wallet.validWallet': 'Введите корректный TON адрес кошелька (минимум 20 символов)',
         'wallet.requestCreated': 'Заявка на {amount} MMO создана! Ожидайте подтверждения администратора.',
-        'wallet.requestDepositCreated': 'Заявка создана! Отправьте точную сумму на указанный кошелек TON с указанием мемо.',
+        'wallet.requestDepositCreated': 'Заявка создана! Отправьте точную сумму {amount} MMO на указанный кошелек TON с указанием мемо.',
         'wallet.paymentConfirmed': 'Спасибо! Администратор проверит платеж и начислит средства.',
         'wallet.copied': 'Скопировано!',
-        
+
         // Capsule Modal
         'capsule.premiumTitle': 'Премиум DNA Капсула',
         'capsule.basicTitle': 'DNA Капсула',
@@ -112,7 +112,7 @@ const translations = {
         'capsule.dropRates': 'Шансы выпадения',
         'capsule.notEnough': 'НЕДОСТАТОЧНО MMO',
         'capsule.openNow': 'ОТКРЫТЬ СЕЙЧАС',
-        
+
         // Merge
         'merge.preview': 'Предпросмотр Слияния',
         'merge.input': 'Исходные',
@@ -127,21 +127,32 @@ const translations = {
         'merge.evolutionSuccess': '🎉 Эволюция успешна!',
         'merge.failComplete': '❌ Провал! Существо не изменилось',
         'merge.evolution': 'ЭВОЛЮЦИЯ!',
-        'merge.continue': 'ПРОДОЛЖИТЬ',
         'merge.close': 'ЗАКРЫТЬ',
         'merge.successResult': '+РЕДКОСТЬ',
         'merge.sameResult': '=РЕДКОСТЬ',
-        
+
         // Popups
         'popup.close': 'ЗАКРЫТЬ',
         'popup.awesome': 'ОТЛИЧНО!',
         'popup.owned': 'Владелец',
-        
+
+        // Deposit Popup
+        'deposit.title': '💎 Оплатите депозит',
+        'deposit.amountLabel': 'Сумма к оплате',
+        'deposit.walletLabel': '🏦 Кошелек для оплаты',
+        'deposit.memoLabel': '📝 Мемо (ОБЯЗАТЕЛЬНО!)',
+        'deposit.important': '⚠️ ВАЖНО!',
+        'deposit.importantText': '• Отправьте ровно {amount} MMO\n• Обязательно укажите мемо в комментарии к переводу\n• Без мемо платеж не будет зачислен\n• После перевода нажмите кнопку ниже',
+        'deposit.payButton': '✅ Я ОПЛАТИЛ {amount} MMO',
+        'deposit.cancelButton': '❌ ОТМЕНА',
+        'deposit.copyWallet': 'Скопировать кошелек',
+        'deposit.copyMemo': 'Скопировать мемо',
+
         // Transactions
         'transactions.none': 'Нет транзакций',
         'transactions.justNow': 'только что',
         'transactions.minAgo': '{minutes} мин назад',
-        
+
         // Toast Messages
         'toast.tooFast': 'Слишком быстро! Подождите {seconds} секунд.',
         'toast.tooFast2': 'Слишком быстро! Подождите.',
@@ -161,33 +172,36 @@ const translations = {
         'toast.errorListing': 'Ошибка при выставлении',
         'toast.errorBuying': 'Ошибка при покупке',
         'toast.copied': 'Ссылка скопирована!',
-        
+        'toast.requestCreated': '✅ Заявка создана! Администратор проверит платеж и начислит средства.',
+        'toast.paymentDataLost': 'Ошибка: данные оплаты утеряны. Начните заново.',
+
         // Errors
         'error.connection': 'Ошибка соединения',
         'error.server': 'Ошибка сервера',
         'error.sessionExpired': 'Сессия истекла',
         'error.unknown': 'Неизвестная ошибка',
-        
+
         // Common
         'common.lvl': 'УР',
         'common.xp': 'ОП',
         'common.mmo': 'MMO',
         'common.hour': 'час',
-        
-        // Friend Rewards (обновлено)
+
+        // Friend Rewards
         'friendReward.claimed': 'ПОЛУЧЕНО',
         'friendReward.claim': 'ЗАБРАТЬ',
         'friendReward.locked': '{friends} ДРУЗЕЙ 5+ УРОВНЯ',
         'friendReward.requirement': 'Требование: друзья должны достичь 5 уровня',
-        
+
         // Encyclopedia
         'encyclopedia.discovered': 'обнаружено',
         'encyclopedia.undiscovered': '🔒 НЕ ОБНАРУЖЕНО',
         'encyclopedia.discoveredYes': '✓ ОБНАРУЖЕНО',
-        
+
         // Ads Timer
         'ads.ready': 'Готово',
-        'ads.wait': '{seconds}с'
+        'ads.wait': '{seconds}с',
+        'ads.regen': '+1 через {minutes}м'
     },
     en: {
         // Navigation
@@ -197,7 +211,7 @@ const translations = {
         'nav.friends': 'Friends',
         'nav.special': 'Quests',
         'nav.wallet': 'Wallet',
-        
+
         // Game tab
         'game.capsules': 'DNA Capsules',
         'game.dnaCapsule': 'DNA CAPSULE',
@@ -206,15 +220,15 @@ const translations = {
         'game.watchAd': 'Watch Ad',
         'game.mmo': 'MMO',
         'game.ready': 'Ready',
-        
+
         // Inventory
         'inventory.myCreatures': 'My Creatures',
         'inventory.empty': 'Open a capsule to get your first creature!',
-        
+
         // Encyclopedia
         'encyclopedia.title': 'Collection Encyclopedia',
         'encyclopedia.subtitle': 'Discover all creatures',
-        
+
         // Marketplace
         'marketplace.title': 'Marketplace',
         'marketplace.buy': 'Buy',
@@ -235,14 +249,14 @@ const translations = {
         'marketplace.platformFee': 'Platform Fee (10%)',
         'marketplace.youReceive': 'You Receive',
         'marketplace.yourPrice': 'Your Price',
-        
+
         // Leaderboard
         'leaderboard.title': 'Global Leaderboard',
         'leaderboard.lvl': 'LVL',
         'leaderboard.xp': 'XP',
         'leaderboard.you': '(You)',
-        
-        // Friends (updated)
+
+        // Friends
         'friends.inviteTitle': 'INVITE FRIENDS',
         'friends.inviteBtn': 'INVITE FRIEND',
         'friends.milestones': 'Friend Milestones (Level 5+)',
@@ -254,8 +268,8 @@ const translations = {
         'friends.qualified': '✅ level 5+',
         'friends.notQualified': '📈 need {left} lvl',
         'friends.levelRequirement': '🔥 IMPORTANT: Friends must reach level 5 to count for rewards!',
-        
-        // Special Quests (updated)
+
+        // Special Quests
         'specialQuests.title': 'Special Quests',
         'specialQuests.noQuests': 'No active special quests',
         'specialQuests.comingSoon': 'New quests coming soon!',
@@ -263,7 +277,7 @@ const translations = {
         'specialQuests.claim': 'CLAIM',
         'specialQuests.completed': 'COMPLETED',
         'specialQuests.locked': 'NEED {required} FRIENDS LEVEL 5+ ({current})',
-        
+
         // Wallet
         'wallet.totalBalance': 'Total Balance',
         'wallet.mmoPerHour': 'MMO / Hour',
@@ -276,17 +290,17 @@ const translations = {
         'wallet.withdraw': 'WITHDRAW',
         'wallet.activeRequests': 'Active requests: {count}/{max}',
         'wallet.pending': 'PENDING',
-        'wallet.depositAmount': 'Amount (MMO)',
-        'wallet.withdrawAmount': 'Amount (MMO)',
+        'wallet.depositAmount': 'Amount in MMO',
+        'wallet.withdrawAmount': 'Amount in MMO',
         'wallet.tonWallet': 'TON Wallet',
         'wallet.minAmount': 'Minimum amount {min} MMO',
         'wallet.insufficientFunds': 'Insufficient funds. Your balance: {balance} MMO',
         'wallet.validWallet': 'Enter a valid TON wallet address (min 20 characters)',
         'wallet.requestCreated': 'Withdraw request for {amount} MMO created! Wait for admin approval.',
-        'wallet.requestDepositCreated': 'Request created! Send exact amount to the TON wallet with memo.',
+        'wallet.requestDepositCreated': 'Request created! Send exact amount {amount} MMO to the TON wallet with memo.',
         'wallet.paymentConfirmed': 'Thank you! Admin will check payment and add funds.',
         'wallet.copied': 'Copied!',
-        
+
         // Capsule Modal
         'capsule.premiumTitle': 'Premium DNA Capsule',
         'capsule.basicTitle': 'DNA Capsule',
@@ -294,7 +308,7 @@ const translations = {
         'capsule.dropRates': 'Drop Rates',
         'capsule.notEnough': 'NOT ENOUGH MMO',
         'capsule.openNow': 'OPEN NOW',
-        
+
         // Merge
         'merge.preview': 'Merge Preview',
         'merge.input': 'Input',
@@ -309,21 +323,32 @@ const translations = {
         'merge.evolutionSuccess': '🎉 Evolution successful!',
         'merge.failComplete': '❌ Fail! Creature unchanged',
         'merge.evolution': 'EVOLUTION!',
-        'merge.continue': 'CONTINUE',
         'merge.close': 'CLOSE',
         'merge.successResult': '+RARITY',
         'merge.sameResult': '=RARITY',
-        
+
         // Popups
         'popup.close': 'CLOSE',
         'popup.awesome': 'AWESOME!',
         'popup.owned': 'Owned',
-        
+
+        // Deposit Popup
+        'deposit.title': '💎 Pay Deposit',
+        'deposit.amountLabel': 'Amount to pay',
+        'deposit.walletLabel': '🏦 Payment Wallet',
+        'deposit.memoLabel': '📝 Memo (REQUIRED!)',
+        'deposit.important': '⚠️ IMPORTANT!',
+        'deposit.importantText': '• Send exactly {amount} MMO\n• You MUST include the memo in your transfer\n• Without memo, payment will not be credited\n• Click the button below after payment',
+        'deposit.payButton': '✅ I PAID {amount} MMO',
+        'deposit.cancelButton': '❌ CANCEL',
+        'deposit.copyWallet': 'Copy wallet',
+        'deposit.copyMemo': 'Copy memo',
+
         // Transactions
         'transactions.none': 'No transactions yet',
         'transactions.justNow': 'just now',
         'transactions.minAgo': '{minutes}m ago',
-        
+
         // Toast Messages
         'toast.tooFast': 'Too fast! Wait {seconds} seconds.',
         'toast.tooFast2': 'Too fast! Please wait.',
@@ -343,33 +368,36 @@ const translations = {
         'toast.errorListing': 'Error listing',
         'toast.errorBuying': 'Error buying',
         'toast.copied': 'Link copied!',
-        
+        'toast.requestCreated': '✅ Request created! Admin will check payment and add funds.',
+        'toast.paymentDataLost': 'Error: payment data lost. Start over.',
+
         // Errors
         'error.connection': 'Connection error',
         'error.server': 'Server error',
         'error.sessionExpired': 'Session expired',
         'error.unknown': 'Unknown error',
-        
+
         // Common
         'common.lvl': 'LVL',
         'common.xp': 'XP',
         'common.mmo': 'MMO',
         'common.hour': 'hr',
-        
-        // Friend Rewards (updated)
+
+        // Friend Rewards
         'friendReward.claimed': 'CLAIMED',
         'friendReward.claim': 'CLAIM',
         'friendReward.locked': '{friends} FRIENDS LEVEL 5+',
         'friendReward.requirement': 'Requirement: friends must reach level 5',
-        
+
         // Encyclopedia
         'encyclopedia.discovered': 'discovered',
         'encyclopedia.undiscovered': '🔒 UNDISCOVERED',
         'encyclopedia.discoveredYes': '✓ DISCOVERED',
-        
+
         // Ads Timer
         'ads.ready': 'Ready',
-        'ads.wait': '{seconds}s'
+        'ads.wait': '{seconds}s',
+        'ads.regen': '+1 in {minutes}m'
     }
 };
 
@@ -400,7 +428,7 @@ function applyLocaleStatic() {
 function setLanguage(lang) {
     currentLocale = lang;
     localStorage.setItem('locale', lang);
-    
+
     // Обновляем активный класс на кнопках
     document.querySelectorAll('.lang-btn').forEach(btn => {
         if (btn.getAttribute('data-lang') === lang) {
@@ -409,16 +437,16 @@ function setLanguage(lang) {
             btn.classList.remove('active');
         }
     });
-    
+
     // Применяем перевод к статическим элементам
     applyLocaleStatic();
-    
+
     // Обновляем текст требования в разделе друзей
     const friendsHeroSub = document.querySelector('.friends-hero-sub');
     if (friendsHeroSub) {
         friendsHeroSub.innerHTML = `🔥 <strong>${t('friends.levelRequirement').replace('🔥 ', '')}</strong>`;
     }
-    
+
     // Обновляем текст на карточках наград
     const rewardCards = document.querySelectorAll('.friends-reward-card');
     const rewardsData = [
@@ -434,7 +462,7 @@ function setLanguage(lang) {
             }
         }
     });
-    
+
     // Вызываем обновление динамических компонентов
     if (typeof window.updateHeader === 'function') window.updateHeader();
     if (typeof window.renderCards === 'function') window.renderCards();
@@ -445,40 +473,34 @@ function setLanguage(lang) {
     if (typeof window.renderMarketplaceBuy === 'function' && document.getElementById('marketplace-buy')?.classList.contains('active')) window.renderMarketplaceBuy();
     if (typeof window.renderMarketplaceSell === 'function' && document.getElementById('marketplace-sell')?.classList.contains('active')) window.renderMarketplaceSell();
     if (typeof window.renderMarketplaceMyListings === 'function' && document.getElementById('marketplace-mylistings')?.classList.contains('active')) window.renderMarketplaceMyListings();
-    
+
     // Обновляем текст в header
     const xpLabel = document.getElementById('xpLabel');
     if (xpLabel && window.state?.user) {
         const u = window.state.user;
         xpLabel.textContent = `${t('common.xp')} ${u.xp}/${u.level * 100}`;
     }
-    
+
     const playerLevelLabel = document.getElementById('playerLevelLabel');
     if (playerLevelLabel && window.state?.user) {
         const u = window.state.user;
         playerLevelLabel.textContent = `${t('common.lvl')} ${u.level} · ${u.level >= 20 ? 'God Scientist' : u.level >= 15 ? 'DNA Master' : u.level >= 10 ? 'Geneticist' : u.level >= 5 ? 'Lab Expert' : u.level >= 3 ? 'Biologist' : 'Researcher'}`;
     }
-    
+
     const friendCountDisplay = document.getElementById('friendCountDisplay');
     if (friendCountDisplay && window.state?.user) {
         const totalFriends = window.state.user.referralTotalCount || 0;
         friendCountDisplay.textContent = t('friends.friendsCount', { count: window.state.user.referralCount || 0, total: totalFriends });
     }
-    
+
     const walletIncome = document.getElementById('walletIncome');
     if (walletIncome && window.state?.incomePerHour !== undefined) {
         walletIncome.textContent = window.formatNum ? window.formatNum(window.state.incomePerHour) : window.state.incomePerHour;
     }
-    
+
     const walletLabel = document.querySelector('.wallet-label');
     if (walletLabel) walletLabel.textContent = t('wallet.totalBalance');
-    
-    const walletSub = document.getElementById('walletSub');
-    if (walletSub && window.getVisualBalance) {
-        const visualBalance = window.getVisualBalance();
-        walletSub.textContent = `≈ ${(visualBalance * 0.001).toFixed(3)} USD`;
-    }
-    
+
     // Обновляем текст на кнопках friend rewards
     const rewardBtns = ['reward-10-btn', 'reward-50-btn', 'reward-150-btn'];
     const rewards = [
@@ -486,14 +508,14 @@ function setLanguage(lang) {
         { friends: 50, rarity: 'epic' },
         { friends: 150, rarity: 'legendary' }
     ];
-    
+
     rewards.forEach((reward, idx) => {
         const btn = document.getElementById(rewardBtns[idx]);
         if (btn && window.state?.user) {
             const currentFriends = window.state.user.referralCount || 0;
             const completedQuests = new Set(window.state.user.completedSpecialQuests || []);
             const alreadyClaimed = completedQuests.has(`friend_reward_${reward.friends}`);
-            
+
             if (alreadyClaimed) {
                 btn.textContent = `✅ ${t('friendReward.claimed')}`;
             } else if (currentFriends >= reward.friends) {
@@ -503,74 +525,74 @@ function setLanguage(lang) {
             }
         }
     });
-    
+
     // Обновляем плейсхолдеры
     const sellPriceInput = document.getElementById('sellPriceInput');
     if (sellPriceInput) sellPriceInput.placeholder = t('marketplace.price');
-    
+
     const depositAmount = document.getElementById('depositAmount');
     if (depositAmount) depositAmount.placeholder = t('wallet.depositAmount');
-    
+
     const withdrawAmount = document.getElementById('withdrawAmount');
     if (withdrawAmount) withdrawAmount.placeholder = t('wallet.withdrawAmount');
-    
+
     const withdrawWallet = document.getElementById('withdrawWallet');
     if (withdrawWallet) withdrawWallet.placeholder = t('wallet.tonWallet');
-    
+
     // Обновляем статические элементы без data-i18n
     const basicCapsuleName = document.querySelector('#basicCapsuleCard .capsule-name');
     if (basicCapsuleName) basicCapsuleName.textContent = t('game.dnaCapsule');
     const premiumCapsuleName = document.querySelector('#premiumCapsuleCard .capsule-name');
     if (premiumCapsuleName) premiumCapsuleName.textContent = t('game.premiumCapsule');
-    
+
     document.querySelectorAll('.capsule-btn').forEach(btn => {
         btn.textContent = t('game.open');
     });
-    
+
     const adsBtnText = document.querySelector('#adsBtn span[style*="flex:1"]');
     if (adsBtnText) adsBtnText.textContent = t('game.watchAd');
-    
+
     const encTitle = document.querySelector('.enc-title');
     if (encTitle) encTitle.textContent = t('encyclopedia.title');
     const encSub = document.querySelector('.enc-sub');
     if (encSub) encSub.textContent = t('encyclopedia.subtitle');
-    
+
     const myCreatures = document.querySelector('.section-title span[data-i18n="inventory.myCreatures"]');
     if (myCreatures) myCreatures.textContent = t('inventory.myCreatures');
-    
+
     document.querySelectorAll('.bottom-nav .nav-item span').forEach(span => {
         const key = span.getAttribute('data-i18n');
         if (key) span.textContent = t(key);
     });
-    
+
     const leaderboardTitle = document.querySelector('#tab-leaderboard .section-title span');
     if (leaderboardTitle && leaderboardTitle.getAttribute('data-i18n') === 'leaderboard.title') {
         leaderboardTitle.textContent = t('leaderboard.title');
     }
-    
+
     const friendsTitle = document.querySelector('.friends-hero-title');
     if (friendsTitle) friendsTitle.textContent = t('friends.inviteTitle');
     const inviteBtn = document.querySelector('.invite-btn span');
     if (inviteBtn) inviteBtn.textContent = t('friends.inviteBtn');
     const myFriendsTitle = document.querySelector('#tab-friends .section-title span[data-i18n="friends.myFriends"]');
     if (myFriendsTitle) myFriendsTitle.textContent = t('friends.myFriends');
-    
+
     const specialTitle = document.querySelector('#tab-special .section-title span');
     if (specialTitle && specialTitle.getAttribute('data-i18n') === 'specialQuests.title') {
         specialTitle.textContent = t('specialQuests.title');
     }
-    
+
     const depositBtn = document.querySelector('.wallet-action-btn.deposit span');
     if (depositBtn) depositBtn.textContent = t('wallet.deposit');
     const withdrawBtn = document.querySelector('.wallet-action-btn.withdraw span');
     if (withdrawBtn) withdrawBtn.textContent = t('wallet.withdraw');
-    
+
     const walletStatLabels = document.querySelectorAll('.wallet-stat-label');
     const walletStatKeys = ['wallet.creatures', 'wallet.totalMerges', 'wallet.adsWatched', 'wallet.referralEarned'];
     walletStatLabels.forEach((label, i) => {
         if (walletStatKeys[i]) label.textContent = t(walletStatKeys[i]);
     });
-    
+
     // Уведомление о смене языка
     if (typeof window.showToast === 'function') {
         window.showToast(`🌐 Language: ${lang.toUpperCase()}`, '✅');
@@ -580,7 +602,7 @@ function setLanguage(lang) {
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', () => {
     applyLocaleStatic();
-    
+
     setTimeout(() => {
         const activeBtn = document.querySelector(`.lang-btn[data-lang="${currentLocale}"]`);
         if (activeBtn) {
